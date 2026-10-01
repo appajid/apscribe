@@ -23,12 +23,4 @@ For Bugs and patches: please send them to the [Scribus Bugtracker](http://bugs.s
 ## Links
 |Resource | Address |  
 |:---------|:---------|  
-|Website |http://www.scribus.net |  
-|Wiki | http://wiki.scribus.net |  
-|List | http://lists.scribus.net |  
-|Forums | http://forums.scribus.net | 
-|WebSVN | http://scribus.net/websvn |
-|SVN | svn://scribus.net/trunk/Scribus |  
-|IRC | irc://scribus@irc.libera.chat |  
-
 
