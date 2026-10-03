@@ -124,8 +124,16 @@ jobs:
       - name: Smoke test the packaged AppImage
         run: |
           chmod +x Apscribe-2.0.0-rc1-linux-x86_64.AppImage
-          Apscribe-2.0.0-rc1-linux-x86_64.AppImage \
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH \
+            ./Apscribe-2.0.0-rc1-linux-x86_64.AppImage \
             --appimage-extract-and-run --version | grep -F 'Apscribe Version 2.0.0'
+          marker="$(mktemp)"
+          APSCRIBE_SMOKE_RESULT="$marker" \
+            env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH \
+            ./Apscribe-2.0.0-rc1-linux-x86_64.AppImage \
+            --appimage-extract-and-run --no-splash --no-gui \
+            --python-script "$GITHUB_WORKSPACE/ci/release/macos-scripter-smoke.py"
+          test -s "$marker"
           sha256sum Apscribe-2.0.0-rc1-linux-x86_64.AppImage \
             > Apscribe-2.0.0-rc1-linux-x86_64.AppImage.sha256
 
