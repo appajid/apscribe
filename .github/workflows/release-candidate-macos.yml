@@ -38,6 +38,7 @@ jobs:
       - name: Check signature, platform, dependencies, and bundled Scripter
         env:
           QT_QPA_PLATFORM: offscreen
+          PYTHONDONTWRITEBYTECODE: '1'
         run: |
           app="$GITHUB_WORKSPACE/unpacked/Apscribe.app"
           codesign --verify --deep --strict "$app"

@@ -130,6 +130,7 @@ codesign --force --deep --sign - "$staged_app"
 codesign --verify --deep --strict "$staged_app"
 
 export QT_QPA_PLATFORM=offscreen
+export PYTHONDONTWRITEBYTECODE=1
 "$contents/MacOS/Apscribe" --version | grep -F 'Apscribe Version 2.0.0'
 smoke_result="$(mktemp /private/tmp/apscribe-scripter-smoke.XXXXXX)"
 export APSCRIBE_EXPECTED_PYTHON_PREFIX="$python_home"
@@ -137,6 +138,7 @@ export APSCRIBE_SMOKE_RESULT="$smoke_result"
 "$contents/MacOS/Apscribe" --no-gui --python-script \
   "$(dirname "$0")/macos-scripter-smoke.py"
 [[ -s "$smoke_result" ]] || { echo 'Bundled Scripter smoke failed' >&2; exit 1; }
+codesign --verify --deep --strict "$staged_app"
 
 ditto -c -k --sequesterRsrc --keepParent "$staged_app" "$archive"
 (cd "$output_dir" && shasum -a 256 "$(basename "$archive")" \

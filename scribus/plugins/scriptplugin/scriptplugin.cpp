@@ -180,7 +180,10 @@ bool ScriptPlugin::initPlugin()
 	const QDir bundledPython(QApplication::applicationDirPath()
 		+ "/../Frameworks/Python.framework/Versions/3.14");
 	if (bundledPython.exists())
+	{
 		qputenv("PYTHONHOME", bundledPython.canonicalPath().toUtf8());
+		qputenv("PYTHONDONTWRITEBYTECODE", "1");
+	}
 #endif
 
 	scripterCore = new ScripterCore(ScCore->primaryMainWindow());
