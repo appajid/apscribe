@@ -57,6 +57,9 @@ jobs:
             LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
             QT_PLUGIN_PATH="$QT_PLUGIN_PATH" \
             ctest --test-dir build/release-appimage -L phase-5 --output-on-failure
+          # The install fixture writes this manifest as root; the later
+          # unprivileged DESTDIR stage must be able to replace it.
+          sudo chown "$USER" build/release-appimage/install_manifest.txt
 
       - name: Stage application and check release contents
         run: |
