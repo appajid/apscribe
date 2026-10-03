@@ -9,7 +9,8 @@ on:
         default: v2.0.0-rc1
 
 permissions:
-  contents: read
+  # Draft releases are only visible to callers with push-level access.
+  contents: write
 
 jobs:
   macos-dmg:
