@@ -66,6 +66,8 @@ for which a new license (GPL+exception) is in place.
 #include <QMouseEvent>
 #include <QMultiMap>
 #include <QPixmap>
+#include <QPointer>
+#include <QProcess>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
@@ -76,7 +78,9 @@ for which a new license (GPL+exception) is in place.
 #include <QStyleFactory>
 #include <QStyleHints>
 #include <QTableWidget>
+#include <QTemporaryFile>
 #include <QTextEdit>
+#include <QTransform>
 #include <QTranslator>
 #include <QToolButton>
 #include <QUuid>
@@ -110,9 +114,12 @@ for which a new license (GPL+exception) is in place.
 
 #include <array>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <csignal>
 #include <string>
+#include <vector>
+#include <utility>
 
 #include "actionmanager.h"
 #include "actionsearch.h"
@@ -121,6 +128,8 @@ for which a new license (GPL+exception) is in place.
 #include "appmodes.h"
 #include "canvasmode.h"
 #include "canvasmode_imageimport.h"
+#include "colormgmt/sccolorprofile.h"
+#include "colorsetmanager.h"
 #include "commonstrings.h"
 #include "desaxe/digester.h"
 #include "documentchecker.h"
@@ -132,12 +141,16 @@ for which a new license (GPL+exception) is in place.
 #include "fpoint.h"
 #include "fpointarray.h"
 #include "gtgettext.h"
+#include "guidemanagercore.h"
 #include "hyphenator.h"
 #include "iconmanager.h"
 #include "langmgr.h"
 #include "localemgr.h"
 #include "loadsaveplugin.h"
+#include "manager/dock_manager.h"
 #include "manager/pagepreset_manager.h"
+#include "manager/widget_manager.h"
+#include "margins.h"
 #include "marks.h"
 #include "nfttemplate.h"
 #include "notesstyles.h"
@@ -159,11 +172,15 @@ for which a new license (GPL+exception) is in place.
 #include "pslib.h"
 #include "resourcecollection.h"
 #include "scclipboardprocessor.h"
+#include "sccolor.h"
 #include "scgtplugin.h"
 #include "scimagecachemanager.h"
+#include "sclayer.h"
 #include "scmimedata.h"
 #include "scpage.h"
 #include "scpaths.h"
+#include "scpattern.h"
+#include "scprintengine.h"
 #include "scprintengine_pdf.h"
 #include "scprintengine_ps.h"
 #include "scraction.h"
@@ -177,8 +194,13 @@ for which a new license (GPL+exception) is in place.
 #include "serializer.h"
 #include "storyloader.h"
 #include "stylesearch.h"
+#include "styles/charstyle.h"
+#include "styles/paragraphstyle.h"
+#include "styles/styleset.h"
 #include "textframespellchecker.h"
 #include "textnote.h"
+#include "text/specialchars.h"
+#include "text/storytext.h"
 #include "tocgenerator.h"
 #include "ui/about.h"
 #include "ui/aboutplugins.h"
@@ -253,10 +275,12 @@ for which a new license (GPL+exception) is in place.
 #include "ui/recoverdialog.h"
 #include "ui/replacecolors.h"
 #include "ui/resourcemanager.h"
+#include "ui/scfilewidget.h"
 #include "ui/scmessagebox.h"
 #include "ui/scmwmenumanager.h"
 #include "ui/scrapbookpalette.h"
 #include "ui/scrspinbox.h"
+#include "ui/sctoolbar.h"
 #include "ui/search.h"
 #include "ui/selectobjects.h"
 #include "ui/smcellstyle.h"
@@ -275,14 +299,19 @@ for which a new license (GPL+exception) is in place.
 #include "ui/factories/scribusproxystyle.h"
 #include "undogui.h"
 #include "undomanager.h"
+#include "undoobject.h"
 #include "undostate.h"
+#include "undotransaction.h"
 #include "units.h"
 #include "usertaskstructs.h"
 #include "util.h"
 #include "util_file.h"
 #include "util_formats.h"
+#include "third_party/Qt-Advanced-Docking-System/src/ads_globals.h"
 #include "third_party/Qt-Advanced-Docking-System/src/DockAreaWidget.h"
+#include "third_party/Qt-Advanced-Docking-System/src/DockManager.h"
 #include "third_party/Qt-Advanced-Docking-System/src/IconProvider.h"
+#include "vgradient.h"
 
 #ifdef HAVE_SVNVERSION
 	#include "svnversion.h"
@@ -498,7 +527,6 @@ int ScribusMainWindow::initScMW(bool primaryMainWindow)
 
 	setStyleSheet();
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 	connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this]()
 	{
 		emit ScQApp->iconSetChanged();
@@ -507,7 +535,6 @@ int ScribusMainWindow::initScMW(bool primaryMainWindow)
 		// If we set the style sheet again it forces a redrawing with the current theme.
 		setStyleSheet();
 	});
-#endif
 
 	return retVal;
 }
@@ -1786,7 +1813,16 @@ void ScribusMainWindow::specialActionKeyEvent(int unicodevalue)
 	if (currItem == nullptr)
 		return;
 
-	if (unicodevalue!=-1)
+	if (unicodevalue == SpecialChars::SHYPHEN.unicode())
+	{
+		auto pos = currItem->itemText.cursorPosition();
+		if (pos > 0 && currItem->itemText.text(pos - 1) == SpecialChars::SHYPHEN)
+			return;
+		if (pos < currItem->itemText.length() && currItem->itemText.text(pos) == SpecialChars::SHYPHEN)
+			return;
+	}
+
+	if (unicodevalue != -1)
 	{
 		UndoTransaction activeTransaction;
 		if (currItem->HasSel)
@@ -6692,10 +6728,6 @@ void ScribusMainWindow::slotPrefsOrg()
 	LocaleManager::instance().setUserPreferredLocale(m_prefsManager.appPrefs.uiPrefs.userPreferredLocale);
 	ScQApp->setLocale();
 
-	bool useDefaultScratchColor = false;
-	if (m_prefsManager.appPrefs.displayPrefs.scratchColor == QApplication::palette().color(QPalette::Active, QPalette::Window))
-		useDefaultScratchColor = true;
-
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 8, 0))
 	QString newUIStylePalette = m_prefsManager.appPrefs.uiPrefs.stylePalette;
 	if (oldPrefs.uiPrefs.stylePalette != newUIStylePalette)
@@ -6731,9 +6763,6 @@ void ScribusMainWindow::slotPrefsOrg()
 		// 	m_prefsManager.appPrefs.uiPrefs.style = oldPrefs.uiPrefs.style;
 	}
 
-	if (useDefaultScratchColor)
-		m_prefsManager.appPrefs.displayPrefs.scratchColor = QApplication::palette().color(QPalette::Active, QPalette::Window);
-
 	QString newIconSet = m_prefsManager.guiIconSet();
 	// Recreate icons if icon set or GUI changed. For GUI change the icon recreation will automatically detect light and dark themes
 	if (oldPrefs.uiPrefs.iconSet != newIconSet || forceIconUpdate == true)
@@ -6758,6 +6787,10 @@ void ScribusMainWindow::slotPrefsOrg()
 	else
 		mdiArea->setViewMode(QMdiArea::SubWindowView);
 	bool shadowChanged = oldPrefs.displayPrefs.showPageShadow != m_prefsManager.showPageShadow();
+	bool scratchColorChanged = oldPrefs.displayPrefs.scratchColor != m_prefsManager.appPrefs.displayPrefs.scratchColor;
+	if (scratchColorChanged)
+		pagePalette->updatePageGrid();
+
 	QList<QMdiSubWindow *> windows = mdiArea->subWindowList();
 	if (!windows.isEmpty())
 	{
@@ -6782,7 +6815,7 @@ void ScribusMainWindow::slotPrefsOrg()
 				scw_v->zoom((scw_v->scale() / oldPrefs.displayPrefs.displayScale) * m_prefsManager.displayScale());
 				zoomSpinBox->setMaximum(doc->opToolPrefs().magMax);
 			}
-			if (shadowChanged)
+			if (shadowChanged || scratchColorChanged)
 				scw->view()->DrawNew();
 		}
 	}
