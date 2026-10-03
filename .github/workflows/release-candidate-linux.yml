@@ -39,6 +39,13 @@ jobs:
           modules: qt5compat
           cache: true
 
+      - name: Restore compiled application for packaging retries
+        id: app-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build/release-appimage
+          key: apscribe-appimage-qt6112-ubuntu2404-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'scribus/**', 'apscribe.appdata.xml.in') }}-v1
+
       - name: Configure and build Apscribe
         run: |
           cmake -S . -B build/release-appimage -G Ninja \
@@ -48,6 +55,13 @@ jobs:
             -DWANT_RELOCATABLE=ON -DWITH_TESTS=ON \
             -DWANT_NOOSG=ON -DWITH_PODOFO=OFF -DWITH_BOOST=OFF
           cmake --build build/release-appimage --parallel 2
+
+      - name: Cache compiled application before packaging
+        if: steps.app-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/release-appimage
+          key: apscribe-appimage-qt6112-ubuntu2404-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'scribus/**', 'apscribe.appdata.xml.in') }}-v1
 
       - name: Run native integration tests
         # The existing CTest fixture installs into CMAKE_INSTALL_PREFIX=/usr.
