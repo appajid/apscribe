@@ -22,20 +22,27 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            ninja-build pkg-config qt6-base-dev qt6-base-private-dev \
-            qt6-5compat-dev qt6-svg-dev libxkbcommon-dev \
-            qt6-tools-dev qt6-tools-dev-tools \
+            ninja-build pkg-config libxkbcommon-dev \
             libcairo2-dev libcups2-dev libfontconfig1-dev libfreetype-dev \
             libharfbuzz-dev libhunspell-dev libicu-dev libjpeg-dev \
             liblcms2-dev libpagemaker-dev libpng-dev libpoppler-cpp-dev libpoppler-private-dev \
             librevenge-dev \
             libtiff-dev libxml2-dev python3-dev zlib1g-dev poppler-utils
 
-      - name: Configure Scribus with Scripter and integration tests
+      - name: Install Qt 6.11.2
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.11.2
+          arch: linux_gcc_64
+          modules: qt5compat qtsvg qttools
+          cache: true
+
+      - name: Configure Apscribe with Scripter and integration tests
         run: |
           cmake -S . -B build/phase5-linux -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/stage" \
+            -DQT_PREFIX="$QT_ROOT_DIR" \
             -DWITH_TESTS=ON -DWANT_NOOSG=ON -DWITH_PODOFO=OFF -DWITH_BOOST=OFF
 
       - name: Build full application and plugins
