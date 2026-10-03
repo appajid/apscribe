@@ -29,7 +29,7 @@ Requirements (Windows machine)
 ------------------------------
   * The Scribus source tree (this folder)
   * Visual Studio 2022 Release|x64 build -> Scribus-builds\Scribus-Release-x64-v143\Apscribe.exe
-  * Qt 6 (>= 6.2) matching the build, e.g. F:\Libraries\Qt\6.11.2\msvc2022_64
+  * Qt 6 (>= 6.5) matching the build, e.g. F:\Libraries\Qt\6.11.2\msvc2022_64
   * scribus-libs kit (or explicit -LibsKitRoot)
       https://sourceforge.net/projects/scribus/files/scribus-libs/
 

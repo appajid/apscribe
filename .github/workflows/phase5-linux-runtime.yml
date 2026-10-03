@@ -34,7 +34,7 @@ jobs:
         with:
           version: 6.11.2
           arch: linux_gcc_64
-          modules: qt5compat qtsvg qttools
+          modules: qt5compat
           cache: true
 
       - name: Configure Apscribe with Scripter and integration tests

@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 enable_testing()
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Test Widgets)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Test Widgets)
 find_package(TIFF QUIET)
 
 get_filename_component(SCRIBUS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
