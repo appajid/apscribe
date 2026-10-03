@@ -50,6 +50,10 @@ jobs:
 
       - name: Configure and build Apscribe
         run: |
+          if [[ '${{ steps.app-cache.outputs.cache-hit }}' == true ]]; then
+            echo 'Using the exact source-and-toolchain compiled cache'
+            exit 0
+          fi
           cmake -S . -B build/release-appimage -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
