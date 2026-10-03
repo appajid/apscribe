@@ -29,6 +29,7 @@ for which a new license (GPL+exception) is in place.
 #include <QStandardPaths>
 #include <QStringList>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QToolTip>
 #include <QVBoxLayout>
 #include <QWindow>
@@ -45,6 +46,7 @@ for which a new license (GPL+exception) is in place.
 #include "scpaths.h"
 #include "scrspinbox.h"
 #include "units.h"
+#include "util.h"
 #include "ui/widgets/pagesizelist.h"
 
 
@@ -53,6 +55,25 @@ NewDocDialog::NewDocDialog(QWidget* parent, const QStringList& recentDocs, bool 
 	m_onStartup(startUp)
 {
 	setupUi(this);
+	setProperty("modernDialog", true);
+	setAttribute(Qt::WA_StyledBackground, true);
+	setMinimumSize(820, 580);
+
+	QByteArray applicationStyle;
+	if (loadRawText(ScPaths::instance().libDir() + "scribus.css", applicationStyle))
+		setStyleSheet(QString::fromUtf8(applicationStyle));
+
+	for (SectionContainer* section : findChildren<SectionContainer*>())
+	{
+		section->setProperty("dialogSection", true);
+		section->setAttribute(Qt::WA_StyledBackground, true);
+	}
+	if (QPushButton* primaryButton = buttonBox->button(QDialogButtonBox::Ok))
+	{
+		primaryButton->setProperty("primaryAction", true);
+		primaryButton->setText(tr("Create"));
+		primaryButton->setDefault(true);
+	}
 
 	IconManager &iconManager = IconManager::instance();
 
@@ -89,6 +110,7 @@ NewDocDialog::NewDocDialog(QWidget* parent, const QStringList& recentDocs, bool 
 		createOpenDocPage();
 		recentDocList = recentDocs;
 		createRecentDocPage();
+		createWelcomePage();
 		startUpDialog->setChecked(!prefsManager.appPrefs.uiPrefs.showStartupDialog);
 	}
 	else
@@ -100,6 +122,7 @@ NewDocDialog::NewDocDialog(QWidget* parent, const QStringList& recentDocs, bool 
 
 	tabWidget->setCurrentIndex(0);
 	startUpDialog->setVisible(startUp);
+	adjustTitles(0);
 
 	//tooltips
 	listPageFormats->setToolTip( tr( "Document page size, either a standard size or a custom size" ) );
@@ -147,6 +170,166 @@ NewDocDialog::NewDocDialog(QWidget* parent, const QStringList& recentDocs, bool 
 	}
 }
 
+void NewDocDialog::createWelcomePage()
+{
+	m_welcomePage = new QWidget(tabWidget);
+	m_welcomePage->setObjectName(QStringLiteral("welcomePage"));
+	m_welcomePage->setProperty("welcomeSurface", true);
+	m_welcomePage->setAttribute(Qt::WA_StyledBackground, true);
+
+	auto* pageLayout = new QVBoxLayout(m_welcomePage);
+	pageLayout->setContentsMargins(22, 18, 22, 14);
+	pageLayout->setSpacing(14);
+
+	auto* header = new QHBoxLayout();
+	header->setSpacing(10);
+	auto* appIcon = new QLabel(m_welcomePage);
+	appIcon->setObjectName(QStringLiteral("welcomeAppIcon"));
+	appIcon->setPixmap(IconManager::instance().loadPixmap("app-icon", QSize(42, 42)));
+	appIcon->setFixedSize(46, 46);
+	header->addWidget(appIcon);
+	auto* appName = new QLabel(tr("Apscribe"), m_welcomePage);
+	appName->setObjectName(QStringLiteral("welcomeAppName"));
+	header->addWidget(appName);
+	header->addStretch();
+
+	auto* openHeaderButton = new QPushButton(tr("Open Existing\u2026"), m_welcomePage);
+	openHeaderButton->setObjectName(QStringLiteral("welcomeOpenHeaderButton"));
+	openHeaderButton->setIcon(IconManager::instance().loadIcon("document-open"));
+	openHeaderButton->setAccessibleName(tr("Open an existing document"));
+	header->addWidget(openHeaderButton);
+	auto* newHeaderButton = new QPushButton(tr("New Document"), m_welcomePage);
+	newHeaderButton->setObjectName(QStringLiteral("welcomeNewHeaderButton"));
+	newHeaderButton->setProperty("primaryAction", true);
+	newHeaderButton->setIcon(IconManager::instance().loadIcon("document-new"));
+	newHeaderButton->setAccessibleName(tr("Create a new document"));
+	header->addWidget(newHeaderButton);
+	pageLayout->addLayout(header);
+
+	auto* divider = new QFrame(m_welcomePage);
+	divider->setObjectName(QStringLiteral("welcomeHeaderDivider"));
+	divider->setFrameShape(QFrame::HLine);
+	pageLayout->addWidget(divider);
+
+	auto* content = new QHBoxLayout();
+	content->setSpacing(26);
+	auto* actionsColumn = new QVBoxLayout();
+	actionsColumn->setSpacing(10);
+	auto* title = new QLabel(tr("Publish beautifully."), m_welcomePage);
+	title->setObjectName(QStringLiteral("welcomeTitle"));
+	actionsColumn->addWidget(title);
+	actionsColumn->addSpacing(10);
+
+	auto createActionButton = [this, actionsColumn](const QString& objectName, const QString& titleText,
+		const QString& detailText, const QString& iconName) {
+		auto* button = new QPushButton(m_welcomePage);
+		button->setObjectName(objectName);
+		button->setProperty("welcomeAction", true);
+		button->setIcon(IconManager::instance().loadIcon(iconName));
+		button->setIconSize(QSize(24, 24));
+		button->setText(titleText + QStringLiteral("\n") + detailText);
+		button->setAccessibleName(titleText);
+		button->setToolTip(detailText);
+		button->setMinimumHeight(58);
+		actionsColumn->addWidget(button);
+		return button;
+	};
+
+	auto* newButton = createActionButton(QStringLiteral("welcomeNewButton"), tr("New Document"),
+		tr("Create a new publication"), QStringLiteral("document-new"));
+	auto* openButton = createActionButton(QStringLiteral("welcomeOpenButton"), tr("Open Document"),
+		tr("Open an existing document"), QStringLiteral("document-open"));
+	auto* templatesButton = createActionButton(QStringLiteral("welcomeTemplatesButton"), tr("Browse Templates"),
+		tr("Explore document templates"), QStringLiteral("page-3fold"));
+	actionsColumn->addStretch();
+	content->addLayout(actionsColumn, 4);
+
+	auto* contentDivider = new QFrame(m_welcomePage);
+	contentDivider->setObjectName(QStringLiteral("welcomeContentDivider"));
+	contentDivider->setFrameShape(QFrame::VLine);
+	content->addWidget(contentDivider);
+
+	auto* recentColumn = new QVBoxLayout();
+	auto* recentHeader = new QHBoxLayout();
+	auto* recentTitle = new QLabel(tr("Recent Documents"), m_welcomePage);
+	recentTitle->setObjectName(QStringLiteral("welcomeSectionTitle"));
+	recentHeader->addWidget(recentTitle);
+	recentHeader->addStretch();
+	auto* seeAllButton = new QPushButton(tr("See All"), m_welcomePage);
+	seeAllButton->setObjectName(QStringLiteral("welcomeSeeAllButton"));
+	seeAllButton->setProperty("linkAction", true);
+	recentHeader->addWidget(seeAllButton);
+	recentColumn->addLayout(recentHeader);
+
+	m_welcomeRecentList = new QListWidget(m_welcomePage);
+	m_welcomeRecentList->setObjectName(QStringLiteral("welcomeRecentList"));
+	m_welcomeRecentList->setProperty("welcomeRecents", true);
+	m_welcomeRecentList->setIconSize(QSize(34, 34));
+	m_welcomeRecentList->setSpacing(6);
+	const int maxRecent = qMin(4, recentDocList.count());
+	for (int i = 0; i < maxRecent; ++i)
+	{
+		const QFileInfo fileInfo(recentDocList.at(i));
+		auto* item = new QListWidgetItem(IconManager::instance().loadIcon("document-open"), fileInfo.fileName());
+		item->setData(Qt::UserRole, QDir::toNativeSeparators(recentDocList.at(i)));
+		item->setToolTip(QDir::toNativeSeparators(recentDocList.at(i)));
+		item->setSizeHint(QSize(260, 54));
+		m_welcomeRecentList->addItem(item);
+	}
+	if (maxRecent == 0)
+	{
+		auto* emptyItem = new QListWidgetItem(tr("No recent documents"));
+		emptyItem->setFlags(Qt::NoItemFlags);
+		emptyItem->setSizeHint(QSize(260, 54));
+		m_welcomeRecentList->addItem(emptyItem);
+	}
+	recentColumn->addWidget(m_welcomeRecentList);
+	content->addLayout(recentColumn, 5);
+	pageLayout->addLayout(content, 1);
+
+	auto* showOnStartup = new QCheckBox(tr("Show this window when Apscribe opens"), m_welcomePage);
+	showOnStartup->setObjectName(QStringLiteral("welcomeShowOnStartup"));
+	showOnStartup->setChecked(prefsManager.appPrefs.uiPrefs.showStartupDialog);
+	showOnStartup->setAccessibleName(tr("Show the Welcome window when Apscribe opens"));
+	pageLayout->addWidget(showOnStartup);
+
+	tabWidget->insertTab(0, m_welcomePage, tr("Welcome"));
+	tabWidget->tabBar()->hide();
+
+	m_backButton = buttonBox->addButton(tr("Back"), QDialogButtonBox::ResetRole);
+	m_backButton->setObjectName(QStringLiteral("welcomeBackButton"));
+	m_backButton->setProperty("secondaryAction", true);
+	m_backButton->setIcon(IconManager::instance().loadIcon("go-previous"));
+	m_backButton->setAccessibleName(tr("Return to Welcome"));
+
+	connect(newButton, &QPushButton::clicked, this, [this]() { tabWidget->setCurrentIndex(1); });
+	connect(newHeaderButton, &QPushButton::clicked, this, [this]() { tabWidget->setCurrentIndex(1); });
+	connect(openButton, &QPushButton::clicked, this, [this]() { tabWidget->setCurrentIndex(3); });
+	connect(openHeaderButton, &QPushButton::clicked, this, [this]() { tabWidget->setCurrentIndex(3); });
+	connect(templatesButton, &QPushButton::clicked, this, [this]() { tabWidget->setCurrentIndex(2); });
+	connect(seeAllButton, &QPushButton::clicked, this, [this]() { tabWidget->setCurrentIndex(4); });
+	connect(m_backButton, &QPushButton::clicked, this, &NewDocDialog::showWelcomePage);
+	connect(showOnStartup, &QCheckBox::toggled, this, [this](bool checked) { startUpDialog->setChecked(!checked); });
+	connect(m_welcomeRecentList, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
+		if (!item || !(item->flags() & Qt::ItemIsEnabled))
+			return;
+		m_selectedFile = QDir::fromNativeSeparators(item->data(Qt::UserRole).toString());
+		m_tabSelected = NewDocDialog::OpenRecentTab;
+		accept();
+	});
+}
+
+void NewDocDialog::showWelcomePage()
+{
+	if (m_onStartup && m_welcomePage)
+		tabWidget->setCurrentWidget(m_welcomePage);
+}
+
+int NewDocDialog::logicalTabIndex(int widgetTabIndex) const
+{
+	return m_onStartup ? widgetTabIndex - 1 : widgetTabIndex;
+}
+
 void NewDocDialog::createNewDocPage()
 {
 	double pageHeight = prefsManager.appPrefs.docSetupPrefs.pageHeight;
@@ -188,6 +371,13 @@ void NewDocDialog::createNewDocPage()
 	PageCollectionInfo pciPreferred = PagePresetManager::instance().categoryInfoPreferred();
 
 	listPageFormats->setValues(QSizeF(pageWidth, pageHeight), m_orientation, pciPreferred.id, PageSizeList::NameAsc);
+	listPageFormats->setIconSize(QSize(64, 64));
+	listPageFormats->setGridSize(QSize(132, 124));
+	listPageFormats->setFlow(QListView::LeftToRight);
+	listPageFormats->setWrapping(false);
+	listPageFormats->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+	listPageFormats->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+	listPageFormats->setMaximumHeight(142);
 
 	QString name;
 	if (listPageFormats->currentIndex().isValid())
@@ -327,7 +517,33 @@ void NewDocDialog::createOpenDocPage()
 	for (auto pushButton : std::as_const(pushButtons))
 		pushButton->setVisible(false);
 	fileDialog->setWindowFlags(Qt::Widget);
-	openDocLayout->addWidget(fileDialog);
+	auto* openContentLayout = new QHBoxLayout;
+	openContentLayout->setContentsMargins(0, 0, 0, 0);
+	openContentLayout->setSpacing(6);
+	openContentLayout->addWidget(fileDialog, 1);
+	m_openPreviewContainer = new QWidget(tab_3);
+	auto* previewLayout = new QVBoxLayout(m_openPreviewContainer);
+	previewLayout->setContentsMargins(0, 28, 0, 0);
+	m_openPreview = new FDialogPreview(m_openPreviewContainer);
+	previewLayout->addWidget(m_openPreview, 0, Qt::AlignTop);
+	openContentLayout->addWidget(m_openPreviewContainer);
+	openDocLayout->addLayout(openContentLayout);
+	m_openPreviewCheck = new QCheckBox(tr("Show Preview"), tab_3);
+	m_openPreviewCheck->setObjectName(QStringLiteral("openDocumentShowPreview"));
+	m_openPreviewCheck->setToolTip(tr("Show a preview and information for the selected file"));
+	openDocLayout->addWidget(m_openPreviewCheck, 0, Qt::AlignLeft);
+	m_openPreviewContainer->hide();
+	connect(m_openPreviewCheck, &QCheckBox::toggled, this, [this](bool checked) {
+		m_openPreviewContainer->setVisible(checked);
+		if (!checked)
+		{
+			m_openPreview->updatePix();
+			return;
+		}
+		const QStringList selectedFiles = fileDialog->selectedFiles();
+		if (!selectedFiles.isEmpty())
+			m_openPreview->genPreview(QDir::fromNativeSeparators(selectedFiles.first()));
+	});
 
 
 	FileDialogEventCatcher* keyCatcher = new FileDialogEventCatcher(this);
@@ -605,7 +821,9 @@ void NewDocDialog::ExitOK()
 	m_bleedRight = bleedGroup->margins().right();
 	if (m_onStartup)
 	{
-		m_tabSelected = tabWidget->currentIndex();
+		m_tabSelected = logicalTabIndex(tabWidget->currentIndex());
+		if (m_tabSelected < NewDocDialog::NewDocumentTab)
+			return;
 		if (m_tabSelected == NewDocDialog::NewFromTemplateTab) // new doc from template
 		{
 			if (nftGui->currentDocumentTemplate)
@@ -755,16 +973,48 @@ void NewDocDialog::recentDocListBox_doubleClicked()
 
 void NewDocDialog::adjustTitles(int tab)
 {
-	if (tab == 0)
+	QPushButton* primaryButton = buttonBox->button(QDialogButtonBox::Ok);
+	const int logicalTab = logicalTabIndex(tab);
+	const bool isWelcome = m_onStartup && logicalTab < NewDocDialog::NewDocumentTab;
+	buttonBox->setVisible(!isWelcome);
+	startUpDialog->setVisible(false);
+	if (m_backButton)
+		m_backButton->setVisible(!isWelcome);
+	if (isWelcome)
+	{
+		setWindowTitle(tr("Apscribe"));
+		return;
+	}
+	if (logicalTab == NewDocDialog::NewDocumentTab)
+	{
 		setWindowTitle(tr("New Document"));
-	else if (tab == 1)
+		if (primaryButton)
+			primaryButton->setText(tr("Create"));
+	}
+	else if (logicalTab == NewDocDialog::NewFromTemplateTab)
+	{
 		setWindowTitle(tr("New from Template"));
-	else if (tab == 2)
+		if (primaryButton)
+			primaryButton->setText(tr("Create"));
+	}
+	else if (logicalTab == NewDocDialog::OpenExistingTab)
+	{
 		setWindowTitle(tr("Open Existing Document"));
-	else if (tab == 3)
+		if (primaryButton)
+			primaryButton->setText(tr("Open"));
+	}
+	else if (logicalTab == NewDocDialog::OpenRecentTab)
+	{
 		setWindowTitle(tr("Open Recent Document"));
+		if (primaryButton)
+			primaryButton->setText(tr("Open"));
+	}
 	else
+	{
 		setWindowTitle(tr("New Document"));
+		if (primaryButton)
+			primaryButton->setText(tr("Create"));
+	}
 	//okButton->setEnabled(tab!=2);
 }
 
@@ -817,7 +1067,8 @@ void NewDocDialog::gotoHomeDirectory()
 
 void NewDocDialog::openFileDialogFileClicked(const QString& path)
 {
-	//okButton->setEnabled(!path.isEmpty());
+	if (m_openPreviewCheck && m_openPreviewCheck->isChecked())
+		m_openPreview->genPreview(path);
 }
 
 void NewDocDialog::changeMargin(MarginStruct margin)

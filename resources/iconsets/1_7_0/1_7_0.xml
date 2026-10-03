@@ -31,7 +31,7 @@ On Dark:  #e580ff; rgb(229, 128, 255); hsl(288, 100, 75)
 	<license>Apache 2.0</license>
 	<path default="yes">1_7_0</path>
 	<activeversion>1.7.0</activeversion>
-	<splashscreen left="0" top="0" width="476" height="410" imageDark="images/scribus_splash_dark.png" imageLight="images/scribus_splash_light.png"></splashscreen>
+	<splashscreen left="0" top="0" width="720" height="360" imageDark="images/scribus_splash_dark.png" imageLight="images/scribus_splash_light.png"></splashscreen>
 <!--	<variant>Dark</variant>-->
 	<nametext lang="en_US">Scribus 1.7.0</nametext>
 	<nametext lang="fr">Scribus 1.7.0</nametext>
@@ -41,6 +41,8 @@ On Dark:  #e580ff; rgb(229, 128, 255); hsl(288, 100, 75)
     		
 		<!-- Action -->	
 		<icon id="add" file="16/action-add.svg" />
+		<icon id="appearance-dark" file="16/appearance-dark.svg" />
+		<icon id="appearance-light" file="16/appearance-light.svg" />
 		<icon id="chain-closed" file="16/action-link.svg" />
 		<icon id="chain-open" file="16/action-unlink.svg" />
 		<icon id="clear-right" file="16/action-backspace-reverse.svg" />
@@ -580,12 +582,14 @@ On Dark:  #e580ff; rgb(229, 128, 255); hsl(288, 100, 75)
 		<icon id="tool-draw-calligraphy" file="16/tool-draw-calligraphy.svg" />
 		<icon id="tool-draw-freehand" file="16/tool-draw-freehand.svg" />
 		<icon id="tool-edit-content" file="16/tool-edit-content.svg" />
+		<icon id="tool-text-cursor" file="16/tool-text-cursor.svg" />
 		<icon id="tool-insert-arc" file="16/tool-insert-arc.svg" />
 		<icon id="tool-insert-barcode" file="16/tool-insert-barcode.svg" />
 		<icon id="tool-insert-image" file="16/tool-insert-image.svg" />
 		<icon id="tool-insert-line" file="16/tool-insert-line.svg" />
 		<icon id="tool-insert-polygon" file="16/tool-insert-polygon.svg" />
 		<icon id="tool-insert-render-frame" file="16/tool-insert-render-frame.svg" />
+		<icon id="tool-insert-shape" file="16/tool-insert-shape.svg" />
 		<icon id="tool-insert-spiral" file="16/tool-insert-spiral.svg" />
 		<icon id="tool-insert-table" file="16/tool-insert-table.svg" />
 		<icon id="tool-insert-text-frame" file="16/tool-insert-text-frame.svg" />
@@ -606,6 +610,9 @@ On Dark:  #e580ff; rgb(229, 128, 255); hsl(288, 100, 75)
 		<icon id="menu-down" file="16/action-menu-down.svg" />
 
 		<!-- Panels -->
+		<icon id="inspector-appearance" file="16/inspector-appearance.svg" />
+		<icon id="inspector-arrange" file="16/inspector-arrange.svg" />
+		<icon id="inspector-content" file="16/inspector-content.svg" />
 		<icon id="panel-action-history" file="16/panel-action-history.svg" />
 		<icon id="panel-align-distribute" file="16/panel-align-distribute.svg" />
 		<icon id="panel-bookmarks" file="16/panel-bookmarks.svg" />

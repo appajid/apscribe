@@ -63,6 +63,15 @@ const QString FileLoader::getLoadFilterString()
 //	return LoadSavePlugin::fileDialogLoadFilter().join(";;");
 	QStringList fmts = LoadSavePlugin::fileDialogLoadFilter();
 	QString fmtString = QObject::tr("All Supported Formats")+" (";
+	// Keep the newer PageMaker extensions in the aggregate filter even when
+	// the generic import-format list is truncated by a platform file dialog.
+	const FileFormat* pageMakerFormat = LoadSavePlugin::getFormatByExt("pmd");
+	if (pageMakerFormat && pageMakerFormat->load)
+	{
+		fmtString += "*.p65 *.P65 *.pm7 *.PM7 ";
+		if (!fmts.contains(pageMakerFormat->filter))
+			fmts.insert(fmts.size() - 1, pageMakerFormat->filter);
+	}
 	int ind = -1;
 	for (int i = 0; i < fmts.count() - 1; ++i)
 	{
@@ -342,6 +351,17 @@ bool FileLoader::readCellStyles(ScribusDoc* doc, StyleSet<CellStyle> &docCellSty
 	{
 		it->plug->setupTargets(doc, nullptr, doc->scMW(), doc->scMW()->mainWindowProgressBar, &(m_prefsManager.appPrefs.fontPrefs.AvailFonts));
 		return it->readCellStyles(m_fileName, doc, docCellStyles);
+	}
+	return false;
+}
+
+bool FileLoader::readObjectStyles(ScribusDoc* doc, StyleSet<ObjectStyle> &docObjectStyles)
+{
+	QList<FileFormat>::const_iterator it;
+	if (findFormat(m_fileType, it))
+	{
+		it->plug->setupTargets(doc, nullptr, doc->scMW(), doc->scMW()->mainWindowProgressBar, &(m_prefsManager.appPrefs.fontPrefs.AvailFonts));
+		return it->readObjectStyles(m_fileName, doc, docObjectStyles);
 	}
 	return false;
 }

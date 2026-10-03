@@ -7,6 +7,7 @@
 #include <harfbuzz/hb-icu.h>
 #include <unicode/brkiter.h>
 #include <unicode/ubidi.h>
+#include <unicode/uscript.h>
 
 #include "scrptrun.h"
 
@@ -18,6 +19,80 @@
 #include "util.h"
 
 using namespace icu;
+
+namespace
+{
+bool languageUsesScript(const QString& language, UScriptCode script)
+{
+	const QByteArray locale = language.toUtf8();
+	if (locale.isEmpty())
+		return false;
+
+	UErrorCode status = U_ZERO_ERROR;
+	UScriptCode scripts[8];
+	const int32_t count = uscript_getCode(locale.constData(), scripts, 8, &status);
+	if (U_FAILURE(status))
+		return false;
+
+	for (int32_t i = 0; i < count; ++i)
+	{
+		if (scripts[i] == script)
+			return true;
+	}
+	return false;
+}
+
+// If the style language belongs to another script (often the document's
+// default English), choose a sensible language for the Indic run so OpenType
+// language systems such as 'locl' can be selected. Explicit languages that
+// use the run's script are always preserved.
+hb_language_t inferIndicLanguage(UScriptCode script, const QString& styleLanguage)
+{
+	const char* mapped = nullptr;
+	switch (script)
+	{
+		case USCRIPT_DEVANAGARI:
+			mapped = "hi";
+			break;
+		case USCRIPT_BENGALI:
+			mapped = "bn";
+			break;
+		case USCRIPT_TAMIL:
+			mapped = "ta";
+			break;
+		case USCRIPT_TELUGU:
+			mapped = "te";
+			break;
+		case USCRIPT_KANNADA:
+			mapped = "kn";
+			break;
+		case USCRIPT_MALAYALAM:
+			mapped = "ml";
+			break;
+		case USCRIPT_GUJARATI:
+			mapped = "gu";
+			break;
+		case USCRIPT_GURMUKHI:
+			mapped = "pa";
+			break;
+		case USCRIPT_ORIYA:
+			mapped = "or";
+			break;
+		case USCRIPT_SINHALA:
+			mapped = "si";
+			break;
+		default:
+			return nullptr;
+	}
+
+	// Preserve every explicit language that ICU associates with the run's
+	// script, including less common languages such as Bhojpuri and Konkani.
+	if (languageUsesScript(styleLanguage, script))
+		return nullptr;
+
+	return hb_language_from_string(mapped, -1);
+}
+}
 
 TextShaper::TextShaper(ITextContext* context, ITextSource &story, int firstChar, bool singlePar)
 	: m_context(context),
@@ -289,7 +364,24 @@ ShapedText TextShaper::shape(int fromPos, int toPos)
 			lineBreaks.append(pos);
 	}
 
+	// Indic punctuation: never start a line with a danda/double-danda. The
+	// generic line iterator is not script-aware here and would happily break
+	// right after the space preceding '।'/'॥'.
+	for (int i = lineBreaks.size() - 1; i > 0; --i)
+	{
+		const int pos = lineBreaks.at(i);
+		if (pos < m_text.length())
+		{
+			const ushort uc = m_text.at(pos).unicode();
+			if (uc == 0x0964 || uc == 0x0965) // danda, double danda
+				lineBreaks.removeAt(i);
+		}
+	}
+
 	QVector<int32_t> justificationTracking;
+	int latinParagraphStart = -1;
+	int latinParagraphEnd = -1;
+	bool justifyLatinWord = false;
 
 	// Insert implicit spaces in justification between characters
 	// in scripts that do not use spaces to separate words
@@ -355,6 +447,9 @@ ShapedText TextShaper::shape(int fromPos, int toPos)
 		hb_script_t hbScript = hb_icu_script_to_script(textRun.script);
 		std::string language = style.language().toStdString();
 		hb_language_t hbLanguage = hb_language_from_string(language.c_str(), language.length());
+		hb_language_t inferredLanguage = inferIndicLanguage(textRun.script, style.language());
+		if (inferredLanguage != nullptr)
+			hbLanguage = inferredLanguage;
 
 		hb_buffer_t *hbBuffer = hb_buffer_create();
 		hb_buffer_add_utf16(hbBuffer, m_text.utf16(), m_text.length(), textRun.start, textRun.len);
@@ -431,6 +526,22 @@ ShapedText TextShaper::shape(int fromPos, int toPos)
 			LayoutFlags flags = m_story.flags(firstChar);
 			const CharStyle& charStyle(m_story.charStyle(firstChar));
 			const StyleFlag& effects = charStyle.effects();
+			if (firstChar < latinParagraphStart || firstChar >= latinParagraphEnd)
+			{
+				latinParagraphStart = firstChar;
+				while (latinParagraphStart > 0 && m_story.text(latinParagraphStart - 1) != SpecialChars::PARSEP)
+					--latinParagraphStart;
+				latinParagraphEnd = firstChar;
+				while (latinParagraphEnd < m_story.length() && m_story.text(latinParagraphEnd) != SpecialChars::PARSEP)
+					++latinParagraphEnd;
+				justifyLatinWord = latinParagraphEnd - latinParagraphStart > 1
+					&& m_story.paragraphStyle(latinParagraphStart).alignment() == ParagraphStyle::Extended;
+				for (int pos = latinParagraphStart; justifyLatinWord && pos < latinParagraphEnd; ++pos)
+				{
+					const QChar letter = m_story.text(pos);
+					justifyLatinWord = letter.isLetter() && letter.script() == QChar::Script_Latin;
+				}
+			}
 
 			QString str = m_text.mid(firstChar - fromPos, lastChar - firstChar + 1);
 			GlyphCluster run(&charStyle, flags, firstChar, lastChar, m_story.object(firstChar), result.glyphs().length(), str);
@@ -450,6 +561,9 @@ ShapedText TextShaper::shape(int fromPos, int toPos)
 			else if (SpecialChars::isFixedSpace(ch))
 				run.setFlag(ScLayout_FixedSpace);
 			else if (justificationTracking.contains(firstCluster))
+				run.setFlag(ScLayout_JustificationTracking);
+			else if (justifyLatinWord && lastChar < latinParagraphEnd - 1)
+				// A fully justified single-word line needs places to distribute tracking.
 				run.setFlag(ScLayout_JustificationTracking);
 
 			if (effects & ScStyle_Underline)

@@ -80,12 +80,16 @@ public:
 	void unsetDoc();
 	void editingStart(int itemID);
 	void editingFinished();
+	void editAnchoredImage(int itemID);
+	void editAnchorOptions(int itemID);
+	void replaceAnchoredImage(int itemID);
 	void updateItemList();
 
 public slots:
 	void handleContextMenue(QPoint p);
 	void handlePasteToItem();
 	void handleEditItem();
+	void handleAnchorOptions();
 	void handleDoubleClick(QListWidgetItem *item);
 	void handleDeleteItem();
 	void handleUpdateRequest(int);

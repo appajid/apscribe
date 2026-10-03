@@ -1,3 +1,8 @@
-<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><style>@import '../colors.css';</style>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M2 1C0.895431 1 0 1.89543 0 3V11C0 12.1046 0.895431 13 2 13H4V16H5L7 13H14C15.1046 13 16 12.1046 16 11V3C16 1.89543 15.1046 1 14 1H2ZM3 6.5C3 5.11929 4.11929 4 5.5 4H7V5H5.5C4.67157 5 4 5.67157 4 6.5C4 7.32843 4.67157 8 5.5 8H7V9H5.5C4.11929 9 3 7.88071 3 6.5ZM9 9H10.5C11.8807 9 13 7.88071 13 6.5C13 5.11929 11.8807 4 10.5 4H9V5H10.5C11.3284 5 12 5.67157 12 6.5C12 7.32843 11.3284 8 10.5 8H9V9ZM6 6H10V7H6V6Z"/>
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<style>@import '../colors.css';</style>
+<g class="line" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 3.5h9l3 3V20.5H6z"/><path d="M15 3.5v3h3"/>
+  <path d="m10.5 15.5-1 .9a2 2 0 0 1-2.8-2.8l1.8-1.8a2 2 0 0 1 2.8 0M13.5 10.5l1-.9a2 2 0 1 1 2.8 2.8l-1.8 1.8a2 2 0 0 1-2.8 0M10 14l4-4"/>
+</g>
+<circle class="info" cx="12" cy="12" r="1.25"/>
 </svg>

@@ -1841,17 +1841,57 @@ int StoryText::endOfParagraph(uint index) const
 
 uint StoryText::nrOfRuns() const
 {
-	return length();
+	const int textLength = length();
+	if (textLength == 0)
+		return 0;
+
+	uint runCount = 1;
+	for (int pos = 1; pos < textLength; ++pos)
+	{
+		const ScText* previous = d->at(pos - 1);
+		const ScText* current = d->at(pos);
+		if (previous->ch == SpecialChars::PARSEP || !previous->equiv(*current))
+			++runCount;
+	}
+	return runCount;
 }
 
 int StoryText::startOfRun(uint index) const
 {
-	return index;
+	const int textLength = length();
+	if (textLength == 0)
+		return 0;
+	if (index == 0)
+		return 0;
+
+	uint currentRun = 0;
+	for (int pos = 1; pos < textLength; ++pos)
+	{
+		const ScText* previous = d->at(pos - 1);
+		const ScText* current = d->at(pos);
+		if (previous->ch != SpecialChars::PARSEP && previous->equiv(*current))
+			continue;
+		if (++currentRun == index)
+			return pos;
+	}
+	return textLength;
 }
 
 int StoryText::endOfRun(uint index) const
 {
-	return index + 1;
+	const int textLength = length();
+	const int start = startOfRun(index);
+	if (start >= textLength)
+		return textLength;
+
+	for (int pos = start + 1; pos < textLength; ++pos)
+	{
+		const ScText* previous = d->at(pos - 1);
+		const ScText* current = d->at(pos);
+		if (previous->ch == SpecialChars::PARSEP || !previous->equiv(*current))
+			return pos;
+	}
+	return textLength;
 }
 
 // positioning. all positioning methods return char positions
@@ -2110,6 +2150,7 @@ void StoryText::select(int pos, int len, bool on)
 	fixSurrogateSelection();
 	
 //	qDebug("new selection: %d - %d", d->selFirst, d->selLast);
+	emit selectionChanged();
 }
 
 void StoryText::extendSelection(int oldPos, int newPos)
@@ -2120,11 +2161,13 @@ void StoryText::extendSelection(int oldPos, int newPos)
 		if (d->selLast == oldPos - 1)
 		{
 			d->selLast = newPos - 1;
+			emit selectionChanged();
 			return;
 		}
 		if (d->selFirst == oldPos)
 		{
 			d->selFirst = newPos;
+			emit selectionChanged();
 			return;
 		}
 		// can't extend, fall through
@@ -2142,6 +2185,7 @@ void StoryText::extendSelection(int oldPos, int newPos)
 	}
 
 	fixSurrogateSelection();
+	emit selectionChanged();
 }
 
 
@@ -2216,12 +2260,14 @@ void StoryText::selectAll()
 {
 	d->selFirst = 0;
 	d->selLast = length() - 1;
+	emit selectionChanged();
 }
 
 void StoryText::deselectAll()
 {
 	d->selFirst = 0;
 	d->selLast = -1;
+	emit selectionChanged();
 }
 
 void StoryText::removeSelection()
@@ -2241,6 +2287,16 @@ void StoryText::removeSelection()
 
 void StoryText::invalidateObject(const PageItem * embedded)
 {
+	if (!embedded)
+		return;
+	for (int pos = 0; pos < length(); ++pos)
+	{
+		if (!hasObject(pos))
+			continue;
+		PageItem* objectItem = object(pos).getPageItem(m_doc);
+		if (objectItem == embedded)
+			invalidate(pos, pos + 1);
+	}
 }
 
 void StoryText::invalidateLayout()
@@ -2394,10 +2450,15 @@ void StoryText::saxx(SaxHandler& handler, const Xml_string& elemtag) const
 			{
 				QString l = mrk->getDestMarkName();
 				MarkType t = mrk->getDestMarkType();
-				if (m_doc->getMark(l, t) != nullptr)
+				if (!l.isEmpty())
 				{
 					mark_attr.insert("mark_l", l);
 					mark_attr.insert("mark_t", QString::number((int) t));
+					mark_attr.insert("xref_format", QString::number((int) mrk->getCrossReferenceFormat()));
+					if (!mrk->getCrossReferencePrefix().isEmpty())
+						mark_attr.insert("xref_prefix", mrk->getCrossReferencePrefix());
+					if (!mrk->getCrossReferenceSuffix().isEmpty())
+						mark_attr.insert("xref_suffix", mrk->getCrossReferenceSuffix());
 				}
 			}
 			else if (mrk->isType(MARKNoteMasterType))
@@ -2669,13 +2730,24 @@ public:
 					}
 					if (mrk->isType(MARK2MarkType) && (m_lIt != attr.end()) && (m_tIt != attr.end()))
 					{
-						Mark* targetMark = doc->getMark(Xml_data(m_lIt), (MarkType) parseInt(Xml_data(m_tIt)));
-						mrk->setDestMark(targetMark);
-						if (targetMark == nullptr)
-							mrk->setString("0");
+						const QString targetName = Xml_data(m_lIt);
+						const MarkType targetType = (MarkType) parseInt(Xml_data(m_tIt));
+						Mark* targetMark = doc->getMark(targetName, targetType);
+						if (targetMark)
+							mrk->setDestMark(targetMark);
 						else
-							mrk->setString(doc->getSectionPageNumberForPageIndex(targetMark->OwnPage));
-						mrk->setItemName(Xml_data(m_lIt));
+							mrk->setDestMark(targetName, targetType);
+						Xml_attr::iterator formatIt = attr.find("xref_format");
+						if (formatIt != attr.end() && parseInt(Xml_data(formatIt)) == CrossReferenceParagraphText)
+							mrk->setCrossReferenceFormat(CrossReferenceParagraphText);
+						Xml_attr::iterator prefixIt = attr.find("xref_prefix");
+						if (prefixIt != attr.end())
+							mrk->setCrossReferencePrefix(Xml_data(prefixIt));
+						Xml_attr::iterator suffixIt = attr.find("xref_suffix");
+						if (suffixIt != attr.end())
+							mrk->setCrossReferenceSuffix(Xml_data(suffixIt));
+						mrk->setString(doc->crossReferenceValue(mrk));
+						mrk->setItemName(targetName);
 					}
 					if (mrk->isType(MARKNoteMasterType))
 					{

@@ -40,6 +40,7 @@ for which a new license (GPL+exception) is in place.
 #include <QTemporaryFile>
 
 #include "scribusapi.h"
+#include "anchorposition.h"
 #include "annotation.h"
 #include "commonstrings.h"
 #include "colormgmt/sccolormgmtstructs.h"
@@ -63,6 +64,7 @@ for which a new license (GPL+exception) is in place.
 class QFrame;
 class QGridLayout;
 class QRegion;
+class ObjectStyle;
 class ResourceCollection;
 class ScPainter;
 class ScribusDoc;
@@ -785,6 +787,7 @@ public: // Start public functions
 	void setInlineData(const QByteArray& data, const QString& ext);
 	void makeImageInline();
 	void makeImageExternal(const QString& path);
+	bool relinkExtractedImage(const QString& path, bool showMsg = true);
 
 	//Text Data - Move to PageItem_TextFrame at some point? --- no, to FrameStyle, av
 	double textToFrameDistLeft() const { return m_textDistanceMargins.left(); }
@@ -890,6 +893,16 @@ public: // Start public functions
 	void setPatternTransform(double scaleX, double scaleY, double offsetX, double offsetY, double rotation, double skewX, double skewY);
 	void setPatternFlip(bool flipX, bool flipY);
 	void patternFlip(bool &flipX, bool &flipY) const;
+
+	/** @brief Get the named object style assigned to this item. */
+	QString objectStyleName() const { return m_objectStyleName; }
+	/**
+	 * Apply a document object style, or clear the assignment while preserving
+	 * the current appearance when @a styleName is empty.
+	 */
+	bool setObjectStyle(const QString& styleName, bool createUndo = true);
+	/** Re-resolve the assigned style after a style definition changes. */
+	bool refreshObjectStyle();
 
 	/** @brief Get the (name of the) fill color of the object */
 	QString fillColor() const { return m_fillColor; }
@@ -1252,6 +1265,17 @@ public: // Start public functions
 	virtual bool loadImage(const QString& filename, bool reload, int gsResolution=-1, bool showMsg = false);
 
 	/**
+	 * @brief Replace an external image link without changing frame-level image settings.
+	 *
+	 * The operation is failure-safe and undoable. Embedded images are deliberately
+	 * excluded because relinking them would also change their storage mode.
+	 * Set useNewEmbeddedProfile only when the replacement is known to contain a
+	 * valid ICC profile; undo/redo then preserves each file's profile choice.
+	 * @return True if the replacement image was loaded successfully.
+	 */
+	bool relinkImage(const QString& filename, bool showMsg = false, bool useNewEmbeddedProfile = false);
+
+	/**
 	 * @brief Connect the item's signals to the GUI, primarily the Properties palette, also some to ScMW
 	 * @return
 	 */
@@ -1442,6 +1466,9 @@ public:	// Start public variables
 	QString OnMasterPage;
 	bool isEmbedded {false};
 	int inlineCharID {0};
+	const AnchorPosition& anchorPosition() const { return m_anchorPosition; }
+	void setAnchorPosition(const AnchorPosition& position);
+	AnchorPosition m_anchorPosition;
 	/** Radius of rounded corners */
 	double m_roundedCornerRadius {0.0};
 
@@ -1550,6 +1577,8 @@ protected: // Start protected functions
 
 	/** Split the restore methods */
 	bool checkGradientUndoRedo(SimpleState *state, bool isUndo);
+	ObjectStyle objectStyleState() const;
+	void applyObjectStyleState(const ObjectStyle& style);
 
 	/**
 	 * @name Restore helper methods
@@ -1559,6 +1588,8 @@ protected: // Start protected functions
 	/*@{*/
 	void restoreAppMode(SimpleState *state, bool isUndo);
 	void restoreArc(SimpleState *state,bool isUndo);
+	void restoreAnchorPosition(SimpleState *state, bool isUndo);
+	void restoreObjectStyle(SimpleState *state, bool isUndo);
 	void restoreArrow(SimpleState *state, bool isUndo, bool isStart);
 	void restoreBottomTextFrameDist(SimpleState *state, bool isUndo);
 	void restoreCharStyle(SimpleState *state, bool isUndo);
@@ -1586,6 +1617,8 @@ protected: // Start protected functions
 	void restoreFillRule(SimpleState* state, bool isUndo);
 	void restoreFirstLineOffset(SimpleState *state, bool isUndo);
 	void restoreGetImage(UndoState *state, bool isUndo);
+	void restoreExtractedImage(UndoState *state, bool isUndo);
+	void restoreRelinkImage(UndoState *state, bool isUndo);
 	void restoreGradPos(SimpleState *state,bool isUndo);
 	void restoreGradientCol1(SimpleState *state, bool isUndo);
 	void restoreGradientCol2(SimpleState *state, bool isUndo);
@@ -1746,6 +1779,7 @@ protected: // Start protected variables
 	 * @sa PageItem::itemName(), PageItem::setItemName()
 	 */
 	QString m_itemName;
+	QString m_objectStyleName;
 
 	/**
 	 * Flag to tell if this item is a PDF annotation item

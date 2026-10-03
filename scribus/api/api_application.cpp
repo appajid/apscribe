@@ -85,22 +85,22 @@ namespace ScribusAPI {
 
 	QString getVersionScribus()
 	{
-		return QStringLiteral("Scribus") + " " + getVersion();
+		return QStringLiteral("Apscribe") + " " + getVersion();
 	}
 
 	QByteArray getVersionScribusAsByteArray()
 	{
-		return QByteArray("Scribus") + " " + QByteArray(VERSION);
+		return QByteArray("Apscribe") + " " + QByteArray(VERSION);
 	}
 
 	QString getVersionScribusTranslated()
 	{
-		return QObject::tr("Scribus") + " " + getVersion();
+		return QObject::tr("Apscribe") + " " + getVersion();
 	}
 
 	QByteArray getVersionScribusTranslatedAsByteArray()
 	{
-		return QObject::tr("Scribus").toUtf8() + " " + QByteArray(VERSION);
+		return QObject::tr("Apscribe").toUtf8() + " " + QByteArray(VERSION);
 	}
 
 	bool isSVN()

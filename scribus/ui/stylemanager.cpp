@@ -15,6 +15,7 @@ for which a new license (GPL+exception) is in place.
 
 #include "commonstrings.h"
 #include "fileloader.h"
+#include "iconmanager.h"
 #include "prefsfile.h"
 #include "prefsmanager.h"
 #include "scraction.h"
@@ -24,6 +25,7 @@ for which a new license (GPL+exception) is in place.
 #include "shortcutwidget.h"
 #include "smcellstyle.h"
 #include "smlinestyle.h"
+#include "smobjectstyle.h"
 #include "smreplacedia.h"
 #include "smstyleimport.h"
 #include "smtablestyle.h"
@@ -40,6 +42,27 @@ StyleManager::StyleManager(QWidget *parent, const char *name)
 	: ScrPaletteBase(parent, name)
 {
 	setupUi(this);
+	setProperty("modernDialog", true);
+	setProperty("modernDialogRole", "styles");
+	setAttribute(Qt::WA_StyledBackground, true);
+	setMinimumSize(860, 560);
+	styleView->setProperty("modernNavigation", true);
+	styleView->setMinimumWidth(250);
+	leftFrame->setProperty("navigationPanel", true);
+	editFrame->setProperty("contentPanel", true);
+	newButton->setProperty("primaryAction", true);
+	okButton->setProperty("primaryAction", true);
+	const QList<QPushButton*> styleButtons { newButton, cloneButton, importButton, deleteButton, deleteUnusedButton, resetButton, applyButton };
+	for (QPushButton* button : styleButtons)
+		button->setProperty("compactAction", true);
+	IconManager& iconManager = IconManager::instance();
+	newButton->setIcon(iconManager.loadIcon("document-new"));
+	cloneButton->setIcon(iconManager.loadIcon("edit-copy"));
+	importButton->setIcon(iconManager.loadIcon("document-open"));
+	deleteButton->setIcon(iconManager.loadIcon("edit-delete"));
+	deleteUnusedButton->setIcon(iconManager.loadIcon("edit-clear"));
+	resetButton->setIcon(iconManager.loadIcon("reset"));
+	applyButton->setIcon(iconManager.loadIcon("ok"));
 	styleView->hideColumn(SHORTCUT_COL);
 	styleView->setSelectionMode(QAbstractItemView::ExtendedSelection);
 	uniqueLabel->hide();
@@ -123,9 +146,9 @@ void StyleManager::languageChange()
 	m_doneText= tr("&Done");
 	m_editText= tr("&Edit");
 	setOkButtonText();
-	newButton->setText( tr("&New"));
+	newButton->setText( tr("&Add Style"));
 	importButton->setText( tr("&Import"));
-	cloneButton->setText( tr("&Clone"));
+	cloneButton->setText( tr("&Duplicate"));
 	deleteButton->setText( tr("&Delete"));
 
 	if (m_isEditMode)
@@ -335,6 +358,20 @@ void StyleManager::showAsEditLineStyle(const QString &name)
 	editStyleByName(4, name);
 }
 
+void StyleManager::showAsEditObjectStyle(const QString& name)
+{
+	if (name.isEmpty())
+		return;
+
+	SMObjectStyle* objectStyleItem = item<SMObjectStyle>();
+	const int styleTypeIndex = m_items.indexOf(objectStyleItem);
+	if (styleTypeIndex < 0)
+		return;
+
+	setPaletteShown(true);
+	editStyleByName(styleTypeIndex, name == CommonStrings::DefaultObjectStyle ? CommonStrings::trDefaultObjectStyle : name);
+}
+
 void StyleManager::reloadStyles()
 {
 	if (!m_doc)
@@ -478,6 +515,8 @@ void StyleManager::slotDelete()
 			usedMap = &usedResources.tableStyles();
 		else if (qobject_cast<SMCellStyle*>(styleitem))
 			usedMap = &usedResources.cellStyles();
+		else if (qobject_cast<SMObjectStyle*>(styleitem))
+			usedMap = &usedResources.objectStyles();
 
 		QStringList usedSelected;
 		for (int i = 0; i < selected.count(); ++i)
@@ -574,6 +613,8 @@ void StyleManager::slotDeleteUnused()
 			usedMap = &usedResources.tableStyles();
 		else if (qobject_cast<SMCellStyle*>(styleitem))
 			usedMap = &usedResources.cellStyles();
+		else if (qobject_cast<SMObjectStyle*>(styleitem))
+			usedMap = &usedResources.objectStyles();
 		else
 			continue;
 
@@ -650,8 +691,9 @@ void StyleManager::slotImport()
 	QHash<QString, MultiLine> tmpLineStyles;
 	StyleSet<TableStyle> tmpTableStyles;
 	StyleSet<CellStyle> tmpCellStyles;
+	StyleSet<ObjectStyle> tmpObjectStyles;
 
-	m_doc->loadStylesFromFile(selectedFile, &tmpParaStyles, &tmpCharStyles, &tmpLineStyles, &tmpTableStyles, &tmpCellStyles);
+	m_doc->loadStylesFromFile(selectedFile, &tmpParaStyles, &tmpCharStyles, &tmpLineStyles, &tmpTableStyles, &tmpCellStyles, &tmpObjectStyles);
 
 // FIXME Once all styles are derived from Style remove this and make a proper
 //       implementation
@@ -681,6 +723,7 @@ void StyleManager::slotImport()
 
 	SMTableStyle *tstyle = nullptr;
 	SMCellStyle  *cellstyle = nullptr;
+	SMObjectStyle *objectstyle = nullptr;
 	for (int i = 0; i < m_items.count(); ++i)
 	{
 		tstyle = qobject_cast<SMTableStyle*>(m_items.at(i));
@@ -693,10 +736,16 @@ void StyleManager::slotImport()
 		if (cellstyle)
 			break;
 	}
+	for (int i = 0; i < m_items.count(); ++i)
+	{
+		objectstyle = qobject_cast<SMObjectStyle*>(m_items.at(i));
+		if (objectstyle)
+			break;
+	}
 
-	Q_ASSERT(pstyle && cstyle && lstyle && tstyle && cellstyle);
+	Q_ASSERT(pstyle && cstyle && lstyle && tstyle && cellstyle && objectstyle);
 
-	SMStyleImport *dia2 = new SMStyleImport(this, &tmpParaStyles, &tmpCharStyles, &tmpLineStyles, &tmpTableStyles, &tmpCellStyles);
+	SMStyleImport *dia2 = new SMStyleImport(this, &tmpParaStyles, &tmpCharStyles, &tmpLineStyles, &tmpTableStyles, &tmpCellStyles, &tmpObjectStyles);
 // end hack
 
 //#7315 		QList<QPair<QString, QString> > selected;
@@ -709,6 +758,8 @@ void StyleManager::slotImport()
 
 		QStringList neededOpticalMarginSets;
 		neededOpticalMarginSets.clear();
+
+		const ObjectStyleImportPlan objectStylePlan = buildObjectStyleImportPlan(tmpObjectStyles, dia2->objectStyles());
 
 		foreach (const QString& aStyle, dia2->paragraphStyles())
 		{
@@ -757,8 +808,21 @@ void StyleManager::slotImport()
 				neededColors.append(sty.fillColor());
 		}
 
-		foreach (const QString& aStyle, dia2->lineStyles())
+		QStringList lineStylesToImport(dia2->lineStyles());
+		for (const QString& lineStyleName : objectStylePlan.lineStyleNames)
 		{
+			if (!lineStylesToImport.contains(lineStyleName))
+				lineStylesToImport.append(lineStyleName);
+		}
+		QMap<QString, QString> importedLineStyleNames;
+		foreach (const QString& aStyle, lineStylesToImport)
+		{
+			if (!tmpLineStyles.contains(aStyle))
+			{
+				if (!lstyle->m_tmpLines.contains(aStyle))
+					importedLineStyleNames.insert(aStyle, QString());
+				continue;
+			}
 			MultiLine &sty = tmpLineStyles[/*it.data()*/aStyle];
 			QString styName = aStyle;
 
@@ -766,6 +830,7 @@ void StyleManager::slotImport()
 				styName = lstyle->getUniqueName(aStyle);
 
 			lstyle->m_tmpLines[styName] = sty;
+			importedLineStyleNames.insert(aStyle, styName);
 //#7315 				selected << QPair<QString, QString>(lstyle->typeName(), styName);
 
 			for (int i = 0; i < sty.count(); ++i)
@@ -773,6 +838,15 @@ void StyleManager::slotImport()
 				if ((!m_doc->PageColors.contains(sty[i].Color)) && (!neededColors.contains(sty[i].Color)))
 					neededColors.append(sty[i].Color);
 			}
+		}
+
+		importObjectStyles(tmpObjectStyles, objectStylePlan.styleNames, *objectstyle->tmpStyles(),
+				dia2->clashRename(), importedLineStyleNames);
+		for (const QString& colorName : objectStylePlan.colorNames)
+		{
+			if (!colorName.isEmpty() && colorName != CommonStrings::None
+				&& !m_doc->PageColors.contains(colorName) && !neededColors.contains(colorName))
+				neededColors.append(colorName);
 		}
 
 		foreach (const QString& aStyle, dia2->tableStyles())
@@ -863,6 +937,7 @@ void StyleManager::slotImport()
 	cstyle->setCurrentDoc(m_doc);
 	tstyle->setCurrentDoc(m_doc);
 	cellstyle->setCurrentDoc(m_doc);
+	objectstyle->setCurrentDoc(m_doc);
 // end hack part 2
 	reloadStyleView(false);
 //#7315 		setSelection(selected);

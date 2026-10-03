@@ -33,17 +33,22 @@ for which a new license (GPL+exception) is in place.
 
 
 // include cmdvar.h first, as it pulls in <Python.h>
+#include "anchorposition.h"
 #include "cmdannotations.h"
 #include "cmdbarcode.h"
 #include "cmdcell.h"
 #include "cmdcolor.h"
 #include "cmddialog.h"
 #include "cmddoc.h"
+#include "cmdepub.h"
 #include "cmdgetprop.h"
 #include "cmdgetsetprop.h"
+#include "cmdhistory.h"
 #include "cmdmani.h"
 #include "cmdmisc.h"
 #include "cmdobj.h"
+#include "cmdobjectstyleimport.h"
+#include "cmdobjectstylemanagement.h"
 #include "cmdpage.h"
 #include "cmdsetprop.h"
 #include "cmdstyle.h"
@@ -284,6 +289,7 @@ char* tr(const char* docstringConstant)
 PyMethodDef scribus_methods[] = {
 	// 2004/10/03 pv - aliases with common Python syntax - ClassName methodName
 	// 2004-11-06 cr - move aliasing to dynamically generated wrapper functions, sort methoddef
+	{ "applyDataRecord", scribus_applydatarecord, METH_VARARGS, tr(scribus_applydatarecord__doc__)},
 	{ "applyMasterPage", scribus_applymasterpage, METH_VARARGS, tr(scribus_applymasterpage__doc__)},
 	{ "changeColor", scribus_setcolor, METH_VARARGS, tr(scribus_setcolor__doc__)},
 	{ "changeColorCMYK", scribus_setcolorcmyk, METH_VARARGS, tr(scribus_setcolorcmyk__doc__)},
@@ -296,19 +302,27 @@ PyMethodDef scribus_methods[] = {
 	{ "createBarcode", scribus_createbarcode, METH_VARARGS, tr(scribus_createbarcode__doc__)},
 	{ "createBezierLine", scribus_createbezierline, METH_VARARGS, tr(scribus_createbezierline__doc__)},
 	{ "createCharStyle", (PyCFunction) scribus_createcharstyle, METH_VARARGS|METH_KEYWORDS, tr(scribus_createcharstyle__doc__)},
+	{ "createCrossReferenceTarget", scribus_createcrossreferencetarget, METH_VARARGS, tr(scribus_createcrossreferencetarget__doc__)},
 	{ "createCustomLineStyle", scribus_createcustomlinestyle, METH_VARARGS, tr(scribus_createcustomlinestyle__doc__)},
+	{ "createObjectStyle", (PyCFunction) scribus_createobjectstyle, METH_VARARGS|METH_KEYWORDS, tr(scribus_createobjectstyle__doc__)},
+	{ "convertRGBToCMYK", scribus_convertrgbtocmyk, METH_VARARGS, tr(scribus_convertrgbtocmyk__doc__)},
 	{ "createEllipse", scribus_createellipse, METH_VARARGS, tr(scribus_createellipse__doc__)},
 	{ "createImage", scribus_createimage, METH_VARARGS, tr(scribus_createimage__doc__)},
 	{ "createLayer", scribus_createlayer, METH_VARARGS, tr(scribus_createlayer__doc__)},
 	{ "createLine", scribus_createline, METH_VARARGS, tr(scribus_createline__doc__)},
 	{ "createMasterPage", scribus_createmasterpage, METH_VARARGS, tr(scribus_createmasterpage__doc__)},
+	{ "createFacingMasterPair", scribus_createfacingmasterpair, METH_VARARGS, tr(scribus_createfacingmasterpair__doc__)},
 	{ "createParagraphStyle", (PyCFunction) scribus_createparagraphstyle, METH_VARARGS|METH_KEYWORDS, tr(scribus_createparagraphstyle__doc__)},
 	{ "createPathText", scribus_createpathtext, METH_VARARGS, tr(scribus_createpathtext__doc__)},
 	{ "createPolyLine", scribus_createpolyline, METH_VARARGS, tr(scribus_createpolyline__doc__)},
 	{ "createPolygon", scribus_createpolygon, METH_VARARGS, tr(scribus_createpolygon__doc__)},
 	{ "createRect", scribus_createrect, METH_VARARGS, tr(scribus_createrect__doc__)},
+	{ "createRunningHeaderVariable", scribus_createrunningheadervariable, METH_VARARGS, tr(scribus_createrunningheadervariable__doc__)},
 	{ "createTable", scribus_createtable, METH_VARARGS, tr(scribus_createtable__doc__)},
 	{ "createText", scribus_createtext, METH_VARARGS, tr(scribus_createtext__doc__)},
+	{ "createVariable", scribus_createvariable, METH_VARARGS, tr(scribus_createvariable__doc__)},
+	{ "loadDataSource", scribus_loaddatasource, METH_VARARGS, tr(scribus_loaddatasource__doc__)},
+	{ "exportDataMergePDFs", scribus_exportdatamergepdfs, METH_VARARGS, tr(scribus_exportdatamergepdfs__doc__)},
 	{ "currentPage", (PyCFunction) scribus_currentpage, METH_NOARGS, tr(scribus_currentpage__doc__)},
 	{ "currentPageNumber", (PyCFunction) scribus_currentpage, METH_NOARGS, tr(scribus_currentpage__doc__)},
 	{ "currentPageNumberForSection", (PyCFunction) scribus_currentpagenumberforsection, METH_NOARGS, tr(scribus_currentpagenumberforsection__doc__)},
@@ -320,19 +334,43 @@ PyMethodDef scribus_methods[] = {
 	{ "defineColorRGBFloat", scribus_newcolorrgb, METH_VARARGS, tr(scribus_newcolorrgbfloat__doc__)},
 	{ "dehyphenateText", scribus_dehyphenatetext, METH_VARARGS, tr(scribus_dehyphenatetext__doc__)},
 	{ "deleteColor", scribus_deletecolor, METH_VARARGS, tr(scribus_deletecolor__doc__)},
+	{ "deleteCrossReferenceTarget", scribus_deletecrossreferencetarget, METH_VARARGS, tr(scribus_deletecrossreferencetarget__doc__)},
 	{ "deleteLayer", scribus_deletelayer, METH_VARARGS, tr(scribus_deletelayer__doc__)},
 	{ "deleteMasterPage", scribus_deletemasterpage, METH_VARARGS, tr(scribus_deletemasterpage__doc__)},
 	{ "deleteObject", scribus_deleteobject, METH_VARARGS, tr(scribus_deleteobject__doc__)},
+	{ "deleteObjectStyle", scribus_deleteobjectstyle, METH_VARARGS, tr(scribus_deleteobjectstyle__doc__)},
 	{ "deletePage", scribus_deletepage, METH_VARARGS, tr(scribus_deletepage__doc__)},
 	{ "deleteText", scribus_deletetext, METH_VARARGS, tr(scribus_deletetext__doc__)},
+	{ "deleteVariable", scribus_deletevariable, METH_VARARGS, tr(scribus_deletevariable__doc__)},
 	{ "deselectAll", (PyCFunction) scribus_deselectall, METH_NOARGS, tr(scribus_deselectall__doc__)},
 	{ "docChanged", scribus_docchanged, METH_VARARGS, tr(scribus_docchanged__doc__)},
 	{ "editMasterPage", scribus_editmasterpage, METH_VARARGS, tr(scribus_editmasterpage__doc__)},
+	{ "embedImage", scribus_embedimage, METH_VARARGS, tr(scribus_embedimage__doc__)},
+	{ "epubReadingOrderPreflight", scribus_epubreadingorderpreflight, METH_VARARGS, tr(scribus_epubreadingorderpreflight__doc__)},
+	{ "epubMixedReadingOrderPreflight", scribus_epubmixedreadingorderpreflight, METH_VARARGS, tr(scribus_epubmixedreadingorderpreflight__doc__)},
+	{ "epubImageFramePreflight", scribus_epubimageframepreflight, METH_VARARGS, tr(scribus_epubimageframepreflight__doc__)},
+	{ "setEpubImageAltText", scribus_setepubimagealttext, METH_VARARGS, tr(scribus_setepubimagealttext__doc__)},
+	{ "setEpubImageDecorative", scribus_setepubimagedecorative, METH_VARARGS, tr(scribus_setepubimagedecorative__doc__)},
+	{ "setEpubImageCaption", scribus_setepubimagecaption, METH_VARARGS, tr(scribus_setepubimagecaption__doc__)},
+	{ "setEpubImageCaptionAlignment", scribus_setepubimagecaptionalignment, METH_VARARGS, tr(scribus_setepubimagecaptionalignment__doc__)},
+	{ "setEpubImageWidthPercent", scribus_setepubimagewidthpercent, METH_VARARGS, tr(scribus_setepubimagewidthpercent__doc__)},
+	{ "setEpubUseImageFrameCrop", scribus_setepubuseimageframecrop, METH_VARARGS, tr(scribus_setepubuseimageframecrop__doc__)},
+	{ "setEpubImageReadingOrder", scribus_setepubimagereadingorder, METH_VARARGS, tr(scribus_setepubimagereadingorder__doc__)},
+	{ "exportEpubTextOnly", scribus_exportepubtextonly, METH_VARARGS, tr(scribus_exportepubtextonly__doc__)},
+	{ "exportEpubTextAndImages", scribus_exportepubtextandimages, METH_VARARGS, tr(scribus_exportepubtextandimages__doc__)},
+	{ "exportImageAsCMYKCopy", scribus_exportimageascmykcopy, METH_VARARGS, tr(scribus_exportimageascmykcopy__doc__)},
+	{ "batchExportImagesAsCMYK", scribus_batchexportimagesascmyk, METH_VARARGS, tr(scribus_batchexportimagesascmyk__doc__)},
 	{ "exportDocumentCheck", (PyCFunction) scribus_exportdocumentcheck, METH_VARARGS|METH_KEYWORDS, tr(scribus_exportdocumentcheck__doc__)},
+	{ "extractEmbeddedImage", scribus_extractembeddedimage, METH_VARARGS, tr(scribus_extractembeddedimage__doc__)},
 	{ "fileDialog", (PyCFunction) scribus_filedialog, METH_VARARGS|METH_KEYWORDS, tr(scribus_filedialog__doc__)},
 	{ "fileQuit", scribus_filequit, METH_VARARGS, tr(scribus_filequit__doc__)},
 	{ "flipObject", scribus_flipobject, METH_VARARGS, tr(scribus_flipobject__doc__)},
 	{ "getActiveLayer", (PyCFunction) scribus_getactivelayer, METH_NOARGS, tr(scribus_getactivelayer__doc__)},
+	{ "generateImageAlphaContour", scribus_generateimagealphacontour, METH_VARARGS, tr(scribus_generateimagealphacontour__doc__)},
+	{ "generateImageContour", scribus_generateimagecontour, METH_VARARGS, tr(scribus_generateimagecontour__doc__)},
+	{ "getAnchoredObjectOptions", scribus_getanchoredobjectoptions, METH_VARARGS, tr(scribus_getanchoredobjectoptions__doc__)},
+	{ "getAnchoredObjectRect", scribus_getanchoredobjectrect, METH_VARARGS, tr(scribus_getanchoredobjectrect__doc__)},
+	{ "getAnchoredObjectRects", scribus_getanchoredobjectrects, METH_VARARGS, tr(scribus_getanchoredobjectrects__doc__)},
 	{ "getAllObjects", (PyCFunction) scribus_getallobjects, METH_VARARGS|METH_KEYWORDS, tr(scribus_getallobjects__doc__)},
 	{ "getAllStyles", (PyCFunction) scribus_getparagraphstyles, METH_NOARGS, tr(scribus_getallstyles__doc__)}, //Deprecated
 	{ "getAllText", scribus_getalltext, METH_VARARGS, tr(scribus_getalltext__doc__)},
@@ -356,6 +394,8 @@ PyMethodDef scribus_methods[] = {
 	{ "getColumns", scribus_getcolumns, METH_VARARGS, tr(scribus_getcolumns__doc__)},
 	{ "getColumnGuides", (PyCFunction) scribus_getColumnGuides, METH_VARARGS|METH_KEYWORDS, tr(scribus_getColumnGuides__doc__)},
 	{ "getCornerRadius", scribus_getcornerradius, METH_VARARGS, tr(scribus_getcornerradius__doc__)},
+	{ "getCrossReferencePage", scribus_getcrossreferencepage, METH_VARARGS, tr(scribus_getcrossreferencepage__doc__)},
+	{ "getCrossReferenceText", scribus_getcrossreferencetext, METH_VARARGS, tr(scribus_getcrossreferencetext__doc__)},
 	{ "getCurrentPageSize", (PyCFunction) scribus_getcurrentpagesize, METH_NOARGS, tr(scribus_getcurrentpagesize__doc__)},
 	{ "getCustomLineStyle", scribus_getcustomlinestyle, METH_VARARGS, tr(scribus_getcustomlinestyle__doc__)},
 	{ "getDocName", (PyCFunction) scribus_getdocname, METH_NOARGS, tr(scribus_getdocname__doc__)},
@@ -408,6 +448,8 @@ PyMethodDef scribus_methods[] = {
 	{ "getMinWordTracking", scribus_getminwordtracking, METH_VARARGS, tr(scribus_getminwordtracking__doc__) },
 	{ "getNextLinkedFrame", scribus_getnextlinkedframe, METH_VARARGS, tr(scribus_getnextlinkedframe__doc__)},
 	{ "getObjectAttributes", scribus_getobjectattributes, METH_VARARGS, tr(scribus_getobjectattributes__doc__)},
+	{ "getObjectStyle", scribus_getobjectstyle, METH_VARARGS, tr(scribus_getobjectstyle__doc__)},
+	{ "getObjectStyles", (PyCFunction) scribus_getobjectstyles, METH_NOARGS, tr(scribus_getobjectstyles__doc__)},
 	{ "getObjectType", scribus_getobjecttype, METH_VARARGS, tr(scribus_getobjecttype__doc__)},
 	{ "getPageItems", (PyCFunction) scribus_getpageitems, METH_NOARGS, tr(scribus_getpageitems__doc__)},
 	{ "getPageMargins", (PyCFunction) scribus_getpagemargins, METH_NOARGS, tr(scribus_getpagemargins__doc__)},
@@ -443,6 +485,7 @@ PyMethodDef scribus_methods[] = {
 	{ "getTextVerticalAlignment", scribus_gettextverticalalignment, METH_VARARGS, tr(scribus_gettextverticalalignment__doc__)},
 	{ "getTracking", scribus_gettracking, METH_VARARGS, tr(scribus_gettracking__doc__)},
 	{ "getUnit", (PyCFunction) scribus_getunit, METH_NOARGS, tr(scribus_getunit__doc__)},
+	{ "getVariable", scribus_getvariable, METH_VARARGS, tr(scribus_getvariable__doc__)},
 	{ "getVisualBoundingBox", scribus_getvisualboundingbox, METH_VARARGS, tr(scribus_getvisualboundingbox__doc__) },
 	{ "getWordTracking", scribus_getwordtracking, METH_VARARGS, tr(scribus_getwordtracking__doc__)},
 	{ "pointsToDocUnit", scribus_pointstodocunit, METH_VARARGS, tr(scribus_pointstodocunit__doc__)},
@@ -450,17 +493,23 @@ PyMethodDef scribus_methods[] = {
 	{ "stringValueToPoints", scribus_stringvaluetopoints, METH_VARARGS, tr(scribus_stringvaluetopoints__doc__)},
 	{ "getVGuides", (PyCFunction) scribus_getVguides, METH_NOARGS, tr(scribus_getVguides__doc__)},
 	{ "getXFontNames", (PyCFunction) scribus_xfontnames, METH_NOARGS, tr(scribus_xfontnames__doc__)},
+	{ "goToCrossReferenceTarget", scribus_gotocrossreferencetarget, METH_VARARGS, tr(scribus_gotocrossreferencetarget__doc__)},
 	{ "gotoPage", scribus_gotopage, METH_VARARGS, tr(scribus_gotopage__doc__)},
 	{ "groupObjects", (PyCFunction) scribus_groupobjects, METH_VARARGS, tr(scribus_groupobjects__doc__)},
 	{ "haveDoc", (PyCFunction) scribus_havedoc, METH_NOARGS, tr(scribus_havedoc__doc__)},
 	{ "hyphenateText", scribus_hyphenatetext, METH_VARARGS, tr(scribus_hyphenatetext__doc__)},
+	{ "importObjectStyles", (PyCFunction) scribus_importobjectstyles, METH_VARARGS|METH_KEYWORDS, tr(scribus_importobjectstyles__doc__)},
 	{ "importPage", scribus_importpage, METH_VARARGS, tr(scribus_importpage__doc__)},
+	{ "insertCrossReference", scribus_insertcrossreference, METH_VARARGS, tr(scribus_insertcrossreference__doc__)},
+	{ "insertAnchoredObject", scribus_insertanchoredobject, METH_VARARGS, tr(scribus_insertanchoredobject__doc__)},
 	{ "insertHtmlText", scribus_inserthtmltext, METH_VARARGS, tr(scribus_inserthtmltext__doc__)},
 	{ "insertTableColumns", scribus_inserttablecolumns, METH_VARARGS, tr(scribus_inserttablecolumns__doc__)},
 	{ "insertTableRows", scribus_inserttablerows, METH_VARARGS, tr(scribus_inserttablerows__doc__)},
 	{ "insertText", scribus_inserttext, METH_VARARGS, tr(scribus_inserttext__doc__)},
+	{ "insertVariable", scribus_insertvariable, METH_VARARGS, tr(scribus_insertvariable__doc__)},
 	{ "invokeLater", scribus_invokelater, METH_VARARGS, tr(scribus_invokelater__doc__)},
 	{ "isExportable", scribus_isexportable, METH_VARARGS, tr(scribus_isexportable__doc__)},
+	{ "isImageEmbedded", scribus_isimageembedded, METH_VARARGS, tr(scribus_isimageembedded__doc__)},
 	{ "isLayerFlow", scribus_islayerflow, METH_VARARGS, tr(scribus_islayerflow__doc__)},
 	{ "isLayerLocked", scribus_islayerlocked, METH_VARARGS, tr(scribus_islayerlocked__doc__)},
 	{ "isLayerOutlined", scribus_islayeroutlined, METH_VARARGS, tr(scribus_islayeroutlined__doc__)},
@@ -473,6 +522,9 @@ PyMethodDef scribus_methods[] = {
 	{ "layoutText", scribus_layouttext, METH_VARARGS, tr(scribus_layouttext__doc__)},
 	{ "layoutTextChain", scribus_layouttextchain, METH_VARARGS, tr(scribus_layouttextchain__doc__)},
 	{ "linkTextFrames", scribus_linktextframes, METH_VARARGS, tr(scribus_linktextframes__doc__)},
+	{ "listCrossReferenceTargets", (PyCFunction) scribus_listcrossreferencetargets, METH_NOARGS, tr(scribus_listcrossreferencetargets__doc__)},
+	{ "listDocumentFonts", (PyCFunction) scribus_listdocumentfonts, METH_NOARGS, tr(scribus_listdocumentfonts__doc__)},
+	{ "listVariables", (PyCFunction) scribus_listvariables, METH_NOARGS, tr(scribus_listvariables__doc__)},
 	{ "loadImage", scribus_loadimage, METH_VARARGS, tr(scribus_loadimage__doc__)},
 	{ "loadStylesFromFile", scribus_loadstylesfromfile, METH_VARARGS, tr(scribus_loadstylesfromfile__doc__)},
 	{ "lockObject", scribus_lockobject, METH_VARARGS, tr(scribus_lockobject__doc__)},
@@ -500,21 +552,29 @@ PyMethodDef scribus_methods[] = {
 	{ "placeSVG", scribus_placevec, METH_VARARGS, tr(scribus_placesvg__doc__)},
 	{ "placeSXD", scribus_placevec, METH_VARARGS, tr(scribus_placesxd__doc__)},
 	{ "placeVectorFile", scribus_placevec, METH_VARARGS, tr(scribus_placevec__doc__)},
+	{ "previewRGBToCMYK", (PyCFunction) scribus_previewrgbtocmyk, METH_NOARGS, tr(scribus_previewrgbtocmyk__doc__)},
 	{ "processEvents", (PyCFunction) scribus_processevents, METH_NOARGS, tr(scribus_processevents__doc__)},
 	{ "progressReset", (PyCFunction) scribus_progressreset, METH_NOARGS, tr(scribus_progressreset__doc__)},
 	{ "progressSet", scribus_progresssetprogress, METH_VARARGS, tr(scribus_progresssetprogress__doc__)},
 	{ "progressTotal", scribus_progresssettotalsteps, METH_VARARGS, tr(scribus_progresssettotalsteps__doc__)},
 	{ "raiseActiveLayer", (PyCFunction) scribus_raiseactivelayer, METH_NOARGS, tr(scribus_raiseactivelayer__doc__)},
 	{ "readPDFOptions", (PyCFunction) scribus_readpdfoptions, METH_VARARGS, tr(scribus_readpdfoptions__doc__)},
+	{ "redo", (PyCFunction) scribus_redo, METH_NOARGS, tr(scribus_redo__doc__)},
+	{ "relinkImage", scribus_relinkimage, METH_VARARGS, tr(scribus_relinkimage__doc__)},
+	{ "replaceImageLinks", scribus_replaceimagelinks, METH_VARARGS, tr(scribus_replaceimagelinks__doc__)},
 	{ "redrawAll", (PyCFunction) scribus_redraw, METH_NOARGS, tr(scribus_redraw__doc__)},
 	{ "removeTableColumns", scribus_removetablecolumns, METH_VARARGS, tr(scribus_removetablecolumns__doc__)},
 	{ "removeTableRows", scribus_removetablerows, METH_VARARGS, tr(scribus_removetablerows__doc__)},
 	{ "removeUnusedStyles", (PyCFunction) scribus_removeunusedstyles, METH_VARARGS, tr(scribus_removeunusedstyles__doc__)},
 	{ "renderFont", (PyCFunction) scribus_renderfont, METH_VARARGS|METH_KEYWORDS, tr(scribus_renderfont__doc__)},
 	{ "replaceColor", scribus_replcolor, METH_VARARGS, tr(scribus_replcolor__doc__)},
+	{ "replaceDocumentFont", scribus_replacedocumentfont, METH_VARARGS, tr(scribus_replacedocumentfont__doc__)},
 	{ "resizeTableColumn", scribus_resizetablecolumn, METH_VARARGS, tr(scribus_resizetablecolumn__doc__)},
 	{ "resizeTableRow", scribus_resizetablerow, METH_VARARGS, tr(scribus_resizetablerow__doc__)},
 	{ "revertDoc", (PyCFunction) scribus_revertdoc, METH_NOARGS, tr(scribus_revertdoc__doc__)},
+	{ "renameCrossReferenceTarget", scribus_renamecrossreferencetarget, METH_VARARGS, tr(scribus_renamecrossreferencetarget__doc__)},
+	{ "renameObjectStyle", scribus_renameobjectstyle, METH_VARARGS, tr(scribus_renameobjectstyle__doc__)},
+	{ "renameVariable", scribus_renamevariable, METH_VARARGS, tr(scribus_renamevariable__doc__)},
 	{ "rotateObject", scribus_rotateobjectrel, METH_VARARGS, tr(scribus_rotateobjectrel__doc__)},
 	{ "rotateObjectAbs", (PyCFunction) scribus_setrotation, METH_VARARGS|METH_KEYWORDS, tr(scribus_setrotation__doc__)}, // Deprecated, alias to setRotation
 	{ "saveDoc", (PyCFunction) scribus_savedoc, METH_NOARGS, tr(scribus_savedoc__doc__)},
@@ -531,6 +591,7 @@ PyMethodDef scribus_methods[] = {
 	{ "sendToLayer", scribus_sendtolayer, METH_VARARGS, tr(scribus_sendtolayer__doc__)},
 	{ "sentToLayer", scribus_sendtolayer, METH_VARARGS, tr(scribus_sendtolayer__doc__)}, // Deprecated, alias to sentToLayer
 	{ "setActiveLayer", scribus_setactivelayer, METH_VARARGS, tr(scribus_setactivelayer__doc__)},
+	{ "setAnchoredObjectOptions", scribus_setanchoredobjectoptions, METH_VARARGS, tr(scribus_setanchoredobjectoptions__doc__)},
 	{ "setBaseLine", scribus_setbaseline, METH_VARARGS, tr(scribus_setbaseline__doc__)},
 	{ "setBleeds", scribus_setbleeds, METH_VARARGS, tr(scribus_setbleeds__doc__)},
 	{ "setCellBottomBorder", scribus_setcellbottomborder, METH_VARARGS, tr(scribus_setcellbottomborder__doc__)},
@@ -577,6 +638,7 @@ PyMethodDef scribus_methods[] = {
 	{ "setInfo", scribus_setinfo, METH_VARARGS, tr(scribus_setinfo__doc__)},
 	{ "setItemName", scribus_setitemname, METH_VARARGS, tr(scribus_setitemname__doc__)},
 	{ "setNormalMode", (PyCFunction) scribus_setnormalmode, METH_NOARGS, tr(scribus_setnormalmode__doc__)},
+	{ "setObjectStyle", scribus_setobjectstyle, METH_VARARGS, tr(scribus_setobjectstyle__doc__)},
 	{ "setLayerBlendmode", scribus_setlayerblendmode, METH_VARARGS, tr(scribus_setlayerblendmode__doc__)},
 	{ "setLayerFlow", scribus_setlayerflow, METH_VARARGS, tr(scribus_setlayerflow__doc__)},
 	{ "setLayerLocked", scribus_setlayerlocked, METH_VARARGS, tr(scribus_setlayerlocked__doc__)},
@@ -605,6 +667,7 @@ PyMethodDef scribus_methods[] = {
 	{ "setRotation", (PyCFunction) scribus_setrotation, METH_VARARGS|METH_KEYWORDS, tr(scribus_setrotation__doc__)},
 	{ "setRowGuides", (PyCFunction) scribus_setRowGuides, METH_VARARGS|METH_KEYWORDS, tr(scribus_setRowGuides__doc__)},
 	{ "setRTL", (PyCFunction) scribus_setrtl, METH_VARARGS, tr(scribus_setrtl__doc__)},
+	{ "setRunningHeaderVariable", scribus_setrunningheadervariable, METH_VARARGS, tr(scribus_setrunningheadervariable__doc__)},
 	{ "setScaleFrameToImage", (PyCFunction) scribus_setscaleframetoimage, METH_VARARGS, tr(scribus_setscaleframetoimage__doc__)},
 	{ "setScaleImageToFrame", (PyCFunction) scribus_setscaleimagetoframe, METH_VARARGS|METH_KEYWORDS, tr(scribus_setscaleimagetoframe__doc__)},
 	{ "setSpotColor", scribus_setspotcolor, METH_VARARGS, tr(scribus_setspotcolor__doc__)},
@@ -628,6 +691,7 @@ PyMethodDef scribus_methods[] = {
 	{ "setTextVerticalAlignment", scribus_settextverticalalignment, METH_VARARGS, tr(scribus_settextverticalalignment__doc__)},
 	{ "setTracking", scribus_settracking, METH_VARARGS, tr(scribus_settracking__doc__)},
 	{ "setUnit", scribus_setunit, METH_VARARGS, tr(scribus_setunit__doc__)},
+	{ "setVariable", scribus_setvariable, METH_VARARGS, tr(scribus_setvariable__doc__)},
 	{ "setVGuides", scribus_setVguides, METH_VARARGS, tr(scribus_setVguides__doc__)},
 	{ "setWordTracking", scribus_setwordtracking, METH_VARARGS, tr(scribus_setwordtracking__doc__)},
 	{ "sizeObject", scribus_sizeobject, METH_VARARGS, tr(scribus_sizeobject__doc__)},
@@ -638,6 +702,7 @@ PyMethodDef scribus_methods[] = {
 	{ "unGroupObject", scribus_ungroupobjects, METH_VARARGS, tr(scribus_ungroupobjects__doc__)}, // Deprecated, now alias for unGroupObjects()
 	{ "unGroupObjects", scribus_ungroupobjects, METH_VARARGS, tr(scribus_ungroupobjects__doc__)},
 	{ "unlinkTextFrames", scribus_unlinktextframes, METH_VARARGS, tr(scribus_unlinktextframes__doc__)},
+	{ "undo", (PyCFunction) scribus_undo, METH_NOARGS, tr(scribus_undo__doc__)},
 	{ "valueDialog", scribus_valuedialog, METH_VARARGS, tr(scribus_valuedialog__doc__)},
 	{ "zoomDocument", scribus_zoomdocument, METH_VARARGS, tr(scribus_zoomdocument__doc__)},
 	// Property magic
@@ -802,6 +867,35 @@ PyObject* PyInit_scribus(void)
 	// Text direction
 	PyDict_SetItemString(d, "DIRECTION_LTR", Py_BuildValue("i", 0));
 	PyDict_SetItemString(d, "DIRECTION_RTL", Py_BuildValue("i", 1));
+	// Anchored object positioning and text wrap
+	PyDict_SetItemString(d, "ANCHOR_MODE_INLINE", PyLong_FromLong(static_cast<int>(AnchorPosition::Mode::Inline)));
+	PyDict_SetItemString(d, "ANCHOR_MODE_ABOVE_LINE", PyLong_FromLong(static_cast<int>(AnchorPosition::Mode::AboveLine)));
+	PyDict_SetItemString(d, "ANCHOR_MODE_CUSTOM", PyLong_FromLong(static_cast<int>(AnchorPosition::Mode::Custom)));
+	PyDict_SetItemString(d, "ANCHOR_HREF_CHARACTER", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalReference::AnchorCharacter)));
+	PyDict_SetItemString(d, "ANCHOR_HREF_COLUMN", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalReference::TextColumn)));
+	PyDict_SetItemString(d, "ANCHOR_HREF_FRAME", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalReference::TextFrame)));
+	PyDict_SetItemString(d, "ANCHOR_HREF_PAGE", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalReference::Page)));
+	PyDict_SetItemString(d, "ANCHOR_HREF_SPREAD", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalReference::Spread)));
+	PyDict_SetItemString(d, "ANCHOR_VREF_LINE", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalReference::AnchorLine)));
+	PyDict_SetItemString(d, "ANCHOR_VREF_PARAGRAPH", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalReference::Paragraph)));
+	PyDict_SetItemString(d, "ANCHOR_VREF_FRAME", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalReference::TextFrame)));
+	PyDict_SetItemString(d, "ANCHOR_VREF_PAGE", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalReference::Page)));
+	PyDict_SetItemString(d, "ANCHOR_HALIGN_LEFT", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalAlignment::Left)));
+	PyDict_SetItemString(d, "ANCHOR_HALIGN_CENTER", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalAlignment::Center)));
+	PyDict_SetItemString(d, "ANCHOR_HALIGN_RIGHT", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalAlignment::Right)));
+	PyDict_SetItemString(d, "ANCHOR_HALIGN_SPINE", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalAlignment::Spine)));
+	PyDict_SetItemString(d, "ANCHOR_HALIGN_AWAY_FROM_SPINE", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalAlignment::AwayFromSpine)));
+	PyDict_SetItemString(d, "ANCHOR_HALIGN_CUSTOM", PyLong_FromLong(static_cast<int>(AnchorPosition::HorizontalAlignment::Custom)));
+	PyDict_SetItemString(d, "ANCHOR_VALIGN_TOP", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalAlignment::Top)));
+	PyDict_SetItemString(d, "ANCHOR_VALIGN_CENTER", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalAlignment::Center)));
+	PyDict_SetItemString(d, "ANCHOR_VALIGN_BOTTOM", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalAlignment::Bottom)));
+	PyDict_SetItemString(d, "ANCHOR_VALIGN_BASELINE", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalAlignment::Baseline)));
+	PyDict_SetItemString(d, "ANCHOR_VALIGN_CUSTOM", PyLong_FromLong(static_cast<int>(AnchorPosition::VerticalAlignment::Custom)));
+	PyDict_SetItemString(d, "ANCHOR_WRAP_NONE", PyLong_FromLong(static_cast<int>(AnchorPosition::WrapMode::None)));
+	PyDict_SetItemString(d, "ANCHOR_WRAP_BOUNDING_BOX", PyLong_FromLong(static_cast<int>(AnchorPosition::WrapMode::BoundingBox)));
+	PyDict_SetItemString(d, "ANCHOR_WRAP_FRAME_SHAPE", PyLong_FromLong(static_cast<int>(AnchorPosition::WrapMode::FrameShape)));
+	PyDict_SetItemString(d, "ANCHOR_WRAP_CONTOUR", PyLong_FromLong(static_cast<int>(AnchorPosition::WrapMode::Contour)));
+	PyDict_SetItemString(d, "ANCHOR_WRAP_IMAGE_CLIP", PyLong_FromLong(static_cast<int>(AnchorPosition::WrapMode::ImageClipPath)));
 	// First line offset
 	PyDict_SetItemString(d, "FLOP_REALGLYPHHEIGHT", Py_BuildValue("i", (int) FLOPRealGlyphHeight));
 	PyDict_SetItemString(d, "FLOP_FONTASCENT", Py_BuildValue("i", (int) FLOPFontAscent));

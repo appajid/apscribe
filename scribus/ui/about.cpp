@@ -14,16 +14,24 @@ for which a new license (GPL+exception) is in place.
 ***************************************************************************/
 #include <iostream> // only for debugging
 
+#include <QApplication>
+#include <QClipboard>
+#include <QDate>
 #include <QFile>
+#include <QFrame>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QMenu>
 #include <QPixmap>
 #include <QPushButton>
 #include <QShowEvent>
 #include <QString>
 #include <QStringList>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QTextStream>
 #include <QToolTip>
+#include <QToolButton>
 #include <QWidget>
 
 #include "scconfig.h"
@@ -50,6 +58,7 @@ for which a new license (GPL+exception) is in place.
 	#include "svnversion.h"
 #endif
 #include "util_ghostscript.h"
+#include "util.h"
 #include "iconmanager.h"
 #include "upgradechecker.h"
 #include "langmgr.h"
@@ -107,42 +116,94 @@ About::About( QWidget* parent, AboutMode diaMode ) : QDialog( parent )
 {
 	m_mode = diaMode;
 	m_firstShow = true;
-	setWindowTitle( tr("About Scribus %1").arg(ScribusAPI::getVersion()) );
+	setObjectName(QStringLiteral("aboutDialog"));
+	setProperty("modernDialog", true);
+	setAttribute(Qt::WA_StyledBackground, true);
+	setWindowTitle( tr("About Apscribe %1").arg(ScribusAPI::getVersion()) );
 	setWindowIcon(IconManager::instance().loadIcon("app-icon"));
 	setModal(true);
+	QByteArray applicationStyle;
+	if (loadRawText(ScPaths::instance().libDir() + "scribus.css", applicationStyle))
+		setStyleSheet(QString::fromUtf8(applicationStyle));
 	aboutLayout = new QVBoxLayout( this );
-	aboutLayout->setSpacing(6);
-	aboutLayout->setContentsMargins(9, 9, 9, 9);
+	aboutLayout->setSpacing(14);
+	aboutLayout->setContentsMargins(22, 20, 22, 18);
 	tabWidget2 = new QTabWidget( this );
+	tabWidget2->setObjectName(QStringLiteral("aboutTabs"));
 	tab = new QWidget( tabWidget2 );
 	tabLayout1 = new QVBoxLayout( tab );
-	tabLayout1->setSpacing(6);
-	tabLayout1->setContentsMargins(9, 9, 9, 9);
-
-	double pixelRatio = devicePixelRatioF();
-	QPixmap splashPixmap = IconManager::instance().splashScreen();
-	double splashPixmapW = splashPixmap.width();
-	double splashPixmapH = splashPixmap.height();
-	if (pixelRatio != 1.0)
-	{
-		int w = qRound(splashPixmap.width() * pixelRatio);
-		int h = qRound(splashPixmap.height() * pixelRatio);
-		double integralPart = 0;
-		bool isIntegerRatio = (modf(pixelRatio, &integralPart) == 0.0);
-		splashPixmap = splashPixmap.scaled(w, h, Qt::IgnoreAspectRatio, isIntegerRatio ? Qt::FastTransformation : Qt::SmoothTransformation);
-		splashPixmap.setDevicePixelRatio(pixelRatio);
-	}
+	tabLayout1->setSpacing(12);
+	tabLayout1->setContentsMargins(28, 24, 28, 24);
+	tabLayout1->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
 
 	pixmapLabel1 = new QLabel( tab );
-	pixmapLabel1->setPixmap(splashPixmap);
-	pixmapLabel1->setFixedSize(QSize(splashPixmapW, splashPixmapH));
+	pixmapLabel1->setObjectName(QStringLiteral("aboutAppIcon"));
+	pixmapLabel1->setPixmap(IconManager::instance().loadPixmap("app-icon", 96));
+	pixmapLabel1->setFixedSize(QSize(112, 112));
 	pixmapLabel1->setAlignment(Qt::AlignCenter);
-	tabLayout1->addWidget( pixmapLabel1 );
+	tabLayout1->addWidget( pixmapLabel1, 0, Qt::AlignHCenter );
 	buildID = new QLabel( tab );
+	buildID->setObjectName(QStringLiteral("aboutSummary"));
 	buildID->setAlignment(Qt::AlignCenter);
+	buildID->setWordWrap(true);
 	buildID->setTextInteractionFlags(Qt::TextSelectableByMouse);
-	buildID->setText( tr("<p align=\"center\"><b>%1 %2</b></p>").arg( tr("Scribus Version"), ScribusAPI::getVersion()));
+	buildID->setText(tr(
+		"<div align=\"center\">"
+		"<span style=\"font-size:28pt;font-weight:700\">Apscribe</span><br>"
+		"<span style=\"font-size:11pt\">Version %1</span>"
+		"<p><span style=\"font-size:16pt;font-weight:600;color:#0a84ff\">Publish beautifully.</span></p>"
+		"<p>An open-source workspace for books, magazines,<br>"
+		"and print-ready documents.</p>"
+		"</div>").arg(ScribusAPI::getVersion()));
 	tabLayout1->addWidget( buildID, 0, Qt::AlignHCenter );
+
+	auto* projectNote = new QFrame(tab);
+	projectNote->setObjectName(QStringLiteral("aboutProjectNote"));
+	projectNote->setProperty("aboutInformation", true);
+	auto* projectNoteLayout = new QHBoxLayout(projectNote);
+	projectNoteLayout->setContentsMargins(14, 10, 14, 10);
+	auto* projectIcon = new QLabel(projectNote);
+	projectIcon->setPixmap(IconManager::instance().loadPixmap("pref-document-info", QSize(28, 28)));
+	projectNoteLayout->addWidget(projectIcon, 0, Qt::AlignTop);
+	auto* projectText = new QLabel(tr(
+		"<b>Open-source desktop publishing.</b><br>"
+		"Apscribe is based on Scribus and distributed under the GNU GPL. "
+		"Original Scribus copyright and contributor credits are preserved."), projectNote);
+	projectText->setWordWrap(true);
+	projectText->setTextInteractionFlags(Qt::TextSelectableByMouse);
+	projectNoteLayout->addWidget(projectText, 1);
+	tabLayout1->addWidget(projectNote);
+
+	auto* aboutActions = new QHBoxLayout();
+	aboutActions->setSpacing(8);
+	auto* websiteButton = new QPushButton(tr("Website"), tab);
+	auto* acknowledgementsButton = new QPushButton(tr("Acknowledgements"), tab);
+	auto* licenseButton = new QPushButton(tr("License"), tab);
+	for (QPushButton* button : { websiteButton, acknowledgementsButton, licenseButton })
+		button->setProperty("aboutAction", true);
+	aboutActions->addWidget(websiteButton);
+	aboutActions->addWidget(acknowledgementsButton);
+	aboutActions->addWidget(licenseButton);
+	tabLayout1->addLayout(aboutActions);
+
+	auto* secondaryActions = new QHBoxLayout();
+	secondaryActions->setSpacing(8);
+	auto* copySystemInfoButton = new QPushButton(tr("Copy System Information"), tab);
+	copySystemInfoButton->setProperty("aboutAction", true);
+	copySystemInfoButton->setIcon(IconManager::instance().loadIcon("edit-copy"));
+	secondaryActions->addWidget(copySystemInfoButton);
+	auto* moreButton = new QToolButton(tab);
+	moreButton->setText(tr("More\u2026"));
+	moreButton->setPopupMode(QToolButton::InstantPopup);
+	moreButton->setProperty("aboutAction", true);
+	secondaryActions->addWidget(moreButton);
+	tabLayout1->addLayout(secondaryActions);
+
+	auto* aboutFooter = new QLabel(tr("GNU GPL v2 or later  \u2022  \u00a9 %1 Scribus contributors")
+		.arg(QDate::currentDate().year()), tab);
+	aboutFooter->setObjectName(QStringLiteral("aboutFooter"));
+	aboutFooter->setAlignment(Qt::AlignCenter);
+	tabLayout1->addWidget(aboutFooter);
 	tabWidget2->addTab( tab, tr("&About") );
 
 	/*! AUTHORS tab */
@@ -183,7 +244,7 @@ About::About( QWidget* parent, AboutMode diaMode ) : QDialog( parent )
 	updateLayout = new QVBoxLayout( tab_5 );
 	updateLayout->setSpacing(6);
 	updateLayout->setContentsMargins(9, 9, 9, 9);
-	checkForUpdateButton = new QPushButton( tr("Check for Updates"), tab_5 );
+	checkForUpdateButton = new QPushButton( tr("Check Upstream Scribus Releases"), tab_5 );
 	updateView = new QTextBrowser( tab_5);
 	updateLayout->addWidget( checkForUpdateButton );
 	updateLayout->addWidget( updateView );
@@ -218,27 +279,47 @@ About::About( QWidget* parent, AboutMode diaMode ) : QDialog( parent )
 	textViewBuild = new QTextBrowser( tab_build);
 	buildLayout->addWidget( textViewBuild );
 	textViewBuild->setText(generateBuildInfo());
+
+	auto* moreMenu = new QMenu(moreButton);
+	moreMenu->addAction(tr("Translations"), this, [this]() { tabWidget2->setCurrentIndex(2); });
+	moreMenu->addAction(tr("Check Upstream Scribus Releases"), this, [this]() { tabWidget2->setCurrentIndex(4); });
+	moreMenu->addAction(tr("Build Information"), this, [this]() { tabWidget2->setCurrentIndex(6); });
+	moreButton->setMenu(moreMenu);
+	connect(websiteButton, &QPushButton::clicked, this, [this]() { tabWidget2->setCurrentIndex(3); });
+	connect(acknowledgementsButton, &QPushButton::clicked, this, [this]() { tabWidget2->setCurrentIndex(1); });
+	connect(licenseButton, &QPushButton::clicked, this, [this]() { tabWidget2->setCurrentIndex(5); });
+	connect(copySystemInfoButton, &QPushButton::clicked, this, [this]() {
+		QApplication::clipboard()->setText(generateBuildInfo());
+	});
+	tabWidget2->tabBar()->hide();
 	//Add tab widget to about window
 	aboutLayout->addWidget( tabWidget2 );
 
 	layout2 = new QHBoxLayout;
 	layout2->setSpacing(6);
 	layout2->setContentsMargins(0, 0, 0, 0);
+	auto* backButton = new QPushButton(tr("Back to About"), this);
+	backButton->setProperty("secondaryAction", true);
+	backButton->setVisible(false);
+	layout2->addWidget(backButton);
 	QSpacerItem* spacer = new QSpacerItem( 20, 20, QSizePolicy::Expanding, QSizePolicy::Minimum );
 	layout2->addItem( spacer );
 	okButton = new QPushButton( tr("&Close"), this );
+	okButton->setProperty("primaryAction", true);
 	okButton->setDefault( true );
 	layout2->addWidget( okButton );
 	aboutLayout->addLayout( layout2 );
-	setMaximumSize(sizeHint());
+	setMinimumSize(640, 560);
 
 
 	//tooltips
-	checkForUpdateButton->setToolTip( "<qt>" + tr("Check for updates to Scribus. No data from your machine will be transferred off it.") + "</qt>");
+	checkForUpdateButton->setToolTip( "<qt>" + tr("Check upstream Scribus releases, not Apscribe updates. No data from your machine will be transferred off it.") + "</qt>");
 	// signals and slots connections
 	connect( okButton, SIGNAL( clicked() ), this, SLOT( accept() ) );
 	connect( checkForUpdateButton, SIGNAL( clicked() ), this, SLOT( runUpdateCheck() ) );
-	resize(minimumSizeHint());
+	connect(backButton, &QPushButton::clicked, this, [this]() { tabWidget2->setCurrentIndex(0); });
+	connect(tabWidget2, &QTabWidget::currentChanged, this, [backButton](int index) { backButton->setVisible(index != 0); });
+	resize(680, 600);
 }
 
 void About::showEvent (QShowEvent * event)
@@ -669,7 +750,7 @@ QString About::generateBuildInfo()
 	QString buildText;
 	buildText.append("<p>");
 	buildText.append("<b>");
-	buildText.append(tr("Scribus Version %1").arg(version));
+	buildText.append(tr("Apscribe Version %1").arg(version));
 	buildText.append("</b>");
 	buildText.append("</p><p>");
 	buildText.append(tr("Build ID: %1").arg(ScribusAPI::getBuildInformation()));

@@ -97,6 +97,66 @@
     <ClInclude Include="..\..\..\scribus\actionsearch.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\scribus\anchorposition.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\collectmanifest.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\imagealphacontour.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\imagecmykbatch.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\imagecmykconversion.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\imagecmykexport.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\imagelinkreplacement.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\dynamicvariable.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\epubdocument.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\epubexport.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\epubreadingorder.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\datamergesource.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\embeddedimageextractor.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\imagelinkmatcher.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\stylequickapplymodel.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\ui\dynamicvariableinsert.h">
+      <Filter>Source Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\ui\dynamicvariablemanager.h">
+      <Filter>Source Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\ui\datamergedialog.h">
+      <Filter>Source Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\ui\epubreadingorderdialog.h">
+      <Filter>Source Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\scribus\ui\modernui.h">
+      <Filter>Source Files\ui</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\..\scribus\annotation.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -724,6 +784,9 @@
     <ClInclude Include="..\..\..\scribus\styles\cellstyle.h">
       <Filter>Source Files\styles</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\scribus\styles\objectstyle.h">
+      <Filter>Source Files\styles</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\..\scribus\styles\charstyle.h">
       <Filter>Source Files\styles</Filter>
     </ClInclude>
@@ -959,6 +1022,69 @@
     </ClCompile>
     <ClCompile Include="..\..\..\scribus\actionsearch.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\anchorposition.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\collectmanifest.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\imagealphacontour.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\imagecmykbatch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\imagecmykconversion.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\imagecmykexport.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\imagelinkreplacement.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\imagealphasilhouette.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\dynamicvariable.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\epubdocument.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\epubexport.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\epubreadingorder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\datamergesource.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\embeddedimageextractor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\imagelinkmatcher.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\stylequickapplymodel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\ui\dynamicvariableinsert.cpp">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\ui\dynamicvariablemanager.cpp">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\ui\datamergedialog.cpp">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\ui\epubreadingorderdialog.cpp">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\ui\widgets\inspector_header.cpp">
+      <Filter>Source Files\ui\widgets</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\scribus\api\api_application.cpp">
       <Filter>Source Files\api</Filter>
@@ -1759,6 +1885,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\scribus\styles\cellstyle.cpp">
+      <Filter>Source Files\styles</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\styles\objectstyle.cpp">
       <Filter>Source Files\styles</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\scribus\styles\charstyle.cpp">
@@ -2610,6 +2739,12 @@
     <ClCompile Include="..\..\..\scribus\ui\smcellstylewidget.cpp">
       <Filter>Source Files\ui</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\scribus\ui\smobjectstyle.cpp">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\ui\smobjectstylewidget.cpp">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\..\scribus\ui\smcheckbox.cpp">
       <Filter>Source Files\ui</Filter>
     </ClCompile>
@@ -2734,6 +2869,9 @@
       <Filter>Source Files\ui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\scribus\ui\tabruler.cpp">
+      <Filter>Source Files\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\scribus\ui\toolpalette.cpp">
       <Filter>Source Files\ui</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\scribus\ui\transformdialog.cpp">
@@ -4597,6 +4735,12 @@
     <moc Include="..\..\..\scribus\ui\smcellstylewidget.h">
       <Filter>Source Files\ui</Filter>
     </moc>
+    <moc Include="..\..\..\scribus\ui\smobjectstyle.h">
+      <Filter>Source Files\ui</Filter>
+    </moc>
+    <moc Include="..\..\..\scribus\ui\smobjectstylewidget.h">
+      <Filter>Source Files\ui</Filter>
+    </moc>
     <moc Include="..\..\..\scribus\ui\smcheckbox.h">
       <Filter>Source Files\ui</Filter>
     </moc>
@@ -4723,6 +4867,9 @@
     <moc Include="..\..\..\scribus\ui\tabruler.h">
       <Filter>Source Files\ui</Filter>
     </moc>
+    <moc Include="..\..\..\scribus\ui\toolpalette.h">
+      <Filter>Source Files\ui</Filter>
+    </moc>
     <moc Include="..\..\..\scribus\ui\transformdialog.h">
       <Filter>Source Files\ui</Filter>
     </moc>
@@ -4742,6 +4889,9 @@
       <Filter>Source Files\ui</Filter>
     </moc>
     <moc Include="..\..\..\scribus\ui\widgets\color_button.h">
+      <Filter>Source Files\ui\widgets</Filter>
+    </moc>
+    <moc Include="..\..\..\scribus\ui\widgets\inspector_header.h">
       <Filter>Source Files\ui\widgets</Filter>
     </moc>
     <moc Include="..\..\..\scribus\ui\widgets\color_slider.h">

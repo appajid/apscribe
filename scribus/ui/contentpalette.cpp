@@ -8,6 +8,7 @@ for which a new license (GPL+exception) is in place.
 
 #include <QWidget>
 #include <QStackedWidget>
+#include <QVBoxLayout>
 
 #include "appmodehelper.h" // for AppModeChanged (if needed)
 
@@ -24,9 +25,11 @@ for which a new license (GPL+exception) is in place.
 #include "selection.h"
 #include "styles/paragraphstyle.h"
 #include "styles/charstyle.h"
+#include "widgets/inspector_header.h"
+#include "widgets/section_container.h"
 
 ContentPalette::ContentPalette(QWidget *parent) :
-	DockPanelBase("ContentPalette", "panel-content-properties", parent)
+	DockPanelBase("ContentPalette", "inspector-content", parent)
 {
 	setObjectName(QString::fromLocal8Bit("ContentPalette"));
 
@@ -54,7 +57,35 @@ ContentPalette::ContentPalette(QWidget *parent) :
 	textPal = new PropertiesPalette_Text(this);
 	stackedWidget->addWidget(textPal);
 
-	setWidget(stackedWidget);
+	auto* panel = new QWidget(this);
+	auto* layout = new QVBoxLayout(panel);
+	layout->setContentsMargins(0, 0, 0, 0);
+	layout->setSpacing(0);
+	m_inspectorHeader = new InspectorHeader(QStringLiteral("inspector-content"), panel);
+	layout->addWidget(m_inspectorHeader);
+	layout->addWidget(stackedWidget, 1);
+	setWidget(panel);
+
+	const auto sections = panel->findChildren<SectionContainer*>();
+	for (auto* section : sections)
+	{
+		section->setProperty("inspectorSection", true);
+		section->setAttribute(Qt::WA_StyledBackground, true);
+		section->setHeaderSize(SectionContainerHeader::Normal);
+		section->setHeaderType(SectionContainerHeader::Header);
+		section->setHasStyle(true);
+	}
+
+	for (auto* contentPanel : { static_cast<QWidget*>(defaultPal), static_cast<QWidget*>(groupPal),
+		static_cast<QWidget*>(imagePal), static_cast<QWidget*>(pagePal),
+		static_cast<QWidget*>(tablePal), static_cast<QWidget*>(textPal) })
+	{
+		if (contentPanel->layout())
+		{
+			contentPanel->layout()->setContentsMargins(6, 6, 6, 6);
+			contentPanel->layout()->setSpacing(6);
+		}
+	}
 
 	stackedWidget->setCurrentIndex((int) Panel::empty);
 
@@ -68,6 +99,7 @@ void ContentPalette::setMainWindow(ScribusMainWindow *mw)
 	defaultPal->setMainWindow(mw);
 	groupPal->setMainWindow(mw);
 	imagePal->setMainWindow(mw);
+	pagePal->setMainWindow(mw);
 	tablePal->setMainWindow(mw);
 	textPal->setMainWindow(mw);
 
@@ -81,6 +113,7 @@ void ContentPalette::setDoc(ScribusDoc *doc)
 
 	if (m_doc)
 	{
+		disconnect(m_textSelectionConnection);
 		disconnect(m_doc->m_Selection, &Selection::selectionChanged, this, &ContentPalette::handleSelectionChanged);
 		disconnect(m_doc, &ScribusDoc::docChanged, this, &ContentPalette::handleSelectionChanged);
 	}
@@ -97,6 +130,7 @@ void ContentPalette::setDoc(ScribusDoc *doc)
 	defaultPal->setDoc(m_doc);
 	groupPal->setDoc(m_doc);
 	imagePal->setDoc(m_doc);
+	pagePal->setDoc(m_doc);
 	tablePal->setDocument(m_doc);
 	textPal->setDoc(m_doc);
 
@@ -113,6 +147,7 @@ void ContentPalette::unsetDoc()
 {
 	if (m_doc)
 	{
+		disconnect(m_textSelectionConnection);
 		disconnect(m_doc->m_Selection, &Selection::selectionChanged, this, &ContentPalette::handleSelectionChanged);
 		disconnect(m_doc, &ScribusDoc::docChanged, this, &ContentPalette::handleSelectionChanged);
 	}
@@ -129,6 +164,8 @@ void ContentPalette::unsetDoc()
 	groupPal->unsetDoc();
 	imagePal->unsetItem();
 	imagePal->unsetDoc();
+	pagePal->unsetItem();
+	pagePal->unsetDoc();
 	tablePal->unsetItem();
 	tablePal->unsetDocument();
 	textPal->unsetItem();
@@ -136,10 +173,12 @@ void ContentPalette::unsetDoc()
 
 	stackedWidget->setCurrentIndex((int) Panel::empty);
 	updatePanelTitle();
+	emit inspectorTargetChanged(InspectorContent);
 }
 
 void ContentPalette::unsetItem()
 {
+	disconnect(m_textSelectionConnection);
 	m_haveItem = false;
 	m_item = nullptr;
 
@@ -189,6 +228,7 @@ void ContentPalette::AppModeChanged()
 		}
 		textPal->handleSelectionChanged();
 	}
+	handleSelectionChanged();
 }
 
 void ContentPalette::setCurrentItem(PageItem *item)
@@ -207,6 +247,13 @@ void ContentPalette::setCurrentItem(PageItem *item)
 		setDoc(item->doc());
 	}
 
+	if (item != m_item)
+	{
+		disconnect(m_textSelectionConnection);
+		if (item->asTextFrame())
+			m_textSelectionConnection = connect(&item->itemText, &StoryText::selectionChanged,
+				this, &ContentPalette::handleSelectionChanged, Qt::QueuedConnection);
+	}
 	m_haveItem = true;
 	m_item = item;
 
@@ -231,50 +278,67 @@ void  ContentPalette::handleSelectionChanged()
 
 	auto currentPanel = (Panel) stackedWidget->currentIndex();
 	auto newPanel{currentPanel};
+	auto inspectorTarget = InspectorContent;
 
 	PageItem* currItem = currentItemFromSelection();
+	PageItem *selectedAnchor = m_doc->appMode == modeEdit && currItem && currItem->asTextFrame()
+		? currItem->asTextFrame()->selectedAnchoredObject() : nullptr;
 
 	// TODO: should me move this to setCurrentIndex()?
 	if (!currItem)
 	{
-		newPanel = Panel::empty;
+		newPanel = Panel::page;
 		m_haveItem = false;
 	}
 	else if (m_doc->m_Selection->count() > 1)
 	{
 		newPanel = Panel::empty;
+		inspectorTarget = InspectorAlignment;
 		m_haveItem = false;
 	}
 	else
 	{
 		m_haveItem = true;
 
-		switch (currItem->itemType())
-		{
-		case PageItem::ImageFrame:
+		if (selectedAnchor && selectedAnchor->isImageFrame())
 			newPanel = Panel::image;
-			break;
-		case PageItem::TextFrame:
-		case PageItem::PathText:
-			newPanel = Panel::text;
-			break;
-		case PageItem::Table:
-			newPanel = m_doc->appMode == modeEditTable && !static_cast<PageItem_Table*>(currItem)->hasSelection() ? Panel::text : Panel::table;
-			break;
-		case PageItem::Group:
-			newPanel = Panel::group;
-			break;
-		default:
-			newPanel = Panel::empty;
-			break;
+		else if (selectedAnchor && selectedAnchor->isTable())
+			newPanel = Panel::table;
+		else
+		{
+			switch (currItem->itemType())
+			{
+			case PageItem::ImageFrame:
+				newPanel = Panel::image;
+				break;
+			case PageItem::TextFrame:
+			case PageItem::PathText:
+				newPanel = Panel::text;
+				break;
+			case PageItem::Table:
+				newPanel = m_doc->appMode == modeEditTable && !static_cast<PageItem_Table*>(currItem)->hasSelection() ? Panel::text : Panel::table;
+				break;
+			case PageItem::Group:
+				newPanel = Panel::group;
+				break;
+			default:
+				newPanel = Panel::empty;
+				inspectorTarget = InspectorAppearance;
+				break;
+			}
 		}
 		setCurrentItem(currItem);
+		if (selectedAnchor && selectedAnchor->isImageFrame())
+			imagePal->handleSelectionChanged();
+		else if (selectedAnchor && selectedAnchor->isTable())
+			tablePal->handleSelectionChanged();
 	}
 	if (currentPanel != newPanel)
 	{
 		stackedWidget->setCurrentIndex((int) newPanel);
 		updatePanelTitle();
 	}
+	emit inspectorTargetChanged(inspectorTarget);
 	updateGeometry();
 	DockPanelBase::update();
 }
@@ -292,6 +356,7 @@ void ContentPalette::unitChange()
 
 	groupPal->unitChange();
 	imagePal->unitChange();
+	pagePal->unitChange();
 	textPal->unitChange();
 	tablePal->unitChange();
 
@@ -325,25 +390,33 @@ void ContentPalette::changeEvent(QEvent *e)
 
 void ContentPalette::updatePanelTitle()
 {
+	setWindowTitle(tr("Content"));
+
 	switch ((Panel) stackedWidget->currentIndex())
 	{
 		case Panel::empty:
-			setWindowTitle( tr("Content Properties"));
+			m_inspectorHeader->setTitle(tr("Content"));
+			m_inspectorHeader->setSubtitle(tr("Select an object to edit its content"));
 			break;
 		case Panel::group:
-			setWindowTitle( tr("Group Properties"));
+			m_inspectorHeader->setTitle(tr("Group"));
+			m_inspectorHeader->setSubtitle(tr("Grouped object content and options"));
 			break;
 		case Panel::image:
-			setWindowTitle( tr("Image Properties"));
+			m_inspectorHeader->setTitle(tr("Image"));
+			m_inspectorHeader->setSubtitle(tr("Fitting, crop, resolution, and colour"));
 			break;
 		case Panel::page:
-			setWindowTitle( tr("Page Properties"));
+			m_inspectorHeader->setTitle(tr("Page"));
+			m_inspectorHeader->setSubtitle(tr("Document and page settings"));
 			break;
 		case Panel::table:
-			setWindowTitle( tr("Table Properties"));
+			m_inspectorHeader->setTitle(tr("Table"));
+			m_inspectorHeader->setSubtitle(tr("Table and cell content"));
 			break;
 		case Panel::text:
-			setWindowTitle( tr("Text Properties"));
+			m_inspectorHeader->setTitle(tr("Text"));
+			m_inspectorHeader->setSubtitle(tr("Typography, columns, spacing, and flow"));
 			break;
 	}
 }

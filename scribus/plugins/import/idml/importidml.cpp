@@ -362,7 +362,12 @@ bool IdmlPlug::importFile(const QString& fNameIn, const TransactionSettings& trS
 	if ((!(flags & LoadSavePlugin::lfLoadAsPattern)) && (m_Doc->view() != nullptr))
 		m_Doc->view()->updatesOn(false);
 	m_Doc->scMW()->setScriptRunning(true);
+	// Cocoa can crash while creating an override cursor when import begins from
+	// the Welcome window, before the document window has finished initializing.
+	// The progress dialog already indicates that import is busy on macOS.
+#ifndef Q_OS_MACOS
 	QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
+#endif
 	QString CurDirP = QDir::currentPath();
 	QDir::setCurrent(fi.path());
 	if (convert(fNameIn))
@@ -374,7 +379,11 @@ bool IdmlPlug::importFile(const QString& fNameIn, const TransactionSettings& trS
 		m_Doc->DoDrawing = true;
 		m_Doc->scMW()->setScriptRunning(false);
 		m_Doc->setLoading(false);
+		if ((flags & LoadSavePlugin::lfCreateDoc) && fi.suffix().compare("idml", Qt::CaseInsensitive) == 0)
+			fitTightDisplayText();
+#ifndef Q_OS_MACOS
 		QApplication::changeOverrideCursor(QCursor(Qt::ArrowCursor));
+#endif
 		if (!Elements.isEmpty() && !ret && interactive)
 		{
 			if (flags & LoadSavePlugin::lfScripted)
@@ -418,6 +427,33 @@ bool IdmlPlug::importFile(const QString& fNameIn, const TransactionSettings& trS
 		{
 			m_Doc->changed();
 			m_Doc->reformPages();
+			if (importerFlags & LoadSavePlugin::lfCreateDoc)
+			{
+				// A tiny bleed overlap can make OnPage choose the preceding facing page.
+				for (PageItem* imported : std::as_const(Elements))
+				{
+					if (imported->isGroup() || !m_Doc->DocItems.contains(imported))
+						continue;
+					const QRectF bounds = imported->getTransform().mapRect(QRectF(0, 0, imported->width(), imported->height()));
+					const QPointF center = bounds.center();
+					const int owner = imported->OwnPage;
+					if (owner >= 0 && owner < m_Doc->Pages->count())
+					{
+						const ScPage* page = m_Doc->Pages->at(owner);
+						if (QRectF(page->xOffset(), page->yOffset(), page->width(), page->height()).contains(center))
+							continue;
+					}
+					for (int pageIndex = 0; pageIndex < m_Doc->Pages->count(); ++pageIndex)
+					{
+						const ScPage* page = m_Doc->Pages->at(pageIndex);
+						if (QRectF(page->xOffset(), page->yOffset(), page->width(), page->height()).contains(center))
+						{
+							imported->OwnPage = pageIndex;
+							break;
+						}
+					}
+				}
+			}
 			if (!(flags & LoadSavePlugin::lfLoadAsPattern))
 				m_Doc->view()->updatesOn(true);
 		}
@@ -430,7 +466,9 @@ bool IdmlPlug::importFile(const QString& fNameIn, const TransactionSettings& trS
 		m_Doc->scMW()->setScriptRunning(false);
 		if (!(flags & LoadSavePlugin::lfLoadAsPattern))
 			m_Doc->view()->updatesOn(true);
+#ifndef Q_OS_MACOS
 		QApplication::changeOverrideCursor(QCursor(Qt::ArrowCursor));
+#endif
 	}
 	if (interactive)
 		m_Doc->setLoading(false);
@@ -440,8 +478,91 @@ bool IdmlPlug::importFile(const QString& fNameIn, const TransactionSettings& trS
 		if (showProgress && !interactive)
 			m_Doc->view()->DrawNew();
 	}
+#ifndef Q_OS_MACOS
 	QApplication::restoreOverrideCursor();
+#endif
 	return success;
+}
+
+void IdmlPlug::fitTightDisplayText()
+{
+	// InDesign can fit display text into frames that miss Scribus' ascent or
+	// line-breaking threshold by a fraction of a point. Keep the source font
+	// and font size, and only repair small, transparent, standalone frames.
+	UndoBlocker undoBlocker;
+	for (PageItem* item : std::as_const(Elements))
+	{
+		if (!item || !item->isTextFrame() || item->locked() || item->prevInChain() || item->nextInChain()
+			|| item->fillColor() != CommonStrings::None || item->lineColor() != CommonStrings::None
+			|| qAbs(item->rotation()) > 0.01)
+			continue;
+		const int length = item->itemText.length();
+		if (length < 1 || length > 32 || item->itemText.paragraphStyle(0).alignment() != ParagraphStyle::Extended)
+			continue;
+		bool eligible = true;
+		bool hasSpace = false;
+		bool zeroTracking = true;
+		for (int pos = 0; pos < length; ++pos)
+		{
+			const QChar ch = item->itemText.text(pos);
+			if (ch == SpecialChars::PARSEP || ch == SpecialChars::LINEBREAK || item->itemText.charStyle(pos).fontSize() < 200)
+			{
+				eligible = false;
+				break;
+			}
+			hasSpace |= ch.isSpace();
+			zeroTracking &= qAbs(item->itemText.charStyle(pos).tracking()) < 0.01;
+		}
+		if (!eligible)
+			continue;
+		item->layout();
+		if (!item->frameOverflows())
+			continue;
+
+		if (hasSpace && zeroTracking)
+		{
+			QList<CharStyle> originalStyles;
+			originalStyles.reserve(length);
+			for (int pos = 0; pos < length; ++pos)
+				originalStyles.append(item->itemText.charStyle(pos));
+			for (int tenthPoint = 1; tenthPoint <= 12; ++tenthPoint)
+			{
+				CharStyle adjustment;
+				adjustment.setTracking(-tenthPoint);
+				item->itemText.applyCharStyle(0, length, adjustment);
+				item->layout();
+				if (!item->frameOverflows())
+					break;
+			}
+			if (!item->frameOverflows())
+				continue;
+			for (int pos = 0; pos < length; ++pos)
+				item->itemText.setCharStyle(pos, 1, originalStyles.at(pos));
+		}
+
+		const double originalWidth = item->width();
+		const double originalHeight = item->height();
+		for (int tenthPoint = 1; tenthPoint <= 10; ++tenthPoint)
+		{
+			m_Doc->sizeItem(originalWidth, originalHeight + tenthPoint * 0.1, item, false, true, false);
+			item->layout();
+			if (!item->frameOverflows())
+				break;
+		}
+		if (!item->frameOverflows())
+			continue;
+		m_Doc->sizeItem(originalWidth, originalHeight, item, false, true, false);
+		for (int tenthPoint = 1; tenthPoint <= 10; ++tenthPoint)
+		{
+			const double inset = tenthPoint * 0.1;
+			m_Doc->sizeItem(originalWidth + inset, originalHeight + inset, item, false, true, false);
+			item->layout();
+			if (!item->frameOverflows())
+				break;
+		}
+		if (item->frameOverflows())
+			m_Doc->sizeItem(originalWidth, originalHeight, item, false, true, false);
+	}
 }
 
 IdmlPlug::~IdmlPlug()
@@ -562,7 +683,9 @@ bool IdmlPlug::convert(const QString& fn)
 					else
 						m_Doc->changeLayerName(currentLayer, layerName);
 					m_Doc->setLayerVisible(currentLayer, (dpg.attribute("Visible") == "true"));
-					m_Doc->setLayerLocked(currentLayer, (dpg.attribute("Locked") == "true"));
+					// Imported layers remain visually faithful, but are editable immediately.
+					m_Doc->setLayerLocked(currentLayer, false);
+					m_Doc->setLayerSelectable(currentLayer, true);
 					m_Doc->setLayerPrintable(currentLayer, (dpg.attribute("Printable") == "true"));
 					m_Doc->setLayerFlow(currentLayer, (dpg.attribute("IgnoreWrap","") == "true"));
 				}
@@ -594,7 +717,9 @@ bool IdmlPlug::convert(const QString& fn)
 					else
 						m_Doc->changeLayerName(currentLayer, layerName);
 					m_Doc->setLayerVisible(currentLayer, (dpg.attribute("Visible") == "true"));
-					m_Doc->setLayerLocked(currentLayer, (dpg.attribute("Locked") == "true"));
+					// Imported layers remain visually faithful, but are editable immediately.
+					m_Doc->setLayerLocked(currentLayer, false);
+					m_Doc->setLayerSelectable(currentLayer, true);
 					m_Doc->setLayerPrintable(currentLayer, (dpg.attribute("Printable") == "true"));
 					m_Doc->setLayerFlow(currentLayer, (dpg.attribute("IgnoreWrap","") == "true"));
 				}
@@ -688,6 +813,8 @@ bool IdmlPlug::convert(const QString& fn)
 			activeLayer = m_Doc->layerName(0);
 		m_Doc->setActiveLayer(activeLayer);
 	}
+	if (ext == "idml" && firstPage)
+		retVal = false;
 
 	m_zip.reset();
 
@@ -1176,6 +1303,9 @@ void IdmlPlug::parseCharacterStyle(const QDomElement& styleElem)
 
 void IdmlPlug::parseParagraphStyle(const QDomElement& styleElem)
 {
+	const QString idmlStyle = styleElem.attribute("Self");
+	if (styleElem.hasAttribute("AutoLeading"))
+		autoLeadingValues.insert(idmlStyle, styleElem.attribute("AutoLeading").toDouble());
 	ParagraphStyle newStyle;
 	newStyle.erase();
 	newStyle.setDefaultStyle(false);
@@ -1198,6 +1328,7 @@ void IdmlPlug::parseParagraphStyle(const QDomElement& styleElem)
 				else if (i.tagName() == "BasedOn")
 				{
 					QString parentStyle = i.text().remove("$ID/");
+					autoLeadingParents.insert(idmlStyle, parentStyle);
 					if (styleTranslate.contains(parentStyle))
 						parentStyle = styleTranslate[parentStyle];
 					else
@@ -2626,8 +2757,8 @@ QList<PageItem*> IdmlPlug::parseItemXML(const QDomElement& itElem, const QTransf
 								item->AspectRatio = false;
 							}
 							m_Doc->loadPict(fileName, item);
-							item->setImageXYScale(scXi / item->pixm.imgInfo.xres * 72, scYi / item->pixm.imgInfo.xres * 72);
-							item->setImageXYOffset(-imageDX * scXi / item->imageXScale(), -imageDY * scXi / item->imageYScale());
+							item->setImageXYScale(scXi / item->pixm.imgInfo.xres * 72, scYi / item->pixm.imgInfo.yres * 72);
+							item->setImageXYOffset(-imageDX * scXi / item->imageXScale(), -imageDY * scYi / item->imageYScale());
 							item->setImageRotation(-roti);
 							item->adjustPictScale();
 						}
@@ -2636,17 +2767,21 @@ QList<PageItem*> IdmlPlug::parseItemXML(const QDomElement& itElem, const QTransf
 				else
 				{
 					QUrl url(imageFileName);
-					QString fiNam = url.toLocalFile();
-					QFileInfo fi(fiNam);
-					QByteArray fileName;
-					if (fi.exists())
-						fileName = url.toLocalFile().toLocal8Bit();
-					else
+					QString imagePath = url.toLocalFile();
+					if (imagePath.isEmpty())
+						imagePath = QUrl::fromPercentEncoding(imageFileName.toUtf8());
+					QFileInfo imageInfo(imagePath);
+					if (!imageInfo.exists())
 					{
-						fileName = fi.fileName().toLocal8Bit();
-						fileName.prepend("./Links/");
-						if (!QFileInfo::exists(fileName))
-							fileName = fi.fileName().toLocal8Bit();
+						// InDesign packages place external assets beside the IDML file.
+						// Resolve them there, independent of Scribus's working directory.
+						// Otherwise retain the original missing path for later relinking.
+						const QString linkedPath = QDir(baseFile).filePath("Links/" + imageInfo.fileName());
+						const QString siblingPath = QDir(baseFile).filePath(imageInfo.fileName());
+						if (QFileInfo::exists(linkedPath))
+							imagePath = linkedPath;
+						else if (QFileInfo::exists(siblingPath))
+							imagePath = siblingPath;
 					}
 					item->AspectRatio = true;
 					if (imageFit == "None")
@@ -2658,9 +2793,9 @@ QList<PageItem*> IdmlPlug::parseItemXML(const QDomElement& itElem, const QTransf
 						item->ScaleType   = false;
 						item->AspectRatio = false;
 					}
-					m_Doc->loadPict(QUrl::fromPercentEncoding(fileName), item);
-					item->setImageXYScale(scXi / item->pixm.imgInfo.xres * 72, scYi / item->pixm.imgInfo.xres * 72);
-					item->setImageXYOffset(-imageDX * scXi / item->imageXScale(), -imageDY * scXi / item->imageYScale());
+					m_Doc->loadPict(imagePath, item);
+					item->setImageXYScale(scXi / item->pixm.imgInfo.xres * 72, scYi / item->pixm.imgInfo.yres * 72);
+					item->setImageXYOffset(-imageDX * scXi / item->imageXScale(), -imageDY * scYi / item->imageYScale());
 					item->setImageRotation(-roti);
 					if (imageFit != "None")
 						item->adjustPictScale();
@@ -2747,30 +2882,53 @@ void IdmlPlug::parseStoryXMLNode(const QDomElement& stNode)
 			QString storyName = e.attribute("Self");
 			PageItem *item = nullptr;
 			if (!storyMap.contains(storyName))
-				return;
+				continue;
 			item = storyMap[storyName];
+			bool syntheticTrailingParagraph = false;
 			for (QDomNode st = e.firstChild(); !st.isNull(); st = st.nextSibling())
 			{
 				QDomElement ste = st.toElement();
 				if (ste.tagName() == "ParagraphStyleRange")
-					parseParagraphStyleRange(ste, item);
+					syntheticTrailingParagraph = parseParagraphStyleRange(ste, item);
 				else if (ste.tagName() == "XMLElement")
 				{
 					for (QDomNode stx = ste.firstChild(); !stx.isNull(); stx = stx.nextSibling())
 					{
 						QDomElement stxe = stx.toElement();
 						if (stxe.tagName() == "ParagraphStyleRange")
-							parseParagraphStyleRange(stxe, item);
+							syntheticTrailingParagraph = parseParagraphStyleRange(stxe, item);
 					}
 				}
+			}
+			if (syntheticTrailingParagraph && item->itemText.length() > 0)
+			{
+				// Preserve the final paragraph style when discarding its synthetic separator.
+				const ParagraphStyle finalStyle = item->itemText.paragraphStyle(item->itemText.length() - 1);
+				item->itemText.removeChars(item->itemText.length() - 1, 1);
+				if (item->itemText.length() > 0)
+					item->itemText.applyStyle(item->itemText.length() - 1, finalStyle);
 			}
 			item->itemText.trim();
 		}
 	}
 }
 
-void IdmlPlug::parseParagraphStyleRange(QDomElement &ste, PageItem* item)
+bool IdmlPlug::parseParagraphStyleRange(QDomElement &ste, PageItem* item)
 {
+	const int rangeStart = item->itemText.length();
+	double autoLeading = 120.0;
+	QString idmlStyle = ste.attribute("AppliedParagraphStyle");
+	for (int depth = 0; depth < 64 && !idmlStyle.isEmpty(); ++depth)
+	{
+		if (autoLeadingValues.contains(idmlStyle))
+		{
+			autoLeading = autoLeadingValues.value(idmlStyle);
+			break;
+		}
+		idmlStyle = autoLeadingParents.value(idmlStyle);
+	}
+	if (ste.hasAttribute("AutoLeading"))
+		autoLeading = ste.attribute("AutoLeading").toDouble();
 	QString pStyle = CommonStrings::DefaultParagraphStyle;
 	if (ste.hasAttribute("AppliedParagraphStyle"))
 	{
@@ -2788,43 +2946,96 @@ void IdmlPlug::parseParagraphStyleRange(QDomElement &ste, PageItem* item)
 	ParagraphStyle ttx = m_Doc->paragraphStyle(pStyle);
 	QString fontBase = ttx.charStyle().font().family();
 	QString fontStyle = ttx.charStyle().font().style();
+	QMap<int, double> emptyParagraphSizes;
 	for (QDomNode stc = ste.firstChild(); !stc.isNull(); stc = stc.nextSibling())
 	{
 		QDomElement stt = stc.toElement();
 		if (stt.tagName() == "CharacterStyleRange")
-			parseCharacterStyleRange(stt, item, fontBase, fontStyle, newStyle, item->itemText.length());
+			parseCharacterStyleRange(stt, item, fontBase, fontStyle, newStyle, item->itemText.length(), emptyParagraphSizes);
 		else if (stt.tagName() == "XMLElement")
 		{
 			for (QDomNode stx = stt.firstChild(); !stx.isNull(); stx = stx.nextSibling())
 			{
 				QDomElement stxe = stx.toElement();
 				if (stxe.tagName() == "CharacterStyleRange")
-					parseCharacterStyleRange(stxe, item, fontBase, fontStyle, newStyle, item->itemText.length());
+					parseCharacterStyleRange(stxe, item, fontBase, fontStyle, newStyle, item->itemText.length(), emptyParagraphSizes);
 				else if (stxe.tagName() == "XMLElement")
 				{
 					for (QDomNode stxx = stxe.firstChild(); !stxx.isNull(); stxx = stxx.nextSibling())
 					{
 						QDomElement stxxe = stxx.toElement();
 						if (stxxe.tagName() == "CharacterStyleRange")
-							parseCharacterStyleRange(stxxe, item, fontBase, fontStyle, newStyle, item->itemText.length());
+							parseCharacterStyleRange(stxxe, item, fontBase, fontStyle, newStyle, item->itemText.length(), emptyParagraphSizes);
 					}
 				}
 			}
 		}
 	}
 	int posT = item->itemText.length();
+	if (autoLeading > 0.0 && autoLeading <= 500.0)
+		applyAutoLeading(item, rangeStart, posT, autoLeading, emptyParagraphSizes);
+	ParagraphStyle trailingStyle = posT > rangeStart ? item->itemText.paragraphStyle(posT - 1) : newStyle;
+	bool syntheticTrailingParagraph = false;
 	if (posT > 0)
 	{
 		if (item->itemText.text(posT - 1) != SpecialChars::PARSEP)
+		{
 			item->itemText.insertChars(posT, SpecialChars::PARSEP);
+			syntheticTrailingParagraph = true;
+		}
 	}
-	item->itemText.applyStyle(posT, newStyle);
+	item->itemText.applyStyle(posT, trailingStyle);
+	return syntheticTrailingParagraph;
 }
 
-void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QString fontBase, QString fontStyle, ParagraphStyle &newStyle, int posC)
+void IdmlPlug::applyAutoLeading(PageItem* item, int fromPos, int toPos, double percent, const QMap<int, double>& emptyParagraphSizes)
+{
+	// InDesign's automatic leading is a percentage of point size; Scribus'
+	// automatic mode uses font height instead. Preserve the imported baseline
+	// distance as a paragraph override without changing native documents.
+	for (int start = fromPos; start < toPos; )
+	{
+		int end = start;
+		double largestSize = 0.0;
+		bool uniformSize = true;
+		while (end < toPos && item->itemText.text(end) != SpecialChars::PARSEP)
+		{
+			const double size = item->itemText.charStyle(end).fontSize();
+			uniformSize &= largestSize == 0.0 || qAbs(largestSize - size) < 0.01;
+			largestSize = qMax(largestSize, size);
+			++end;
+		}
+		if (largestSize == 0)
+			largestSize = emptyParagraphSizes.value(start, item->itemText.charStyle(start).fontSize());
+		ParagraphStyle style = item->itemText.paragraphStyle(start);
+		// Scribus uses a different first-line offset for large display type.
+		// Mixed sizes also need per-line leading, not one paragraph-wide value.
+		if (style.lineSpacingMode() == ParagraphStyle::AutomaticLineSpacing
+			&& uniformSize && largestSize > 0 && largestSize < 200)
+		{
+			style.setLineSpacingMode(ParagraphStyle::FixedLineSpacing);
+			style.setLineSpacing(largestSize / 10.0 * percent / 100.0);
+			item->itemText.applyStyle(start, style);
+		}
+		start = end + 1;
+	}
+}
+
+void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QString fontBase, QString fontStyle, ParagraphStyle &newStyle, int posC, QMap<int, double>& emptyParagraphSizes)
 {
 	QString data;
 	bool hasChangedFont = false;
+	auto applyLeading = [&newStyle](const QDomElement& leading)
+	{
+		if (leading.attribute("type") != "unit")
+			return;
+		const double value = leading.text().toDouble();
+		if (value > 0)
+		{
+			newStyle.setLineSpacingMode(ParagraphStyle::FixedLineSpacing);
+			newStyle.setLineSpacing(value);
+		}
+	};
 	for (QDomNode stcp = stt.firstChild(); !stcp.isNull(); stcp = stcp.nextSibling())
 	{
 		QDomElement sp = stcp.toElement();
@@ -2838,20 +3049,12 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 					fontBase = spf.text();
 					hasChangedFont = true;
 				}
+				else if (spf.tagName() == "Leading")
+					applyLeading(spf);
 			}
 		}
 		else if (sp.tagName() == "Leading")
-		{
-			if (sp.attribute("type") == "unit")
-			{
-				double lead = sp.text().toDouble();
-				if (lead != 0)
-				{
-					newStyle.setLineSpacingMode(ParagraphStyle::FixedLineSpacing);
-					newStyle.setLineSpacing(lead);
-				}
-			}
-		}
+			applyLeading(sp);
 	}
 	// Apply possible override of character style
 	CharStyle nstyle = newStyle.charStyle();
@@ -2883,6 +3086,16 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 		}
 	}
 	readCharStyleAttributes(nstyle, stt);
+	auto flushText = [&]()
+	{
+		if (data.isEmpty())
+			return;
+		item->itemText.insertChars(posC, data);
+		item->itemText.applyStyle(posC, newStyle);
+		item->itemText.applyCharStyle(posC, data.length(), nstyle);
+		data.clear();
+		posC = item->itemText.length();
+	};
 	for (QDomNode stch = stt.firstChild(); !stch.isNull(); stch = stch.nextSibling())
 	{
 		QDomElement s = stch.toElement();
@@ -2920,9 +3133,11 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 			item->itemText.applyCharStyle(posC, data.length(), nstyle);
 			data = "";
 			posC = item->itemText.length();
+			emptyParagraphSizes.insert(posC, nstyle.fontSize());
 		}
 		else if ((s.tagName() == "Rectangle") || (s.tagName() == "Oval") || (s.tagName() == "GraphicLine") || (s.tagName() == "Polygon") || (s.tagName() == "TextFrame") || (s.tagName() == "Group") || (s.tagName() == "Button"))
 		{
+			flushText();
 			QTransform m;
 			QList<PageItem*> el = parseItemXML(s, m);
 			for (int ec = 0; ec < el.count(); ++ec)
@@ -2942,6 +3157,7 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 		}
 		else if (s.tagName() == "Table")
 		{
+			flushText();
 			QList<double> rowHeights;
 			QList<double> colWidths;
 			double twidth = 0.0;
@@ -2960,6 +3176,8 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 					colWidths.append(sr.attribute("SingleColumnWidth", "0").toDouble());
 				}
 			}
+			if (rowHeights.isEmpty() || colWidths.isEmpty())
+				continue;
 			m_Doc->dontResize = true;
 			int z = m_Doc->itemAdd(PageItem::Table, PageItem::Unspecified, 0, 0, qMin(item->width() - 2, twidth), qMin(item->height() - 2, theight), 0.0, CommonStrings::None, CommonStrings::None);
 			PageItem_Table* currItem = m_Doc->Items->takeAt(z)->asTable();
@@ -2982,15 +3200,39 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 				QDomElement sr = st.toElement();
 				if (sr.tagName() == "Cell")
 				{
-					QStringList pos = sr.attribute("Name", "0:0").split(":");
-					PageItem* itText = currItem->cellAt(pos[1].toInt(), pos[0].toInt()).textFrame();
+					const QStringList pos = sr.attribute("Name", "0:0").split(":");
+					if (pos.size() != 2)
+						continue;
+					bool columnOk = false;
+					bool rowOk = false;
+					const int column = pos[0].toInt(&columnOk);
+					const int row = pos[1].toInt(&rowOk);
+					if (!columnOk || !rowOk || column < 0 || column >= currItem->columns() || row < 0 || row >= currItem->rows())
+						continue;
+					PageItem* itText = currItem->cellAt(row, column).textFrame();
 					if (itText)
 					{
 						m_Doc->dontResize = true;
 						for (QDomNode sct = sr.firstChild(); !sct.isNull(); sct = sct.nextSibling())
 						{
 							QDomElement spf = sct.toElement();
-							if (spf.tagName() == "XMLElement")
+							if (spf.tagName() == "Rectangle" || spf.tagName() == "Oval" || spf.tagName() == "GraphicLine" ||
+							    spf.tagName() == "Polygon" || spf.tagName() == "TextFrame" || spf.tagName() == "Group" ||
+							    spf.tagName() == "Button")
+							{
+								const QList<PageItem*> cellItems = parseItemXML(spf);
+								for (PageItem* cellItem : cellItems)
+								{
+									cellItem->isEmbedded = true;
+									cellItem->gXpos = 0;
+									cellItem->gYpos = 0;
+									cellItem->gWidth = cellItem->width();
+									cellItem->gHeight = cellItem->height();
+									const int inlineIndex = m_Doc->addToInlineFrames(cellItem);
+									itText->itemText.insertObject(inlineIndex);
+								}
+							}
+							else if (spf.tagName() == "XMLElement")
 							{
 								for (QDomNode sctx = spf.firstChild(); !sctx.isNull(); sctx = sctx.nextSibling())
 								{
@@ -3024,17 +3266,11 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 		{
 		//	for (QDomNode stx = s.firstChild(); !stx.isNull(); stx = stx.nextSibling())
 		//	{
-				parseCharacterStyleRange(s, item, fontBase, fontStyle, newStyle, posC);
+				parseCharacterStyleRange(s, item, fontBase, fontStyle, newStyle, posC, emptyParagraphSizes);
 		//	}
 		}
 	}
-	if (!data.isEmpty())
-	{
-		item->itemText.insertChars(posC, data);
-		item->itemText.applyStyle(posC, newStyle);
-		item->itemText.applyCharStyle(posC, data.length(), nstyle);
-//		posC = item->itemText.length();
-	}
+	flushText();
 }
 
 void IdmlPlug::readCharStyleAttributes(CharStyle &newStyle, const QDomElement &styleElem)
@@ -3293,13 +3529,22 @@ QString IdmlPlug::constructFontName(const QString& fontBaseName, const QString& 
 					family.remove("$ID/");
 					if (!PrefsManager::instance().appPrefs.fontPrefs.GFontSub.contains(family))
 					{
-						QApplication::changeOverrideCursor(QCursor(Qt::ArrowCursor));
-						MissingFont *dia = new MissingFont(nullptr, family, m_Doc);
-						dia->exec();
-						fontName = dia->getReplacementFont();
-						delete dia;
-						QApplication::changeOverrideCursor(QCursor(Qt::WaitCursor));
-						PrefsManager::instance().appPrefs.fontPrefs.GFontSub[family] = fontName;
+						if (!ScCore->usingGUI() || (importerFlags & (LoadSavePlugin::lfNoDialogs | LoadSavePlugin::lfScripted)))
+							fontName = PrefsManager::instance().appPrefs.itemToolPrefs.textFont;
+						else
+						{
+#ifndef Q_OS_MACOS
+							QApplication::changeOverrideCursor(QCursor(Qt::ArrowCursor));
+#endif
+							MissingFont *dia = new MissingFont(nullptr, family, m_Doc);
+							dia->exec();
+							fontName = dia->getReplacementFont();
+							delete dia;
+#ifndef Q_OS_MACOS
+							QApplication::changeOverrideCursor(QCursor(Qt::WaitCursor));
+#endif
+							PrefsManager::instance().appPrefs.fontPrefs.GFontSub[family] = fontName;
+						}
 					}
 					else
 						fontName = PrefsManager::instance().appPrefs.fontPrefs.GFontSub[family];

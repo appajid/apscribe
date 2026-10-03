@@ -42,10 +42,10 @@ endif()
 #Set our version values
 #Final version is ${VERSION} = ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.${VERSION_SUFFIX}
 #where VERSION_SUFFIX is of the form "", "svn" or "Nsvn" (N being the minor patch level)
-set (VERSION_MAJOR "1")
-set (VERSION_MINOR "7")
-set (VERSION_PATCH "4")
-set (VERSION_SUFFIX "svn")
+set (VERSION_MAJOR "2")
+set (VERSION_MINOR "0")
+set (VERSION_PATCH "0")
+set (VERSION_SUFFIX "")
 set (VERSION ${VERSION_MAJOR})
 if (VERSION_MINOR GREATER -1)
 	set (VERSION ${VERSION}.${VERSION_MINOR})
@@ -56,11 +56,11 @@ endif()
 
 #Project Setup
 #Do this now, prior to adding the suffix for SVN
-project(scribus VERSION ${VERSION}) # LANGUAGES CXX C)
+project(apscribe VERSION ${VERSION}) # LANGUAGES CXX C)
 if (VERSION_SUFFIX)
 	set (VERSION ${VERSION}.${VERSION_SUFFIX})
 endif()
-message(STATUS "Scribus ${VERSION} will be built and installed into ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "Apscribe ${VERSION} will be built and installed into ${CMAKE_INSTALL_PREFIX}")
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
@@ -105,7 +105,9 @@ include(TestBigEndian)
 include(GNUInstallDirs)
 #include(FeatureSummary)
 
-#enable_testing()
+if (WITH_TESTS)
+	enable_testing()
+endif()
 
 #Set the custom CMake module directory where our include/lib finders are
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modules")
@@ -362,7 +364,7 @@ if(TAG_VERSION)
 	set(CACHED_VERSIONING ON)
 endif()
 
-#Remove version tags on OSX so our bundle is Scribus.app
+#Remove version tags on OSX so the Apscribe bundle has a stable name
 if (APPLEBUNDLE OR WIN32)
 	if (WANT_VERSIONING OR CACHED_VERSIONING)
 		message(STATUS "Ignoring version tag on Win32 or OSX when building bundle")
@@ -542,6 +544,14 @@ add_custom_target(uninstall
 ########## Add our subdirs                                                                          ##########
 
 #Add our source subdirs
+if(APPLEBUNDLE OR WIN32)
+	set(EXE_NAME_PREFIX "Apscribe")
+else()
+	set(EXE_NAME_PREFIX "apscribe")
+endif()
+# Set this in the parent scope: the app and translation directories both use it.
+# A normal variable also overrides the former cached Scribus name in old builds.
+set(EXE_NAME "${EXE_NAME_PREFIX}${TAG_VERSION}")
 add_subdirectory(scribus)
 add_subdirectory(doc)
 add_subdirectory(resources/dicts)
@@ -586,12 +596,12 @@ endif()
 
 #Install the .desktop file
 configure_file(
-	${CMAKE_CURRENT_SOURCE_DIR}/scribus.desktop.in
-	${CMAKE_CURRENT_SOURCE_DIR}/scribus.desktop
+	${CMAKE_CURRENT_SOURCE_DIR}/apscribe.desktop.in
+	${CMAKE_CURRENT_BINARY_DIR}/apscribe.desktop
 )
 install(FILES
-	scribus.desktop
-	RENAME scribus${TAG_VERSION}.desktop
+	${CMAKE_CURRENT_BINARY_DIR}/apscribe.desktop
+	RENAME apscribe${TAG_VERSION}.desktop
 	DESTINATION ${DESKTOPDIR}
 )
 
@@ -605,12 +615,12 @@ install(FILES
 
 #Install the appdata file
 configure_file(
-	${CMAKE_CURRENT_SOURCE_DIR}/scribus.appdata.xml.in
-	${CMAKE_CURRENT_SOURCE_DIR}/scribus.appdata.xml
+	${CMAKE_CURRENT_SOURCE_DIR}/apscribe.appdata.xml.in
+	${CMAKE_CURRENT_BINARY_DIR}/apscribe.appdata.xml
 )
 install(FILES
-	scribus.appdata.xml
-	RENAME scribus${TAG_VERSION}.appdata.xml
+	${CMAKE_CURRENT_BINARY_DIR}/apscribe.appdata.xml
+	RENAME apscribe${TAG_VERSION}.appdata.xml
 	DESTINATION ${APPDATADIR}
 )
 
@@ -633,16 +643,21 @@ endif()
 
 # If the cmake version includes cpack, use it for tarball building
 if(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
-	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Scribus is an open source publishing application for Linux, Mac OSX and Windows")
-	set(CPACK_PACKAGE_VENDOR "Scribus Team")
+	set(CPACK_PACKAGE_NAME "Apscribe")
+	set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Apscribe is an open-source publishing application based on Scribus")
+	set(CPACK_PACKAGE_VENDOR "Appaji Ambarisha Darbha and Scribus contributors")
 	set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README")
 	set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/README")
 	set(CPACK_PACKAGE_VERSION_MAJOR "${VERSION_MAJOR}")
 	set(CPACK_PACKAGE_VERSION_MINOR "${VERSION_MINOR}")
 	set(CPACK_PACKAGE_VERSION_PATCH "${VERSION_PATCH}")
-	set(CPACK_PACKAGE_INSTALL_DIRECTORY "Scribus ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
-	set(CPACK_PACKAGE_EXECUTABLES "scribus${TAG_VERSION}")
-	set(CPACK_SOURCE_PACKAGE_FILE_NAME "scribus-${VERSION}${VERSION_SUFFIX}")
+	set(CPACK_PACKAGE_INSTALL_DIRECTORY "Apscribe ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
+	if(WIN32 OR APPLEBUNDLE)
+		set(CPACK_PACKAGE_EXECUTABLES "Apscribe${TAG_VERSION}")
+	else()
+		set(CPACK_PACKAGE_EXECUTABLES "apscribe${TAG_VERSION}")
+	endif()
+	set(CPACK_SOURCE_PACKAGE_FILE_NAME "apscribe-${VERSION}${VERSION_SUFFIX}")
 	set(CPACK_SOURCE_GENERATOR TBZ2)
 	set(CPACK_SYSTEM_NAME "")
 	set(CPACK_TOPLEVEL_TAG "")

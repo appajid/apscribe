@@ -11,6 +11,7 @@ for which a new license (GPL+exception) is in place.
 #include <QListWidgetItem>
 #include <QScopedValueRollback>
 #include <QSignalBlocker>
+#include <QToolButton>
 #include <QWidget>
 
 #include "appmodehelper.h"
@@ -20,6 +21,7 @@ for which a new license (GPL+exception) is in place.
 #include "iconmanager.h"
 #include "newmarginwidget.h"
 #include "pageitem_table.h"
+#include "pageitem_textframe.h"
 #include "propertiespalette_table.h"
 #include "sccolorengine.h"
 #include "scribus.h"
@@ -37,7 +39,26 @@ for which a new license (GPL+exception) is in place.
 PropertiesPalette_Table::PropertiesPalette_Table(QWidget* parent) : QWidget(parent)
 {
 	setupUi(this);
-	setSizePolicy( QSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum));
+	setProperty("specialistTableEditor", true);
+	setAttribute(Qt::WA_StyledBackground, true);
+	setSizePolicy(QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred));
+
+	for (QToolButton* button : findChildren<QToolButton*>())
+	{
+		button->setProperty("tableInspectorAction", true);
+		button->setFixedSize(32, 32);
+		button->setIconSize(QSize(20, 20));
+	}
+	tableStyleCombo->setAccessibleName(tr("Table style"));
+	cellStyleCombo->setAccessibleName(tr("Cell style"));
+	buttonClearTableStyle->setAccessibleName(tr("Remove direct table formatting"));
+	buttonClearCellStyle->setAccessibleName(tr("Remove direct cell formatting"));
+	addBorderLineButton->setAccessibleName(tr("Add border line"));
+	removeBorderLineButton->setAccessibleName(tr("Remove border line"));
+	borderLineList->setAccessibleName(tr("Table border lines"));
+	sideSelector->setAccessibleName(tr("Table and cell border sides"));
+	fillColor->setAccessibleName(tr("Table or cell fill colour"));
+	tableDirectionComboBox->setAccessibleName(tr("Table direction"));
 
 	iconSetChange();
 
@@ -128,6 +149,8 @@ void PropertiesPalette_Table::unsetDocument()
 
 void PropertiesPalette_Table::setItem(PageItem* item)
 {
+	if (m_item && m_item != item && m_item->isTable())
+		disconnect(m_item->asTable(), SIGNAL(selectionChanged()), this, SLOT(handleCellSelectionChanged()));
 	m_item = item;
 
 	if (!m_item) return;
@@ -151,10 +174,20 @@ void PropertiesPalette_Table::handleSelectionChanged()
 		return;
 
 	// We only handle a single item for now.
-	if (m_doc->m_Selection->count() >= 1 && m_doc->m_Selection->itemAt(0)->isTable())
-		m_item = m_doc->m_Selection->itemAt(0);
-	else
-		m_item = nullptr;
+	PageItem* selectedTable = nullptr;
+	if (m_doc->m_Selection->count() == 1)
+	{
+		PageItem* selected = m_doc->m_Selection->itemAt(0);
+		if (selected->isTable())
+			selectedTable = selected;
+		else if (m_doc->appMode == modeEdit && selected->asTextFrame())
+		{
+			PageItem* anchored = selected->asTextFrame()->selectedAnchoredObject();
+			if (anchored && anchored->isTable())
+				selectedTable = anchored;
+		}
+	}
+	setItem(selectedTable);
 
 	syncSideSelectorToCells();
 	on_sideSelector_selectionChanged();

@@ -1,4 +1,8 @@
-<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><style>@import '../colors.css';</style>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M8 8H15C15 11.866 11.866 15 8 15C4.13401 15 1 11.866 1 8C1 4.13401 4.13401 1 8 1C8.69497 1 9.36629 1.10128 10 1.28988V3H10.5L8 8Z"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M13 0H9V4H13V0ZM12 1H10V3H12V1Z" class="info"/>
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<style>@import '../colors.css';</style>
+<g class="line" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4.5 18.5A14 14 0 0 1 19.5 4.8"/>
+  <path d="M4.5 18.5h15M4.5 18.5V4.8" stroke-dasharray="2.2 2.2" opacity=".55"/>
+</g>
+<circle class="info" cx="4.5" cy="18.5" r="1.7"/>
 </svg>

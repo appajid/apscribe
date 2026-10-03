@@ -6,6 +6,15 @@ for which a new license (GPL+exception) is in place.
 */
 #include <memory>
 
+#include <QFile>
+#include <QFileInfo>
+#include <QPainter>
+#include <QSvgRenderer>
+
+#include <libpagemaker/libpagemaker.h>
+#include <librevenge/RVNGSVGDrawingGenerator.h>
+#include <librevenge-stream/librevenge-stream.h>
+
 #include "importpm.h"
 #include "importpmplugin.h"
 
@@ -20,6 +29,7 @@ for which a new license (GPL+exception) is in place.
 #include "util_formats.h"
 
 #include "ui/customfdialog.h"
+#include "ui/scmessagebox.h"
 #include "ui/scmwmenumanager.h"
 
 int importpm_getPluginAPIVersion()
@@ -55,7 +65,7 @@ void ImportPmPlugin::languageChange()
 	importAction->setText( tr("Import Pagemaker..."));
 	FileFormat* fmt = getFormatByExt("pmd");
 	fmt->trName = tr("Pagemaker");
-	fmt->filter = tr("Pagemaker (*.pmd *.PMD *.pm *.PM *.pm3 *.PM3 *.pm4 *.PM4 *.pm5 *.PM5 *.pm6 *.PM6 *.p65 *.P65)");
+	fmt->filter = tr("Pagemaker (*.pmd *.PMD *.pm *.PM *.pm3 *.PM3 *.pm4 *.PM4 *.pm5 *.PM5 *.pm6 *.PM6 *.p65 *.P65 *.pm7 *.PM7)");
 }
 
 ImportPmPlugin::~ImportPmPlugin()
@@ -73,7 +83,7 @@ const ScActionPlugin::AboutData* ImportPmPlugin::getAboutData() const
 	auto* about = new AboutData;
 	about->authors = "Franz Schmid <franz@scribus.info>";
 	about->shortDescription = tr("Imports Pagemaker Files");
-	about->description = tr("Imports most Pagemaker files into the current document, converting their vector data into Scribus objects.");
+	about->description = tr("Imports most Pagemaker files into the current document, converting their vector data into Apscribe objects.");
 	about->license = "GPL";
 	Q_CHECK_PTR(about);
 	return about;
@@ -89,9 +99,9 @@ void ImportPmPlugin::registerFormats()
 {
 	FileFormat fmt(this);
 	fmt.trName = tr("Pagemaker");
-	fmt.filter = tr("Pagemaker (*.pmd *.PMD *.pm *.PM *.pm3 *.PM3 *.pm4 *.PM4 *.pm5 *.PM5 *.pm6 *.PM6 *.p65 *.P65)");
+	fmt.filter = tr("Pagemaker (*.pmd *.PMD *.pm *.PM *.pm3 *.PM3 *.pm4 *.PM4 *.pm5 *.PM5 *.pm6 *.PM6 *.p65 *.P65 *.pm7 *.PM7)");
 	fmt.formatId = 0;
-	fmt.fileExtensions = QStringList() << "pmd" << "pm" << "pm3" << "pm4" << "pm5" << "pm6" << "p65";
+	fmt.fileExtensions = QStringList() << "pmd" << "pm" << "pm3" << "pm4" << "pm5" << "pm6" << "p65" << "pm7";
 	fmt.load = true;
 	fmt.save = false;
 	fmt.thumb = true;
@@ -103,7 +113,11 @@ void ImportPmPlugin::registerFormats()
 
 bool ImportPmPlugin::fileSupported(QIODevice* /* file */, const QString & fileName) const
 {
-	return true;
+	if (!QFileInfo(fileName).isFile())
+		return false;
+
+	librevenge::RVNGFileStream input(QFile::encodeName(fileName).constData());
+	return libpagemaker::PMDocument::isSupported(&input);
 }
 
 bool ImportPmPlugin::loadFile(const QString & fileName, const FileFormat &, int flags, int /*index*/)
@@ -121,11 +135,18 @@ bool ImportPmPlugin::importFile(QString fileName, int flags)
 		flags |= lfInteractive;
 		PrefsContext* prefs = PrefsManager::instance().prefsFile->getPluginContext("importpm");
 		QString wdir = prefs->get("wdir", ".");
-		CustomFDialog diaf(ScCore->primaryMainWindow(), wdir, QObject::tr("Open"), tr("All Supported Formats")+" (*.pmd *.PMD *.pm *.PM *.pm3 *.PM3 *.pm4 *.PM4 *.pm5 *.PM5 *.pm6 *.PM6 *.p65 *.P65);;All Files (*)");
+		CustomFDialog diaf(ScCore->primaryMainWindow(), wdir, QObject::tr("Open"), tr("All Supported Formats")+" (*.pmd *.PMD *.pm *.PM *.pm3 *.PM3 *.pm4 *.PM4 *.pm5 *.PM5 *.pm6 *.PM6 *.p65 *.P65 *.pm7 *.PM7);;All Files (*)");
 		if (!diaf.exec())
 			return true;
 		fileName = diaf.selectedFile();
 		prefs->set("wdir", fileName.left(fileName.lastIndexOf("/")));
+	}
+	if (!fileSupported(nullptr, fileName))
+	{
+		if ((flags & lfInteractive) && ScCore->usingGUI())
+			ScMessageBox::warning(ScCore->primaryMainWindow(), CommonStrings::trWarning,
+			                      tr("The selected file is not a supported PageMaker document or is damaged."));
+		return false;
 	}
 
 	m_Doc = ScCore->primaryMainWindow()->doc;
@@ -147,20 +168,52 @@ bool ImportPmPlugin::importFile(QString fileName, int flags)
 
 	auto dia = std::make_unique<PmPlug>(m_Doc, flags);
 	Q_CHECK_PTR(dia);
-	dia->importFile(fileName, trSettings, flags, !(flags & lfScripted));
+	const bool imported = dia->importFile(fileName, trSettings, flags, !(flags & lfScripted));
 
-	if (activeTransaction)
+	if (activeTransaction && imported)
 		activeTransaction.commit();
 	if (emptyDoc || !(flags & lfInteractive) || !(flags & lfScripted))
 		UndoManager::instance()->setUndoEnabled(true);
 
-	return true;
+	return imported;
 }
 
 QImage ImportPmPlugin::readThumbnail(const QString& fileName)
 {
 	if (fileName.isEmpty())
 		return QImage();
+	// PM7's first page is rendered directly from libpagemaker's SVG output.
+	// The temporary Scribus document used below for older formats is not safe
+	// for this format when the file dialog requests a preview.
+	if (QFileInfo(fileName).suffix().compare("pm7", Qt::CaseInsensitive) == 0)
+	{
+		librevenge::RVNGFileStream input(QFile::encodeName(fileName).constData());
+		if (!libpagemaker::PMDocument::isSupported(&input))
+			return QImage();
+		librevenge::RVNGStringVector pages;
+		librevenge::RVNGSVGDrawingGenerator generator(pages, "svg");
+		if (!libpagemaker::PMDocument::parse(&input, &generator) || pages.empty())
+			return QImage();
+		const librevenge::RVNGString& firstPage = pages[0];
+		QSvgRenderer renderer(QByteArray(firstPage.cstr(), firstPage.size()));
+		if (!renderer.isValid())
+			return QImage();
+		QSizeF pageSize = renderer.viewBoxF().size();
+		if (pageSize.isEmpty())
+			pageSize = renderer.defaultSize();
+		if (pageSize.isEmpty())
+			return QImage();
+		QSizeF previewSize = pageSize;
+		previewSize.scale(QSizeF(500, 500), Qt::KeepAspectRatio);
+		QImage preview(qMax(1, qRound(previewSize.width())), qMax(1, qRound(previewSize.height())), QImage::Format_ARGB32_Premultiplied);
+		preview.fill(Qt::white);
+		QPainter painter(&preview);
+		renderer.render(&painter);
+		painter.end();
+		preview.setText("XSize", QString::number(pageSize.width()));
+		preview.setText("YSize", QString::number(pageSize.height()));
+		return preview;
+	}
 	UndoManager::instance()->setUndoEnabled(false);
 	m_Doc = nullptr;
 	auto dia = std::make_unique<PmPlug>(m_Doc, lfCreateThumbnail);

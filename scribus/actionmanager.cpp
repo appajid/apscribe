@@ -83,7 +83,12 @@ bool ActionManager::compareKeySeqToShortcut(const QKeySequence& ks, const QStrin
 {
 	if (!scrActions->contains(actionName))
 		return false;
-	return ks.matches((*scrActions)[actionName]->shortcut()) == QKeySequence::ExactMatch;
+	for (const QKeySequence& shortcut : (*scrActions)[actionName]->shortcuts())
+	{
+		if (ks.matches(shortcut) == QKeySequence::ExactMatch)
+			return true;
+	}
+	return false;
 }
 
 bool ActionManager::compareKeySeqToShortcut(int k, Qt::KeyboardModifiers km, const QString& actionName)
@@ -150,6 +155,8 @@ void ActionManager::initFileMenuActions()
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "fileExportAsPDF";
 	scrActions->insert(name, new ScrAction("pref-pdf-export", "pref-pdf-export", "", defaultKey(name), mainWindow));
+	name = "fileExportAsEpub";
+	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	//Rest of File Menu
 //	name = "fileDocSetup";
 //	scrActions->insert(name, new ScrAction("document-properties", "document-properties", "", defaultKey(name), mainWindow));
@@ -200,6 +207,7 @@ void ActionManager::initFileMenuActions()
 	connect( (*scrActions)["fileExportText"], SIGNAL(triggered()), mainWindow, SLOT(SaveText()) );
 	connect( (*scrActions)["fileExportAsEPS"], SIGNAL(triggered()), mainWindow, SLOT(SaveAsEps()) );
 	connect( (*scrActions)["fileExportAsPDF"], SIGNAL(triggered()), mainWindow, SLOT(SaveAsPDF()) );
+	connect( (*scrActions)["fileExportAsEpub"], SIGNAL(triggered()), mainWindow, SLOT(SaveAsEpub()) );
 	//The rest are plugins
 	
 	
@@ -264,6 +272,8 @@ void ActionManager::initEditMenuActions()
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "editMarks";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
+	name = "editVariables";
+	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "editNotesStyles";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 
@@ -292,6 +302,7 @@ void ActionManager::initEditMenuActions()
 	connect( (*scrActions)["editReplaceColors"], SIGNAL(triggered()), mainWindow, SLOT(slotReplaceColors()) );
 	connect( (*scrActions)["editMasterPages"], SIGNAL(triggered()), mainWindow, SLOT(editMasterPagesStart()) );
 	connect( (*scrActions)["editJavascripts"], SIGNAL(triggered()), mainWindow, SLOT(ManageJava()) );
+	connect( (*scrActions)["editVariables"], SIGNAL(triggered()), mainWindow, SLOT(slotManageDynamicVariables()) );
 }
 
 void ActionManager::initStyleMenuActions()
@@ -567,6 +578,8 @@ void ActionManager::initInsertMenuActions()
 	//Insert Menu
 	name = "insertFrame";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
+	name = "insertAnchoredImage";
+	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "insertGlyph";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	(*scrActions)["insertGlyph"]->setToggleAction(true);
@@ -581,6 +594,9 @@ void ActionManager::initInsertMenuActions()
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	(*scrActions)[name]->setEnabled(true);
 	name = "insertMarkVariableText";
+	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
+	(*scrActions)[name]->setEnabled(true);
+	name = "insertDynamicVariable";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	(*scrActions)[name]->setEnabled(true);
 	name = "insertMarkItem";
@@ -603,12 +619,14 @@ void ActionManager::initInsertMenuActions()
 	(*scrActions)[name]->setEnabled(false);
 
 	connect( (*scrActions)["insertFrame"], SIGNAL(triggered()), mainWindow, SLOT(slotInsertFrame()) );
+	connect( (*scrActions)["insertAnchoredImage"], SIGNAL(triggered()), mainWindow, SLOT(slotInsertAnchoredImage()) );
 	connect( (*scrActions)["insertGlyph"], SIGNAL(triggered()), mainWindow, SLOT(slotCharSelect()) );
 	connect( (*scrActions)["insertSampleText"], SIGNAL(triggered()), mainWindow, SLOT(insertSampleText()) );
 	connect( (*scrActions)["stickyTools"], SIGNAL(triggered()), mainWindow, SLOT(ToggleStickyTools()) );
 
 	connect( (*scrActions)["insertMarkAnchor"], SIGNAL(triggered()), mainWindow, SLOT(slotInsertMarkAnchor()) );
 	connect( (*scrActions)["insertMarkVariableText"], SIGNAL(triggered()), mainWindow, SLOT(slotInsertMarkVariableText()) );
+	connect( (*scrActions)["insertDynamicVariable"], SIGNAL(triggered()), mainWindow, SLOT(slotInsertDynamicVariable()) );
 	connect( (*scrActions)["insertMarkItem"], SIGNAL(triggered()), mainWindow, SLOT(slotInsertMarkItem()) );
 	connect( (*scrActions)["insertMark2Mark"], SIGNAL(triggered()), mainWindow, SLOT(slotInsertMark2Mark()) );
 	connect( (*scrActions)["insertMarkNote"], SIGNAL(triggered()), mainWindow, SLOT(slotInsertMarkNote()) );
@@ -848,6 +866,8 @@ void ActionManager::initToolsMenuActions()
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name="toolsContent";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
+	name = "toolsToolPalette";
+	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "toolsOutline";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "toolsScrapbook";
@@ -886,6 +906,8 @@ void ActionManager::initToolsMenuActions()
 	//toolbar only items
 	name = "toolsSelect";
 	scrActions->insert(name, new ScrAction(ScrAction::DataInt, "tool-select", "tool-select", "", defaultKey(name), mainWindow, modeNormal));
+	name = "toolsTextCursor";
+	scrActions->insert(name, new ScrAction(ScrAction::DataInt, "tool-text-cursor", "tool-text-cursor", "", defaultKey(name), mainWindow, modeTextCursor));
 	name = "toolsInsertTextFrame";
 	scrActions->insert(name, new ScrAction(ScrAction::DataInt, "tool-insert-text-frame", "tool-insert-text-frame", "", defaultKey(name), mainWindow, modeDrawText));
 	name = "toolsInsertImageFrame";
@@ -895,7 +917,7 @@ void ActionManager::initToolsMenuActions()
 	name = "toolsInsertTable";
 	scrActions->insert(name, new ScrAction(ScrAction::DataInt, "tool-insert-table", "tool-insert-table", "", defaultKey(name), mainWindow, modeDrawTable2));
 	name = "toolsInsertShape";
-	scrActions->insert(name, new ScrAction(ScrAction::DataInt, QString(), QString(), "", defaultKey(name), mainWindow, modeDrawShapes));
+	scrActions->insert(name, new ScrAction(ScrAction::DataInt, "tool-insert-shape", "tool-insert-shape", "", defaultKey(name), mainWindow, modeDrawShapes));
 	name = "toolsInsertPolygon";
 	scrActions->insert(name, new ScrAction(ScrAction::DataInt, "tool-insert-polygon", "tool-insert-polygon", "", defaultKey(name), mainWindow, modeDrawRegularPolygon));
 	name = "toolsInsertArc";
@@ -979,7 +1001,7 @@ void ActionManager::initToolsMenuActions()
 
 	(*scrActions)["toolsDocumentLog"]->setChecked(false);
 
-	*modeActionNames << "toolsSelect" << "toolsInsertTextFrame" << "toolsInsertImageFrame" << "toolsInsertTable";
+	*modeActionNames << "toolsSelect" << "toolsTextCursor" << "toolsInsertTextFrame" << "toolsInsertImageFrame" << "toolsInsertTable";
 	*modeActionNames << "toolsInsertShape" << "toolsInsertPolygon" << "toolsInsertArc" << "toolsInsertSpiral" << "toolsInsertLine" << "toolsInsertBezier";
 	*modeActionNames << "toolsInsertFreehandLine" << "toolsInsertCalligraphicLine" << "toolsInsertRenderFrame" << "toolsRotate" << "toolsZoom" << "toolsEditContents";
 	*modeActionNames << "toolsEditWithStoryEditor" << "toolsLinkTextFrame" << "toolsUnlinkTextFrame"; //<< "toolsUnlinkTextFrameAndCutText";
@@ -1006,6 +1028,10 @@ void ActionManager::initExtrasMenuActions()
 	QString name;
 	name = "extrasManageImages";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
+	name = "extrasReplaceFonts";
+	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
+	name = "extrasConvertRGBColors";
+	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "extrasHyphenateText";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "extrasDeHyphenateText";
@@ -1015,6 +1041,8 @@ void ActionManager::initExtrasMenuActions()
 	name = "extrasUpdateDocument";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	connect( (*scrActions)["extrasManageImages"], SIGNAL(triggered()), mainWindow, SLOT(StatusPic()) );
+	connect( (*scrActions)["extrasReplaceFonts"], SIGNAL(triggered()), mainWindow, SLOT(replaceDocumentFonts()) );
+	connect( (*scrActions)["extrasConvertRGBColors"], SIGNAL(triggered()), mainWindow, SLOT(convertRGBColorsToCMYK()) );
 	connect( (*scrActions)["extrasGenerateTableOfContents"], SIGNAL(triggered()), mainWindow, SLOT(generateTableOfContents()) );
 	connect( (*scrActions)["extrasUpdateDocument"], SIGNAL(triggered()), mainWindow, SLOT(updateDocument()) );
 }
@@ -1029,7 +1057,10 @@ void ActionManager::initWindowsMenuActions()
 	scrActions->insert(name, new ScrAction( "", defaultKey(name), mainWindow));
 	name = "specialToggleAllPalettes";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
+	name = "windowsResetWorkspace";
+	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	connect( (*scrActions)["specialToggleAllPalettes"], SIGNAL(triggered()), mainWindow, SLOT(ToggleAllPalettes()) );
+	connect( (*scrActions)["windowsResetWorkspace"], SIGNAL(triggered()), mainWindow, SLOT(resetWorkspaceLayout()) );
 }
 
 void ActionManager::initScriptMenuActions()
@@ -1049,7 +1080,7 @@ void ActionManager::initHelpMenuActions()
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	(*scrActions)[name]->setMenuRole(QAction::AboutQtRole);
 	name = "helpActionSearch";
-	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
+	scrActions->insert(name, new ScrAction("edit-find-replace", "edit-find-replace", "", defaultKey(name), mainWindow));
 	name = "helpTooltips";
 	scrActions->insert(name, new ScrAction("", defaultKey(name), mainWindow));
 	name = "helpManual";
@@ -1579,6 +1610,7 @@ void ActionManager::languageChange()
 	(*scrActions)["fileExportText"]->setTexts( tr("Save &Text..."));
 	(*scrActions)["fileExportAsEPS"]->setTexts( tr("Save as &EPS..."));
 	(*scrActions)["fileExportAsPDF"]->setTexts( tr("Save as P&DF..."));
+	(*scrActions)["fileExportAsEpub"]->setTexts( tr("Export Limited &EPUB..."));
 //	(*scrActions)["fileDocSetup"]->setTexts( tr("Document &Setup (old)..."));
 	(*scrActions)["fileDocSetup150"]->setTexts( tr("Document &Setup..."));
 //	(*scrActions)["filePreferences"]->setTexts( tr("P&references (old)..."));
@@ -1611,7 +1643,8 @@ void ActionManager::languageChange()
 	(*scrActions)["editColorsAndFills"]->setTexts( tr("Colors and Fills..."));
 	(*scrActions)["editReplaceColors"]->setTexts( tr("Replace Colors..."));
 	(*scrActions)["editStyles"]->setTexts( tr("S&tyles..."));
-	(*scrActions)["editMarks"]->setTexts( tr("Marks..."));
+	(*scrActions)["editMarks"]->setTexts( tr("References and Marks..."));
+	(*scrActions)["editVariables"]->setTexts( tr("Variables..."));
 	(*scrActions)["editNotesStyles"]->setTexts( tr("Notes Styles..."));
 	(*scrActions)["editMasterPages"]->setTexts( tr("&Master Pages..."));
 	(*scrActions)["editJavascripts"]->setTexts( tr("&JavaScripts..."));
@@ -1624,7 +1657,7 @@ void ActionManager::languageChange()
 	}
 	(*scrActions)["fontSizeOther"]->setTexts( tr("&Other..."));
 
-	(*scrActions)["itemStyleSearch"]->setTexts( tr("Style &Search"));
+	(*scrActions)["itemStyleSearch"]->setTexts( tr("Quick Apply &Styles..."));
 
 	(*scrActions)["alignLeft"]->setTexts( tr("&Left"));
 	(*scrActions)["alignCenter"]->setTexts( tr("&Center"));
@@ -1724,12 +1757,14 @@ void ActionManager::languageChange()
 	//Insert Menu
 	(*scrActions)["insertFrame"]->setTexts( tr("&Frames..."));
 	(*scrActions)["insertGlyph"]->setTexts( tr("&Glyph..."));
+	(*scrActions)["insertAnchoredImage"]->setTexts( tr("Image in Text..."));
 	(*scrActions)["insertSampleText"]->setTexts( tr("Sample Text..."));
 	(*scrActions)["stickyTools"]->setTexts( tr("Sticky Tools"));
-	(*scrActions)["insertMarkAnchor"]->setTexts( tr("Anchor Mark"));
+	(*scrActions)["insertMarkAnchor"]->setTexts( tr("Cross-reference Target"));
 	(*scrActions)["insertMarkVariableText"]->setTexts( tr("Variable Text"));
+	(*scrActions)["insertDynamicVariable"]->setTexts( tr("Variable..."));
 	(*scrActions)["insertMarkItem"]->setTexts( tr("Reference to Item"));
-	(*scrActions)["insertMark2Mark"]->setTexts( tr("Reference to Mark"));
+	(*scrActions)["insertMark2Mark"]->setTexts( tr("Page Reference"));
 	(*scrActions)["insertMarkNote"]->setTexts( tr("Foot/Endnote"));
 	(*scrActions)["insertMarkIndex"]->setTexts( tr("Index Entry"));
 	(*scrActions)["editMark"]->setTexts( tr("Edit Mark"));
@@ -1782,7 +1817,8 @@ void ActionManager::languageChange()
 	//Tool menu
 	(*scrActions)["toolsProperties"]->setTexts( tr("&Properties"));
 	(*scrActions)["toolsContent"]->setTexts( tr("Content Properties"));
-	(*scrActions)["toolsOutline"]->setTexts( tr("&Outline", "Document Outline Palette"));
+	(*scrActions)["toolsToolPalette"]->setTexts( tr("Tools Palette"));
+	(*scrActions)["toolsOutline"]->setTexts( tr("&Document Navigator", "Document navigation palette"));
 	(*scrActions)["toolsScrapbook"]->setTexts( tr("&Scrapbook"));
 	(*scrActions)["toolsLayers"]->setTexts( tr("&Layers"));
 	(*scrActions)["toolsPages"]->setTexts( tr("&Arrange Pages"));
@@ -1802,6 +1838,7 @@ void ActionManager::languageChange()
 
 	//toolbar only items
 	(*scrActions)["toolsSelect"]->setTexts( tr("Select Item"));
+	(*scrActions)["toolsTextCursor"]->setTexts( tr("Text Cursor"));
 	(*scrActions)["toolsRotate"]->setTexts( tr("Rotate Item"));
 	(*scrActions)["toolsZoom"]->setTexts( tr("Zoom in or out"));
 	(*scrActions)["toolsZoomIn"]->setTexts( tr("Zoom in"));
@@ -1841,6 +1878,8 @@ void ActionManager::languageChange()
 
 	//Extras Menu
 	(*scrActions)["extrasManageImages"]->setTexts( tr("&Manage Images..."));
+	(*scrActions)["extrasReplaceFonts"]->setTexts( tr("&Replace Fonts..."));
+	(*scrActions)["extrasConvertRGBColors"]->setTexts( tr("Convert RGB Colors to CMYK..."));
 	(*scrActions)["extrasHyphenateText"]->setTexts( tr("&Hyphenate Text"));
 	(*scrActions)["extrasDeHyphenateText"]->setTexts( tr("Dehyphenate Text"));
 	(*scrActions)["extrasGenerateTableOfContents"]->setTexts( tr("&Generate Table Of Contents and Indexes"));
@@ -1850,20 +1889,21 @@ void ActionManager::languageChange()
 	(*scrActions)["windowsCascade"]->setText( tr("&Cascade"));
 	(*scrActions)["windowsTile"]->setText( tr("&Tile"));
 	(*scrActions)["specialToggleAllPalettes"]->setTexts( tr("Toggle Palettes"));
+	(*scrActions)["windowsResetWorkspace"]->setTexts( tr("Reset Workspace &Layout..."));
 
 	//Help Menu
-	(*scrActions)["helpAboutScribus"]->setTexts( tr("&About Scribus"));
+	(*scrActions)["helpAboutScribus"]->setTexts( tr("&About Apscribe"));
 	(*scrActions)["helpAboutPlugins"]->setTexts( tr("&About Plugins"));
 	(*scrActions)["helpAboutQt"]->setTexts( tr("About &Qt"));
-	(*scrActions)["helpActionSearch"]->setTexts( tr("Action &Search"));
+	(*scrActions)["helpActionSearch"]->setTexts( tr("&Quick Actions..."));
 	(*scrActions)["helpTooltips"]->setTexts( tr("Toolti&ps"));
 	(*scrActions)["showMouseCoordinates"]->setTexts( tr("Move/Resize Value Indicator"));
-	(*scrActions)["helpManual"]->setTexts( tr("Scribus &Help..."));
-	(*scrActions)["helpOnlineWWW"]->setTexts( tr("Scribus Homepage"));
-	(*scrActions)["helpOnlineDocs"]->setTexts( tr("Scribus Online Documentation"));
-	(*scrActions)["helpOnlineWiki"]->setTexts( tr("Scribus Wiki"));
-	(*scrActions)["helpOnlineTutorial1"]->setTexts( tr("Getting Started with Scribus"));
-	(*scrActions)["helpCheckUpdates"]->setTexts( tr("Check for Updates"));
+	(*scrActions)["helpManual"]->setTexts( tr("&Help (Scribus Manual)..."));
+	(*scrActions)["helpOnlineWWW"]->setTexts( tr("Upstream Scribus Homepage"));
+	(*scrActions)["helpOnlineDocs"]->setTexts( tr("Upstream Scribus Documentation"));
+	(*scrActions)["helpOnlineWiki"]->setTexts( tr("Upstream Scribus Wiki"));
+	(*scrActions)["helpOnlineTutorial1"]->setTexts( tr("Getting Started (Scribus Tutorial)"));
+	(*scrActions)["helpCheckUpdates"]->setTexts( tr("Check Upstream Scribus Releases"));
 	(*scrActions)["helpChat"]->setTexts( tr("Chat with the Community"));
 
 	//GUI and specials
@@ -1914,6 +1954,7 @@ void ActionManager::languageChange()
 	(*scrActions)["toolsDocumentLog"]->setStatusTextAndShortcut( tr("Display logged warnings and errors from editing activities"));
 	(*scrActions)["toolsRotate"]->setStatusTextAndShortcut( tr("Rotate an item"));
 	(*scrActions)["toolsSelect"]->setStatusTextAndShortcut( tr("Select an item"));
+	(*scrActions)["toolsTextCursor"]->setStatusTextAndShortcut( tr("Click existing text to place the insertion cursor, including text inside groups"));
 	(*scrActions)["toolsUnlinkTextFrame"]->setStatusTextAndShortcut( tr("Unlink text frames"));
 	(*scrActions)["toolsZoom"]->setStatusTextAndShortcut( tr("Zoom in or out"));
 	(*scrActions)["viewPreviewMode"]->setStatusTextAndShortcut( tr("Enable preview mode"));
@@ -2061,6 +2102,7 @@ void ActionManager::createDefaultShortcuts()
 
 	//toolbar only items
 	defKeys.insert("toolsSelect", Qt::Key_C);
+	defKeys.insert("toolsTextCursor", Qt::Key_V);
 	defKeys.insert("toolsInsertTextFrame", QKeySequence(Qt::Key_T));
 	defKeys.insert("toolsInsertImageFrame", Qt::Key_I);
 	defKeys.insert("toolsInsertTable", Qt::Key_A);
@@ -2073,7 +2115,7 @@ void ActionManager::createDefaultShortcuts()
 	defKeys.insert("toolsInsertRenderFrame", Qt::Key_D); //TODO: First free key. Select a meaningful
 	defKeys.insert("toolsRotate", Qt::Key_R);
 	defKeys.insert("toolsZoom", Qt::Key_Z);
-	defKeys.insert("toolsZoomIn", Qt::CTRL | Qt::Key_Plus);
+	defKeys.insert("toolsZoomIn", Qt::CTRL | Qt::Key_Equal);
 	defKeys.insert("toolsZoomOut", Qt::CTRL | Qt::Key_Minus);
 	defKeys.insert("toolsEditContents", Qt::Key_E);
 	defKeys.insert("toolsEditWithStoryEditor", Qt::CTRL | Qt::Key_T);
@@ -2182,6 +2224,7 @@ void ActionManager::createDefaultMenus()
 		<< "fileExportText"
 		<< "fileExportAsEPS"
 		<< "fileExportAsPDF"
+		<< "fileExportAsEpub"
 //		<< "fileDocSetup"
 		<< "fileDocSetup150"
 //		<< "filePreferences"
@@ -2218,6 +2261,7 @@ void ActionManager::createDefaultMenus()
 		<< "editReplaceColors"
 		<< "editStyles"
 		<< "editMarks"
+		<< "editVariables"
 		<< "editNotesStyles"
 		<< "editMasterPages"
 		<< "editJavascripts";
@@ -2308,6 +2352,7 @@ void ActionManager::createDefaultMenus()
 	++itmenu;
 	itmenu->second
 		<< "insertFrame"
+		<< "insertAnchoredImage"
 		<< "toolsInsertTextFrame"
 		<< "toolsInsertImageFrame"
 		<< "toolsInsertTable"
@@ -2325,6 +2370,7 @@ void ActionManager::createDefaultMenus()
 		<< "insertSampleText"
 		<< "insertMarkAnchor"
 		<< "insertMarkVariableText"
+		<< "insertDynamicVariable"
 		<< "insertMarkItem"
 		<< "insertMark2Mark"
 		<< "insertMarkNote"
@@ -2476,6 +2522,8 @@ void ActionManager::createDefaultMenus()
 	++itmenu;
 	itmenu->second
 		<< "extrasManageImages"
+		<< "extrasReplaceFonts"
+		<< "extrasConvertRGBColors"
 		<< "extrasHyphenateText"
 		<< "extrasDeHyphenateText"
 		<< "extrasGenerateTableOfContents"
@@ -2486,8 +2534,10 @@ void ActionManager::createDefaultMenus()
 		<< "windowsCascade"
 		<< "windowsTile"
 		<< "specialToggleAllPalettes"
+		<< "windowsResetWorkspace"
 		<< "toolsProperties"
 		<< "toolsContent"
+		<< "toolsToolPalette"
 		<< "toolsOutline"
 		<< "toolsScrapbook"
 		<< "toolsLayers"
@@ -2699,4 +2749,3 @@ QString ActionManager::defaultMenuNameEntryTranslated(const QString& index)
 	}
 	return QString();
 }
-

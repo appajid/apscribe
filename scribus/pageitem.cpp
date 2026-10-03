@@ -26,6 +26,8 @@ for which a new license (GPL+exception) is in place.
 #include <utility>
 
 #include <QDebug>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QFont>
 #include <QMessageBox>
@@ -38,6 +40,7 @@ for which a new license (GPL+exception) is in place.
 #include <QRegion>
 #include <QRegularExpression>
 #include <QScopedPointer>
+#include <QTemporaryFile>
 #include <cairo.h>
 #include <cassert>
 #include <qdrawutil.h>
@@ -49,6 +52,8 @@ for which a new license (GPL+exception) is in place.
 #include "cmsettings.h"
 #include "colorblind.h"
 #include "desaxe/saxXML.h"
+#include "embeddedimageextractor.h"
+#include "filewatcher.h"
 #include "iconmanager.h"
 #include "marks.h"
 #include "pageitem_arc.h"
@@ -60,6 +65,7 @@ for which a new license (GPL+exception) is in place.
 #include "pageitem_spiral.h"
 #include "pageitem_table.h"
 #include "pageitem_textframe.h"
+#include "pageitemiterator.h"
 #include "prefsmanager.h"
 #include "resourcecollection.h"
 #include "sccolorengine.h"
@@ -74,6 +80,7 @@ for which a new license (GPL+exception) is in place.
 #include "scribusview.h"
 #include "sctextstream.h"
 #include "selection.h"
+#include "styles/objectstyle.h"
 #include "text/storytext.h"
 #include "ui/contentpalette.h"
 #include "ui/propertiespalette.h"
@@ -89,6 +96,74 @@ for which a new license (GPL+exception) is in place.
 
 
 using namespace std;
+
+namespace
+{
+class EmbeddedImageExtractionState final : public SimpleState
+{
+public:
+	EmbeddedImageExtractionState(const QString& name, const QString& externalPath,
+		const QString& backupPath, const QString& extension)
+		: SimpleState(name, externalPath, Um::IGetImage),
+		  m_externalPath(externalPath),
+		  m_backupPath(backupPath),
+		  m_extension(extension)
+	{
+		set("EXTRACT_EMBEDDED_IMAGE");
+	}
+
+	~EmbeddedImageExtractionState() override
+	{
+		if (!m_backupPath.isEmpty())
+			QFile::remove(m_backupPath);
+	}
+
+	const QString& externalPath() const { return m_externalPath; }
+	const QString& backupPath() const { return m_backupPath; }
+	const QString& extension() const { return m_extension; }
+
+private:
+	QString m_externalPath;
+	QString m_backupPath;
+	QString m_extension;
+};
+
+void storeAnchorPosition(SimpleState* state, const QString& prefix, const AnchorPosition& anchor)
+{
+	state->set(prefix + "MODE", static_cast<int>(anchor.mode));
+	state->set(prefix + "HREF", static_cast<int>(anchor.horizontalReference));
+	state->set(prefix + "VREF", static_cast<int>(anchor.verticalReference));
+	state->set(prefix + "HALIGN", static_cast<int>(anchor.horizontalAlignment));
+	state->set(prefix + "VALIGN", static_cast<int>(anchor.verticalAlignment));
+	state->set(prefix + "WRAP", static_cast<int>(anchor.wrapMode));
+	state->set(prefix + "X", anchor.xOffset);
+	state->set(prefix + "Y", anchor.yOffset);
+	state->set(prefix + "WLEFT", anchor.wrapOffsets.left());
+	state->set(prefix + "WTOP", anchor.wrapOffsets.top());
+	state->set(prefix + "WRIGHT", anchor.wrapOffsets.right());
+	state->set(prefix + "WBOTTOM", anchor.wrapOffsets.bottom());
+	state->set(prefix + "KEEP", anchor.keepWithinBounds);
+	state->set(prefix + "LOCK", anchor.preventManualPositioning);
+}
+
+AnchorPosition storedAnchorPosition(const SimpleState* state, const QString& prefix)
+{
+	AnchorPosition anchor;
+	anchor.mode = static_cast<AnchorPosition::Mode>(state->getInt(prefix + "MODE"));
+	anchor.horizontalReference = static_cast<AnchorPosition::HorizontalReference>(state->getInt(prefix + "HREF"));
+	anchor.verticalReference = static_cast<AnchorPosition::VerticalReference>(state->getInt(prefix + "VREF"));
+	anchor.horizontalAlignment = static_cast<AnchorPosition::HorizontalAlignment>(state->getInt(prefix + "HALIGN"));
+	anchor.verticalAlignment = static_cast<AnchorPosition::VerticalAlignment>(state->getInt(prefix + "VALIGN"));
+	anchor.wrapMode = static_cast<AnchorPosition::WrapMode>(state->getInt(prefix + "WRAP"));
+	anchor.xOffset = state->getDouble(prefix + "X");
+	anchor.yOffset = state->getDouble(prefix + "Y");
+	anchor.wrapOffsets = QMarginsF(state->getDouble(prefix + "WLEFT"), state->getDouble(prefix + "WTOP"),
+		state->getDouble(prefix + "WRIGHT"), state->getDouble(prefix + "WBOTTOM"));
+	anchor.keepWithinBounds = state->getBool(prefix + "KEEP");
+	anchor.preventManualPositioning = state->getBool(prefix + "LOCK");
+	return anchor;
+}
+}
 
 PageItem::PageItem(const PageItem & other)
 	: QObject(other.parent()),
@@ -219,6 +294,7 @@ PageItem::PageItem(const PageItem & other)
 	ChangedMasterItem(other.ChangedMasterItem),
 	OnMasterPage(other.OnMasterPage),
 	isEmbedded(other.isEmbedded),
+	m_anchorPosition(other.m_anchorPosition),
 	m_roundedCornerRadius(other.m_roundedCornerRadius),
 	oldXpos(other.oldXpos),
 	oldYpos(other.oldYpos),
@@ -276,6 +352,7 @@ PageItem::PageItem(const PageItem & other)
 	verticalAlign(other.verticalAlign),
 	m_itemType(other.m_itemType),
 	m_itemName(other.m_itemName),
+	m_objectStyleName(other.m_objectStyleName),
 	m_isAnnotation(other.m_isAnnotation),
 	m_annotation(other.m_annotation),
 	m_gradientName(other.m_gradientName),
@@ -1560,6 +1637,32 @@ void PageItem::setVerticalAlignment(int val)
 		undoManager->action(this, ss);
 	}
 	verticalAlign = val;
+}
+
+void PageItem::setAnchorPosition(const AnchorPosition& position)
+{
+	if (position == m_anchorPosition)
+		return;
+	if (!m_Doc->isLoading() && UndoManager::undoEnabled())
+	{
+		auto* state = new SimpleState(QObject::tr("Change Anchored Object"));
+		state->set("ANCHOR_POSITION");
+		storeAnchorPosition(state, "OLD_", m_anchorPosition);
+		storeAnchorPosition(state, "NEW_", position);
+		undoManager->action(this, state);
+	}
+	m_anchorPosition = position;
+	if (m_Doc->isLoading())
+		return;
+	for (PageItemIterator it(m_Doc, PageItemIterator::IterateAll); *it; ++it)
+	{
+		PageItem* textItem = *it;
+		if (textItem->isTextFrame() || textItem->isPathText())
+			textItem->itemText.invalidateObject(this);
+	}
+	m_Doc->changed();
+	m_Doc->regionsChanged()->update(QRectF());
+	m_Doc->changedPagePreview();
 }
 
 void PageItem::setCornerRadius(double newRadius)
@@ -3628,6 +3731,115 @@ void PageItem::setFillColor(const QString &newColor)
 	setFillQColor();
 }
 
+ObjectStyle PageItem::objectStyleState() const
+{
+	ObjectStyle state;
+	state.setName(m_objectStyleName);
+	state.setFillColor(m_fillColor);
+	state.setFillShade(m_fillShade);
+	state.setLineColor(m_lineColor);
+	state.setLineShade(m_lineShade);
+	state.setLineWidth(m_lineWidth);
+	state.setLineStyle(PLineArt);
+	state.setLineCap(PLineEnd);
+	state.setLineJoin(PLineJoin);
+	state.setFillTransparency(m_fillTransparency);
+	state.setLineTransparency(m_lineTransparency);
+	state.setFillBlendMode(m_fillBlendMode);
+	state.setLineBlendMode(m_lineBlendMode);
+	state.setCornerRadius(m_roundedCornerRadius);
+	state.setCustomLineStyle(NamedLStyle);
+	return state;
+}
+
+void PageItem::applyObjectStyleState(const ObjectStyle& style)
+{
+	m_objectStyleName = style.name();
+	m_fillColor = style.fillColor();
+	m_fillShade = style.fillShade();
+	m_lineColor = style.lineColor();
+	m_lineShade = style.lineShade();
+	m_oldLineWidth = m_lineWidth;
+	m_lineWidth = style.lineWidth();
+	PLineArt = style.lineStyle();
+	PLineEnd = style.lineCap();
+	PLineJoin = style.lineJoin();
+	m_fillTransparency = style.fillTransparency();
+	m_lineTransparency = style.lineTransparency();
+	m_fillBlendMode = style.fillBlendMode();
+	m_lineBlendMode = style.lineBlendMode();
+	m_roundedCornerRadius = style.cornerRadius();
+	NamedLStyle = style.customLineStyle();
+	setFillQColor();
+	setLineQColor();
+	update();
+}
+
+bool PageItem::setObjectStyle(const QString& styleName, bool createUndo)
+{
+	ObjectStyle oldState = objectStyleState();
+	ObjectStyle newState = oldState;
+	newState.setName(styleName);
+
+	if (!styleName.isEmpty())
+	{
+		if (!m_Doc->objectStyles().contains(styleName))
+		{
+			// Preserve unresolved names read from a file. This lets a document
+			// round-trip safely even when its style definition is unavailable.
+			if (!createUndo)
+			{
+				m_objectStyleName = styleName;
+				return oldState.name() != styleName;
+			}
+			return false;
+		}
+
+		const ObjectStyle& style = m_Doc->objectStyle(styleName);
+		newState.setFillColor(style.fillColor());
+		newState.setFillShade(style.fillShade());
+		newState.setLineColor(style.lineColor());
+		newState.setLineShade(style.lineShade());
+		newState.setLineWidth(style.lineWidth());
+		newState.setLineStyle(style.lineStyle());
+		newState.setLineCap(style.lineCap());
+		newState.setLineJoin(style.lineJoin());
+		newState.setFillTransparency(style.fillTransparency());
+		newState.setLineTransparency(style.lineTransparency());
+		newState.setFillBlendMode(style.fillBlendMode());
+		newState.setLineBlendMode(style.lineBlendMode());
+		newState.setCornerRadius(style.cornerRadius());
+		newState.setCustomLineStyle(style.customLineStyle());
+	}
+
+	if (oldState.name() == newState.name() && oldState.equiv(newState))
+		return false;
+
+	if (createUndo && !m_Doc->isLoading() && UndoManager::undoEnabled())
+	{
+		auto* state = new ScOldNewState<ObjectStyle>(tr("Apply Object Style"), styleName);
+		state->set("APPLY_OBJECT_STYLE");
+		state->setStates(oldState, newState);
+		undoManager->action(this, state);
+	}
+
+	applyObjectStyleState(newState);
+	if (!m_Doc->isLoading())
+	{
+		m_Doc->changed();
+		m_Doc->regionsChanged()->update(QRectF());
+		m_Doc->changedPagePreview();
+	}
+	return true;
+}
+
+bool PageItem::refreshObjectStyle()
+{
+	if (m_objectStyleName.isEmpty() || !m_Doc->objectStyles().contains(m_objectStyleName))
+		return false;
+	return setObjectStyle(m_objectStyleName, false);
+}
+
 void PageItem::setFillShade(double newShade)
 {
 	if (m_fillShade == newShade)
@@ -4621,8 +4833,15 @@ void PageItem::setLayer(int newLayerID)
 
 void PageItem::checkChanges(bool force)
 {
+	const bool textFrameGeometryChanged = isTextFrame()
+		&& (force || oldXpos != m_xPos || oldYpos != m_yPos
+			|| !qFuzzyCompare(oldWidth, m_width) || !qFuzzyCompare(oldHeight, m_height));
 	if (m_Doc->view() == nullptr)
+	{
+		if (textFrameGeometryChanged && !m_Doc->isLoading())
+			m_Doc->invalidateRunningHeaderFrames(false);
 		return;
+	}
 	bool spreadChanges(false);
 
 	QRectF textFlowCheckRect;
@@ -4670,6 +4889,8 @@ void PageItem::checkChanges(bool force)
 	{
 		checkTextFlowInteractions(textFlowCheckRect);
 	}
+	if (textFrameGeometryChanged && !m_Doc->isLoading())
+		m_Doc->invalidateRunningHeaderFrames(false);
 }
 
 bool PageItem::shouldCheck() const
@@ -4883,7 +5104,11 @@ void PageItem::restore(UndoState *state, bool isUndo)
 	bool actionFound = checkGradientUndoRedo(ss, isUndo);
 	if (!actionFound)
 	{
-		if (ss->contains("ARC"))
+		if (ss->contains("ANCHOR_POSITION"))
+			restoreAnchorPosition(ss, isUndo);
+		else if (ss->contains("APPLY_OBJECT_STYLE"))
+			restoreObjectStyle(ss, isUndo);
+		else if (ss->contains("ARC"))
 			restoreArc(ss, isUndo);
 		else if (ss->contains("MASKTYPE"))
 			restoreMaskType(ss, isUndo);
@@ -5054,6 +5279,8 @@ void PageItem::restore(UndoState *state, bool isUndo)
 			restoreResTyp(ss, isUndo);
 		else if (ss->contains("RESET_CONTOUR"))
 			restoreContourLine(ss, isUndo);
+		else if (ss->contains("GENERATE_ALPHA_CONTOUR"))
+			restoreContourLine(ss, isUndo);
 		else if (ss->contains("CHANGE_SHAPE_TYPE"))
 			restoreShapeType(ss, isUndo);
 		else if (ss->contains("UNITEITEM"))
@@ -5080,6 +5307,10 @@ void PageItem::restore(UndoState *state, bool isUndo)
 			restoreLayer(ss, isUndo);
 		else if (ss->contains("GET_IMAGE"))
 			restoreGetImage(ss, isUndo);
+		else if (ss->contains("EXTRACT_EMBEDDED_IMAGE"))
+			restoreExtractedImage(ss, isUndo);
+		else if (ss->contains("RELINK_IMAGE"))
+			restoreRelinkImage(ss, isUndo);
 		else if (ss->contains("EDIT_SHAPE_OR_CONTOUR"))
 			restoreShapeContour(ss, isUndo);
 		else if (ss->contains("APPLY_IMAGE_EFFECTS"))
@@ -5740,6 +5971,20 @@ void PageItem::restoreArc(SimpleState *state, bool isUndo)
 	}
 	update();
 	//doc()->changed();
+}
+
+void PageItem::restoreAnchorPosition(SimpleState *state, bool isUndo)
+{
+	m_anchorPosition = storedAnchorPosition(state, isUndo ? "OLD_" : "NEW_");
+	for (PageItemIterator it(m_Doc, PageItemIterator::IterateAll); *it; ++it)
+	{
+		PageItem* textItem = *it;
+		if (textItem->isTextFrame() || textItem->isPathText())
+			textItem->itemText.invalidateObject(this);
+	}
+	m_Doc->changed();
+	m_Doc->regionsChanged()->update(QRectF());
+	m_Doc->changedPagePreview();
 }
 
 void PageItem::restoreImageNbr(SimpleState *state, bool isUndo)
@@ -7262,6 +7507,12 @@ void PageItem::restoreResize(SimpleState *state, bool isUndo)
 		m_Doc->moveItem(mx, my, this);
 		m_Doc->rotateItem(rt, this);
 	}
+	if (isEmbedded && !isGroupChild())
+	{
+		gWidth = width();
+		gHeight = height();
+		m_Doc->invalidateAll();
+	}
 	oldWidth = m_width;
 	oldHeight = m_height;
 	oldXpos = m_xPos;
@@ -7402,6 +7653,20 @@ void PageItem::restoreLineStyle(SimpleState *state, bool isUndo)
 	Selection tempSelection(nullptr, false);
 	tempSelection.addItem(this);
 	m_Doc->itemSelection_SetLineArt(ps, &tempSelection);
+}
+
+void PageItem::restoreObjectStyle(SimpleState* state, bool isUndo)
+{
+	const auto* objectStyleState = dynamic_cast<ScOldNewState<ObjectStyle>*>(state);
+	if (!objectStyleState)
+	{
+		qFatal("PageItem::restoreObjectStyle: dynamic cast failed");
+		return;
+	}
+	applyObjectStyleState(isUndo ? objectStyleState->getOldState() : objectStyleState->getNewState());
+	m_Doc->changed();
+	m_Doc->regionsChanged()->update(QRectF());
+	m_Doc->changedPagePreview();
 }
 
 void PageItem::restoreLineEnd(SimpleState *state, bool isUndo)
@@ -7905,6 +8170,20 @@ void PageItem::restoreSplitItem(SimpleState *state, bool isUndo)
 
 void PageItem::restoreContourLine(SimpleState *state, bool isUndo)
 {
+	if (state->contains("GENERATE_ALPHA_CONTOUR"))
+	{
+		const auto *generated = dynamic_cast<ScOldNewState<FPointArray>*>(state);
+		if (!generated)
+		{
+			qFatal("PageItem::restoreContourLine: generated contour state cast failed");
+			return;
+		}
+		ContourLine = isUndo ? generated->getOldState() : generated->getNewState();
+		ClipEdited = true;
+		checkTextFlowInteractions();
+		update();
+		return;
+	}
 	const auto *is = dynamic_cast<ScItemState<FPointArray>*>(state);
 	if (!is)
 	{
@@ -7993,6 +8272,139 @@ void PageItem::restoreGetImage(UndoState *state, bool isUndo)
 		select();
 		m_Doc->updatePic();
 	}
+}
+
+void PageItem::restoreExtractedImage(UndoState *state, bool isUndo)
+{
+	const auto *imageState = dynamic_cast<EmbeddedImageExtractionState*>(state);
+	if (!imageState || !isImageFrame())
+	{
+		qFatal("PageItem::restoreExtractedImage: invalid undo state");
+		return;
+	}
+
+	const QString previousPath = Pfile;
+	const bool previousInline = isInlineImage;
+	const bool previousTemp = isTempFile;
+	if (!previousPath.isEmpty() && ScCore->fileWatcher->isWatching(previousPath))
+		ScCore->fileWatcher->removeFile(previousPath);
+
+	QString targetPath = imageState->externalPath();
+	bool targetInline = false;
+	bool targetTemp = false;
+	if (isUndo)
+	{
+		QTemporaryFile temporary(QDir::tempPath() + QStringLiteral("/scribus_temp_XXXXXX.") + imageState->extension());
+		if (!temporary.open())
+		{
+			if (!previousPath.isEmpty())
+				ScCore->fileWatcher->addFile(previousPath);
+			return;
+		}
+		targetPath = getLongPathName(temporary.fileName());
+		temporary.setAutoRemove(false);
+		temporary.close();
+		QString error;
+		if (!copyEmbeddedImageBytes(imageState->backupPath(), targetPath, true, &error))
+		{
+			QFile::remove(targetPath);
+			if (!previousPath.isEmpty())
+				ScCore->fileWatcher->addFile(previousPath);
+			return;
+		}
+		targetInline = true;
+		targetTemp = true;
+	}
+	else if (!QFileInfo::exists(targetPath))
+	{
+		QString error;
+		if (!copyEmbeddedImageBytes(imageState->backupPath(), targetPath, true, &error))
+		{
+			if (!previousPath.isEmpty())
+				ScCore->fileWatcher->addFile(previousPath);
+			return;
+		}
+	}
+
+	Pfile = QFileInfo(targetPath).absoluteFilePath();
+	isInlineImage = targetInline;
+	isTempFile = targetTemp;
+	if (!loadImage(Pfile, true, -1, false))
+	{
+		if (targetTemp)
+			QFile::remove(targetPath);
+		Pfile = previousPath;
+		isInlineImage = previousInline;
+		isTempFile = previousTemp;
+		loadImage(Pfile, true, -1, false);
+		if (!Pfile.isEmpty())
+			ScCore->fileWatcher->addFile(Pfile);
+		return;
+	}
+
+	if (previousTemp && previousPath != imageState->backupPath())
+		QFile::remove(previousPath);
+	ScCore->fileWatcher->addFile(Pfile);
+	update();
+	m_Doc->changed();
+	m_Doc->changedPagePreview();
+}
+
+void PageItem::restoreRelinkImage(UndoState *state, bool isUndo)
+{
+	const auto *imageState = dynamic_cast<ScItemState<ScImageEffectList>*>(state);
+	if (!imageState)
+	{
+		qFatal("PageItem::restoreRelinkImage: dynamic cast failed");
+		return;
+	}
+
+	if (!Pfile.isEmpty())
+	{
+		if (imageIsAvailable)
+			ScCore->fileWatcher->removeFile(Pfile);
+		else
+			ScCore->fileWatcher->removeDir(QFileInfo(Pfile).absolutePath());
+	}
+
+	const QString filename = imageState->get(isUndo ? "OLD_IMAGE_PATH" : "NEW_IMAGE_PATH");
+	const bool useNewProfile = !isUndo && imageState->contains("NEW_USE_EMBEDDED_PROFILE");
+	const bool useEmbeddedProfile = useNewProfile
+		? imageState->getBool("NEW_USE_EMBEDDED_PROFILE") : imageState->getBool("USE_EMBEDDED_PROFILE");
+	const QString embeddedProfile = imageState->get(useNewProfile ? "NEW_EMBEDDED_PROFILE" : "EMBEDDED_PROFILE");
+	const QString imageProfile = imageState->get(useNewProfile ? "NEW_IMAGE_PROFILE" : "IMAGE_PROFILE");
+	setUseEmbeddedImageProfile(useEmbeddedProfile);
+	setEmbeddedImageProfile(embeddedProfile);
+	setCmsProfile(imageProfile);
+	Pfile = filename;
+	const bool loaded = loadImage(filename, true, -1, false);
+
+	effectsInUse = imageState->getItem();
+	setImageFlippedH(imageState->getBool("FLIPPH"));
+	setImageFlippedV(imageState->getBool("FLIPPV"));
+	setImageScalingMode(imageState->getBool("SCALING"), imageState->getBool("ASPECT"));
+	setImageXOffset(imageState->getDouble("XOFF"));
+	setImageXScale(imageState->getDouble("XSCALE"));
+	setImageYOffset(imageState->getDouble("YOFF"));
+	setImageYScale(imageState->getDouble("YSCALE"));
+	setFillTransparency(imageState->getDouble("FILLT"));
+	setLineTransparency(imageState->getDouble("LINET"));
+	setUseEmbeddedImageProfile(useEmbeddedProfile);
+	setEmbeddedImageProfile(embeddedProfile);
+	setCmsProfile(imageProfile);
+	setCmsRenderingIntent(static_cast<eRenderIntent>(imageState->getInt("IMAGE_INTENT")));
+
+	if (!Pfile.isEmpty())
+	{
+		if (loaded)
+			ScCore->fileWatcher->addFile(Pfile);
+		else
+			ScCore->fileWatcher->addDir(QFileInfo(Pfile).absolutePath());
+	}
+
+	update();
+	m_Doc->changed();
+	m_Doc->changedPagePreview();
 }
 
 void PageItem::restoreShapeContour(UndoState *state, bool isUndo)
@@ -8145,6 +8557,10 @@ QString PageItem::generateUniqueCopyName(const QString& originalName, bool prepe
 void PageItem::replaceNamedResources(ResourceCollection& newNames)
 {
 	QMap<QString, QString>::ConstIterator it;
+
+	it = newNames.objectStyles().find(m_objectStyleName);
+	if (!m_objectStyleName.isEmpty() && it != newNames.objectStyles().end())
+		setObjectStyle(*it);
 	
 	it = newNames.colors().find(softShadowColor());
 	if (it != newNames.colors().end())
@@ -9041,6 +9457,8 @@ void PageItem::setGradientStrokeEnd(double x, double y)
 
 void PageItem::getNamedResources(ResourceCollection& lists) const
 {
+	if (!m_objectStyleName.isEmpty())
+		lists.collectObjectStyle(m_objectStyleName);
 	if (hasSoftShadow())
 		lists.collectColor(softShadowColor());
 
@@ -10176,6 +10594,137 @@ bool PageItem::loadImage(const QString& filename, const bool reload, const int g
 	return true;
 }
 
+bool PageItem::relinkImage(const QString& filename, bool showMsg, bool useNewEmbeddedProfile)
+{
+	if (!isImageFrame() || isLatexFrame() || isInlineImage || filename.isEmpty())
+		return false;
+
+	const QString newFilePath = QFileInfo(filename).absoluteFilePath();
+	const QString oldFilePath = Pfile;
+	if (newFilePath == oldFilePath && imageIsAvailable)
+		return true;
+
+	const bool oldImageAvailable = imageIsAvailable;
+	const bool flippedH = imageFlippedH();
+	const bool flippedV = imageFlippedV();
+	const bool scaling = ScaleType;
+	const bool keepAspect = AspectRatio;
+	const double xOffset = imageXOffset();
+	const double xScale = imageXScale();
+	const double yOffset = imageYOffset();
+	const double yScale = imageYScale();
+	const double fillTrans = fillTransparency();
+	const double lineTrans = lineTransparency();
+	const ScImageEffectList imageEffects = effectsInUse;
+	const bool useEmbeddedProfile = useEmbeddedImageProfile();
+	const QString embeddedProfile = embeddedImageProfile();
+	const QString imageProfile = cmsProfile();
+	const eRenderIntent imageIntent = static_cast<eRenderIntent>(cmsRenderingIntent());
+
+	auto restoreFrameSettings = [&]()
+	{
+		effectsInUse = imageEffects;
+		setImageFlippedH(flippedH);
+		setImageFlippedV(flippedV);
+		setImageScalingMode(scaling, keepAspect);
+		setImageXOffset(xOffset);
+		setImageXScale(xScale);
+		setImageYOffset(yOffset);
+		setImageYScale(yScale);
+		setFillTransparency(fillTrans);
+		setLineTransparency(lineTrans);
+		setCmsRenderingIntent(imageIntent);
+	};
+	auto restoreOriginalProfile = [&]()
+	{
+		setUseEmbeddedImageProfile(useEmbeddedProfile);
+		setEmbeddedImageProfile(embeddedProfile);
+		setCmsProfile(imageProfile);
+	};
+
+	if (!oldFilePath.isEmpty())
+	{
+		if (oldImageAvailable)
+			ScCore->fileWatcher->removeFile(oldFilePath);
+		else
+			ScCore->fileWatcher->removeDir(QFileInfo(oldFilePath).absolutePath());
+	}
+
+	// Setting Pfile first tells loadImage() this is a relink rather than a new
+	// placement, so crop and scale are retained.
+	if (useNewEmbeddedProfile)
+	{
+		setUseEmbeddedImageProfile(true);
+		setEmbeddedImageProfile(QString());
+		setCmsProfile(QString());
+	}
+	Pfile = newFilePath;
+	const bool loaded = loadImage(newFilePath, true, -1, showMsg)
+		&& (!useNewEmbeddedProfile || pixm.imgInfo.isEmbedded);
+	restoreFrameSettings();
+	if (!useNewEmbeddedProfile || !loaded)
+		restoreOriginalProfile();
+
+	if (!loaded)
+	{
+		Pfile = oldFilePath;
+		if (oldImageAvailable && !oldFilePath.isEmpty())
+		{
+			loadImage(oldFilePath, true, -1, false);
+			restoreFrameSettings();
+			restoreOriginalProfile();
+		}
+		else
+			imageIsAvailable = false;
+
+		if (!oldFilePath.isEmpty())
+		{
+			if (imageIsAvailable)
+				ScCore->fileWatcher->addFile(oldFilePath);
+			else
+				ScCore->fileWatcher->addDir(QFileInfo(oldFilePath).absolutePath());
+		}
+		update();
+		return false;
+	}
+
+	ScCore->fileWatcher->addFile(Pfile);
+	if (UndoManager::undoEnabled())
+	{
+		auto *imageState = new ScItemState<ScImageEffectList>(tr("Relink image"), newFilePath, Um::IGetImage);
+		imageState->set("RELINK_IMAGE");
+		imageState->set("OLD_IMAGE_PATH", oldFilePath);
+		imageState->set("NEW_IMAGE_PATH", newFilePath);
+		imageState->set("FLIPPH", flippedH);
+		imageState->set("FLIPPV", flippedV);
+		imageState->set("SCALING", scaling);
+		imageState->set("ASPECT", keepAspect);
+		imageState->set("XOFF", xOffset);
+		imageState->set("XSCALE", xScale);
+		imageState->set("YOFF", yOffset);
+		imageState->set("YSCALE", yScale);
+		imageState->set("FILLT", fillTrans);
+		imageState->set("LINET", lineTrans);
+		imageState->set("USE_EMBEDDED_PROFILE", useEmbeddedProfile);
+		imageState->set("EMBEDDED_PROFILE", embeddedProfile);
+		imageState->set("IMAGE_PROFILE", imageProfile);
+		imageState->set("IMAGE_INTENT", static_cast<int>(imageIntent));
+		if (useNewEmbeddedProfile)
+		{
+			imageState->set("NEW_USE_EMBEDDED_PROFILE", useEmbeddedImageProfile());
+			imageState->set("NEW_EMBEDDED_PROFILE", embeddedImageProfile());
+			imageState->set("NEW_IMAGE_PROFILE", cmsProfile());
+		}
+		imageState->setItem(imageEffects);
+		undoManager->action(this, imageState);
+	}
+
+	update();
+	m_Doc->changed();
+	m_Doc->changedPagePreview();
+	return true;
+}
+
 
 void PageItem::drawLockedMarker(ScPainter *p) const
 {
@@ -11176,6 +11725,46 @@ void PageItem::makeImageExternal(const QString& path)
 		isInlineImage = false;
 		isTempFile = false;
 	}
+}
+
+bool PageItem::relinkExtractedImage(const QString& path, bool showMsg)
+{
+	if (!isImageFrame() || isLatexFrame() || !isInlineImage || !isTempFile
+		|| !imageIsAvailable || path.isEmpty() || !QFileInfo::exists(path))
+		return false;
+
+	const QString oldInlinePath = Pfile;
+	const QString externalPath = QFileInfo(path).absoluteFilePath();
+	if (ScCore->fileWatcher->isWatching(oldInlinePath))
+		ScCore->fileWatcher->removeFile(oldInlinePath);
+
+	Pfile = externalPath;
+	isInlineImage = false;
+	isTempFile = false;
+	if (!loadImage(Pfile, true, -1, showMsg))
+	{
+		Pfile = oldInlinePath;
+		isInlineImage = true;
+		isTempFile = true;
+		loadImage(Pfile, true, -1, false);
+		ScCore->fileWatcher->addFile(Pfile);
+		return false;
+	}
+	ScCore->fileWatcher->addFile(Pfile);
+
+	if (UndoManager::undoEnabled())
+	{
+		auto *imageState = new EmbeddedImageExtractionState(tr("Relink extracted image"),
+			externalPath, oldInlinePath, embeddedImageExtension(oldInlinePath));
+		undoManager->action(this, imageState);
+	}
+	else
+		QFile::remove(oldInlinePath);
+
+	update();
+	m_Doc->changed();
+	m_Doc->changedPagePreview();
+	return true;
 }
 
 void PageItem::addWelded(PageItem* item)

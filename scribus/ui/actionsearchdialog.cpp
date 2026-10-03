@@ -7,23 +7,31 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <utility>
-
-#include <QDebug>
-#include <QMainWindow>
-#include <QString>
 #include <QEvent>
 #include <QKeyEvent>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QMainWindow>
+#include <QString>
+
+#include <algorithm>
+#include <utility>
 
 #include "actionsearchdialog.h"
+#include "modernui.h"
 #include "ui_actionsearchdialog.h"
 
-ActionSearchDialog::ActionSearchDialog(QMainWindow *parent, const QList<QString>& actionNames) :
+ActionSearchDialog::ActionSearchDialog(QMainWindow *parent, const QList<ActionSearch::ActionInfo>& actions) :
 	QDialog{parent},
 	ui{new Ui::ActionSearchDialog},
-	m_actionNames{actionNames}
+	m_actions{actions}
 {
 	ui->setupUi(this);
+	ModernUI::applySurfaceStyle(this, "commandPalette");
+	ui->filterLineEdit->setAccessibleName(tr("Search commands"));
+	ui->filterLineEdit->setAccessibleDescription(tr("Search by command name, menu, or keyboard shortcut"));
+	ui->actionsListWidget->setAccessibleName(tr("Matching commands"));
+	ui->actionsListWidget->setIconSize(QSize(20, 20));
 
 	ui->filterLineEdit->installEventFilter(this);
 	installEventFilter(this);
@@ -31,7 +39,9 @@ ActionSearchDialog::ActionSearchDialog(QMainWindow *parent, const QList<QString>
 	connect(ui->filterLineEdit, &QLineEdit::textChanged,      this, &ActionSearchDialog::updateList);
 	connect(this, &ActionSearchDialog::keyArrowUpPressed,     this, &ActionSearchDialog::moveSelectionUp);
 	connect(this, &ActionSearchDialog::keyArrowDownPressed,   this, &ActionSearchDialog::moveSelectionDown);
-	connect(ui->actionsListWidget, &QListWidget::itemDoubleClicked, this, &QDialog::accept);
+	connect(ui->actionsListWidget, &QListWidget::itemDoubleClicked, this, [this]() { acceptCurrentAction(); });
+	updateList();
+	ui->filterLineEdit->setFocus();
 }
 
 ActionSearchDialog::~ActionSearchDialog()
@@ -39,12 +49,12 @@ ActionSearchDialog::~ActionSearchDialog()
 	delete ui;
 }
 
-QString ActionSearchDialog::getActionName() const
+QString ActionSearchDialog::actionId() const
 {
-	if (ui->actionsListWidget->count() == 0)
+	QListWidgetItem* item = ui->actionsListWidget->currentItem();
+	if (!item || !item->data(Qt::UserRole + 1).toBool())
 		return QString();
-
-	return ui->actionsListWidget->currentItem()->text();
+	return item->data(Qt::UserRole).toString();
 }
 
 /**
@@ -52,21 +62,21 @@ QString ActionSearchDialog::getActionName() const
  */
 bool ActionSearchDialog::eventFilter(QObject *obj, QEvent *event)
 {
-	if (obj == ui->filterLineEdit) {
-		if (event->type() == QEvent::KeyPress) {
+	if (obj == ui->filterLineEdit)
+	{
+		if (event->type() == QEvent::KeyPress)
 			return filterLineEditKeyPress(static_cast<QKeyEvent*>(event));
-		}
 	}
 	return false;
 }
 
-bool ActionSearchDialog::filterLineEditKeyPress(QKeyEvent * event)
+bool ActionSearchDialog::filterLineEditKeyPress(QKeyEvent *event)
 {
 	switch (event->key())
 	{
 		case Qt::Key_Enter:
 		case Qt::Key_Return:
-			this->accept();
+			acceptCurrentAction();
 			return true;
 		case Qt::Key_Up:
 			emit keyArrowUpPressed();
@@ -82,18 +92,39 @@ bool ActionSearchDialog::filterLineEditKeyPress(QKeyEvent * event)
 
 void ActionSearchDialog::moveSelectionUp()
 {
-	int i = ui->actionsListWidget->currentRow();
-	if (i > 0)
-	{
-		ui->actionsListWidget->setCurrentRow(i - 1);
-	}
+	selectNextEnabled(-1);
 }
 
 void ActionSearchDialog::moveSelectionDown()
 {
-	int i = ui->actionsListWidget->currentRow();
-	if (i < ui->actionsListWidget->count() - 1)
-		ui->actionsListWidget->setCurrentRow(i + 1);
+	selectNextEnabled(1);
+}
+
+void ActionSearchDialog::acceptCurrentAction()
+{
+	if (!actionId().isEmpty())
+		accept();
+}
+
+void ActionSearchDialog::selectNextEnabled(int step)
+{
+	const int count = ui->actionsListWidget->count();
+	if (count == 0)
+		return;
+
+	int row = ui->actionsListWidget->currentRow();
+	if (row < 0)
+		row = (step > 0) ? -1 : count;
+	for (int attempts = 0; attempts < count; ++attempts)
+	{
+		row = (row + step + count) % count;
+		QListWidgetItem* item = ui->actionsListWidget->item(row);
+		if (item->data(Qt::UserRole + 1).toBool())
+		{
+			ui->actionsListWidget->setCurrentRow(row);
+			return;
+		}
+	}
 }
 
 
@@ -106,41 +137,64 @@ void ActionSearchDialog::updateList()
 {
 	ui->actionsListWidget->clear();
 
-	const auto filter = ui->filterLineEdit->text().trimmed();
-	if (filter.isEmpty())
-		return;
-
-	if (!filter.contains(" "))
+	QString filter = ui->filterLineEdit->text().trimmed();
+	if (filter.startsWith(QLatin1Char('?')))
+		filter = filter.sliced(1).trimmed();
+	const QStringList words = filter.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+	QList<ActionSearch::ActionInfo> matches;
+	for (const ActionSearch::ActionInfo& action : std::as_const(m_actions))
 	{
-		for (auto& name: std::as_const(m_actionNames))
+		const QString searchable = action.name + QLatin1Char(' ') + action.menuPath + QLatin1Char(' ') + action.shortcut;
+		bool matchesAll = true;
+		for (const QString& word : words)
 		{
-			if (name.contains(filter, Qt::CaseInsensitive))
+			if (!searchable.contains(word, Qt::CaseInsensitive))
 			{
-				ui->actionsListWidget->addItem(name);
+				matchesAll = false;
+				break;
 			}
 		}
+		if (matchesAll)
+			matches.append(action);
 	}
-	else
+
+	std::sort(matches.begin(), matches.end(), [&filter](const auto& left, const auto& right) {
+		const bool leftStarts = !filter.isEmpty() && left.name.startsWith(filter, Qt::CaseInsensitive);
+		const bool rightStarts = !filter.isEmpty() && right.name.startsWith(filter, Qt::CaseInsensitive);
+		if (leftStarts != rightStarts)
+			return leftStarts;
+		const int nameOrder = QString::compare(left.name, right.name, Qt::CaseInsensitive);
+		return nameOrder == 0 ? QString::compare(left.menuPath, right.menuPath, Qt::CaseInsensitive) < 0 : nameOrder < 0;
+	});
+
+	for (const ActionSearch::ActionInfo& action : std::as_const(matches))
 	{
-		auto words = filter.split(" ");
-		for (auto& name: std::as_const(m_actionNames))
-		{
-			bool matches(true);
-			for (auto& word: std::as_const(words))
-			{
-				if (!name.contains(word, Qt::CaseInsensitive))
-				{
-					matches = false;
-					break;
-				}
-			}
+		QString displayText = action.name;
+		if (!action.menuPath.isEmpty())
+			displayText += tr("  —  %1").arg(action.menuPath);
+		if (!action.shortcut.isEmpty())
+			displayText += tr("  [%1]").arg(action.shortcut);
 
-			if (!matches)
-				continue;
-			ui->actionsListWidget->addItem(name);
-		}
+		auto* item = new QListWidgetItem(action.icon, displayText, ui->actionsListWidget);
+		item->setData(Qt::UserRole, action.id);
+		item->setData(Qt::UserRole + 1, action.enabled);
+		QString toolTip = action.menuPath;
+		if (!action.enabled)
+			toolTip += (toolTip.isEmpty() ? QString() : QStringLiteral("\n")) + tr("Unavailable in the current context");
+		item->setToolTip(toolTip);
+		if (!action.enabled)
+			item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
 	}
 
-	if (ui->actionsListWidget->count() > 0)
-		ui->actionsListWidget->setCurrentRow(0);
+	ui->resultCountLabel->setText(matches.count() == 1
+		? tr("1 command")
+		: tr("%1 commands").arg(matches.count()));
+	if (matches.isEmpty())
+	{
+		auto* item = new QListWidgetItem(tr("No matching commands"), ui->actionsListWidget);
+		item->setData(Qt::UserRole + 1, false);
+		item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+	}
+
+	selectNextEnabled(1);
 }

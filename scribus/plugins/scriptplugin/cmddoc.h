@@ -363,6 +363,14 @@ editing.\n\
 "));
 PyObject* scribus_createmasterpage(PyObject* self, PyObject* args);
 
+PyDoc_STRVAR(scribus_createfacingmasterpair__doc__,
+QT_TR_NOOP("createFacingMasterPair(leftPageName, rightPageName)\n\
+\n\
+Creates coordinated left and right master pages in a facing-page document.\n\
+The two created master-page names are returned as a tuple.\n\
+"));
+PyObject* scribus_createfacingmasterpair(PyObject* self, PyObject* args);
+
 PyDoc_STRVAR(scribus_deletemasterpage__doc__,
 QT_TR_NOOP("deleteMasterPage(pageName)\n\
 \n\
@@ -426,6 +434,8 @@ The errors are strings, mostly names from the PreflightError enum in scribusstru
 - AppliedMasterDifferentSide\n\
 - EmptyTextFrame\n\
 - ImageHasProgressiveEncoding\n\
+- MissingStyle\n\
+- BrokenCrossReference\n\
 - DocumentModifiedAfterMarksUpdate\n\
 "));
 PyObject* scribus_exportdocumentcheck(PyObject* self, PyObject* args, PyObject* kw);
@@ -445,6 +455,84 @@ Sets whether the current document is right-to-left. \"rtl\" is a boolean.\n\
 "));
 PyObject *scribus_setrtl(PyObject * /*self*/, PyObject* args);
 
+PyDoc_STRVAR(scribus_createcrossreferencetarget__doc__,
+QT_TR_NOOP("createCrossReferenceTarget(name, [objectName, position=-1]) -> str\n\nCreates a named cross-reference target in a text frame and returns its name. A position of -1 appends it."));
+PyObject *scribus_createcrossreferencetarget(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_deletecrossreferencetarget__doc__,
+QT_TR_NOOP("deleteCrossReferenceTarget(target)\n\nDeletes a named target. Existing page-reference fields are preserved and reported by Preflight until they are repaired or deleted."));
+PyObject *scribus_deletecrossreferencetarget(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_insertcrossreference__doc__,
+QT_TR_NOOP("insertCrossReference(target, [objectName, position=-1, label='', format='page', prefix='', suffix='']) -> str\n\nInserts a dynamic reference to a named target and returns the reference label. Format is 'page' or 'paragraph'. A position of -1 appends it."));
+PyObject *scribus_insertcrossreference(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_gotocrossreferencetarget__doc__,
+QT_TR_NOOP("goToCrossReferenceTarget(reference)\n\nNavigates to the target of a cross-reference, selects its text frame, and places the text cursor at the target."));
+PyObject *scribus_gotocrossreferencetarget(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_getcrossreferencetext__doc__,
+QT_TR_NOOP("getCrossReferenceText(target) -> str\n\nReturns the current paragraph text containing a named cross-reference target."));
+PyObject *scribus_getcrossreferencetext(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_getcrossreferencepage__doc__,
+QT_TR_NOOP("getCrossReferencePage(target) -> str\n\nReturns the current section-formatted page number for a named cross-reference target."));
+PyObject *scribus_getcrossreferencepage(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_listcrossreferencetargets__doc__,
+QT_TR_NOOP("listCrossReferenceTargets() -> list\n\nReturns the names of all cross-reference targets in the document."));
+PyObject *scribus_listcrossreferencetargets(PyObject *self);
+
+PyDoc_STRVAR(scribus_renamecrossreferencetarget__doc__,
+QT_TR_NOOP("renameCrossReferenceTarget(target, newName)\n\nRenames a cross-reference target and safely retargets every page reference that points to it."));
+PyObject *scribus_renamecrossreferencetarget(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_createvariable__doc__,
+QT_TR_NOOP("createVariable(name, value) -> str\n\nCreates a user-defined dynamic variable and returns its stable ID."));
+PyObject *scribus_createvariable(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_createrunningheadervariable__doc__,
+QT_TR_NOOP("createRunningHeaderVariable(name, paragraphStyle, mode, [textCase='as-entered', removeTrailingPunctuation=False, fallback='none']) -> str\n\nCreates a running-header variable and returns its stable ID. Mode must be 'first-on-page', 'last-on-page', 'first-on-spread', 'last-on-spread', or 'most-recent'. Text case may be 'as-entered', 'uppercase', 'lowercase', or 'title-case'. For page and spread modes, fallback may be 'none', 'section', or 'document'."));
+PyObject *scribus_createrunningheadervariable(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_deletevariable__doc__,
+QT_TR_NOOP("deleteVariable(variable)\n\nDeletes a user-defined dynamic variable identified by name or stable ID."));
+PyObject *scribus_deletevariable(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_getvariable__doc__,
+QT_TR_NOOP("getVariable(variable, [objectName]) -> str\n\nReturns the resolved value of a dynamic variable. The argument may be a name, stable ID, or built-in type. Supply a page item name for page-sensitive variables such as current page and running headers."));
+PyObject *scribus_getvariable(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_insertvariable__doc__,
+QT_TR_NOOP("insertVariable(variable, [objectName, position=-1]) -> str\n\nInserts a dynamic variable in a text frame and returns its stable ID. A position of -1 appends it."));
+PyObject *scribus_insertvariable(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_listvariables__doc__,
+QT_TR_NOOP("listVariables() -> list\n\nReturns user-defined variables as (stable ID, name, value) tuples."));
+PyObject *scribus_listvariables(PyObject *self);
+
+PyDoc_STRVAR(scribus_renamevariable__doc__,
+QT_TR_NOOP("renameVariable(variable, newName)\n\nRenames a user-defined dynamic variable identified by name or stable ID."));
+PyObject *scribus_renamevariable(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_setvariable__doc__,
+QT_TR_NOOP("setVariable(variable, value)\n\nChanges a user-defined dynamic variable identified by name or stable ID."));
+PyObject *scribus_setvariable(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_applydatarecord__doc__,
+QT_TR_NOOP("applyDataRecord(record, [strict=True]) -> int\n\nApplies a dictionary of string fields to existing user-defined dynamic variables by name or stable ID. Validates the whole record before changing the document, groups changes into one undo step, and returns the number of matched fields. With strict=False, unknown fields are ignored; computed variables remain read-only."));
+PyObject *scribus_applydatarecord(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_loaddatasource__doc__,
+QT_TR_NOOP("loadDataSource(path, [format='', limit=-1]) -> list\n\nReads a UTF-8 CSV or JSON data source and returns a list of dictionaries containing string fields. Format is inferred from the filename when omitted; JSON must be an array of objects, and CSV must have a unique, rectangular header. Limit restricts the number of records returned; use -1 for all records."));
+PyObject *scribus_loaddatasource(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_exportdatamergepdfs__doc__,
+QT_TR_NOOP("exportDataMergePDFs(sourcePath, outputDirectory, [mapping=None, prefix='', firstRecord=1, lastRecord=-1, filenameField='', failOnPreflight=False]) -> list\n\nExports one PDF per selected CSV/JSON record using the active document's PDF settings and returns the created paths. Mapping pairs source-field names with user-variable names or stable IDs; by default, matching names are mapped automatically. firstRecord and lastRecord are inclusive, one-based positions; -1 means through the final record. filenameField optionally appends a sanitized source value to each numbered PDF name. When failOnPreflight is True, critical errors stop export before that record's PDF. Existing files are not overwritten. The document's variable values, PDF settings, and modified state are restored, including after an export error."));
+PyObject *scribus_exportdatamergepdfs(PyObject *self, PyObject* args);
+
+PyDoc_STRVAR(scribus_setrunningheadervariable__doc__,
+QT_TR_NOOP("setRunningHeaderVariable(variable, name, paragraphStyle, mode, [textCase, removeTrailingPunctuation, fallback])\n\nUpdates a running-header variable identified by name or stable ID. Omitted formatting and fallback options retain their current values. For page and spread modes, fallback may be 'none', 'section', or 'document'."));
+PyObject *scribus_setrunningheadervariable(PyObject *self, PyObject* args);
+
 #endif
-
-

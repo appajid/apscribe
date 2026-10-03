@@ -29,6 +29,7 @@ for which a new license (GPL+exception) is in place.
 #include "scribuscore.h"
 #include "scribusdoc.h"
 #include "iconmanager.h"
+#include "ui/modernui.h"
 #include "util.h"
 
 // readable constants for QTreeWidgetItem column ids
@@ -39,14 +40,15 @@ constexpr int COLUMN_LAYER = 2;
 CheckDocument::CheckDocument( QWidget* parent, bool modal )
 	: ScrPaletteBase( parent, "checkDocument", modal )
 {
+	ModernUI::applySurfaceStyle(this, "preflight", false);
 	showPagesWithoutErrors = PrefsManager::instance().appPrefs.verifierPrefs.showPagesWithoutErrors;
 	showNonPrintingLayerErrors = PrefsManager::instance().appPrefs.verifierPrefs.showNonPrintingLayerErrors;
 
 	iconSetChange();
 
 	checkDocumentLayout = new QVBoxLayout( this );
-	checkDocumentLayout->setContentsMargins(9, 9, 9, 9);
-	checkDocumentLayout->setSpacing(6);
+	checkDocumentLayout->setContentsMargins(12, 12, 12, 12);
+	checkDocumentLayout->setSpacing(10);
 
 	layout1 = new QHBoxLayout;
 	layout1->setContentsMargins(0, 0, 0, 0);
@@ -54,10 +56,12 @@ CheckDocument::CheckDocument( QWidget* parent, bool modal )
 	textLabel1 = new QLabel( this );
 	layout1->addWidget( textLabel1 );
 	curCheckProfile = new QComboBox( this );
+	curCheckProfile->setObjectName(QStringLiteral("preflightProfile"));
 	layout1->addWidget( curCheckProfile );
 	checkDocumentLayout->addLayout( layout1 );
 
 	reportDisplay = new QTreeWidget( this );
+	reportDisplay->setObjectName(QStringLiteral("preflightReport"));
 	reportDisplay->header()->setSectionsClickable(false );
 	reportDisplay->header()->setSectionsMovable( false );
 	reportDisplay->setSortingEnabled(false);
@@ -68,10 +72,12 @@ CheckDocument::CheckDocument( QWidget* parent, bool modal )
 	layout2->setContentsMargins(0, 0, 0, 0);
 	layout2->setSpacing(6);
 	reScan = new QPushButton(this );
+	reScan->setObjectName(QStringLiteral("preflightRescan"));
 	layout2->addWidget( reScan );
 	QSpacerItem* spacer = new QSpacerItem( 2, 2, QSizePolicy::Expanding, QSizePolicy::Minimum );
 	layout2->addItem( spacer );
 	ignoreErrors = new QPushButton(this );
+	ignoreErrors->setObjectName(QStringLiteral("preflightIgnore"));
 	layout2->addWidget( ignoreErrors );
 	checkDocumentLayout->addLayout( layout2 );
 	setIgnoreEnabled(false);
@@ -82,7 +88,8 @@ CheckDocument::CheckDocument( QWidget* parent, bool modal )
 	pageMap.clear();
 	masterPageMap.clear();
 	masterPageItemMap.clear();
-	resize( QSize(320, 260).expandedTo(minimumSizeHint()) );
+	setMinimumSize(420, 320);
+	resize(QSize(480, 420).expandedTo(minimumSizeHint()));
 
 	connect(ScQApp, SIGNAL(iconSetChanged()), this, SLOT(iconSetChange()));
 
@@ -148,6 +155,7 @@ void CheckDocument::languageChange()
 	warnMap.insert(PV_LAYER_PRINTVIS_MISMATCH,	qMakePair(tr("Print/Visible mismatch"),									tr("This layer uses transparency, only an issue if using older printing profiles. You may safely ignore this when using modern printing methods, or exporting to PDF version greater than 1.4.")));
 	warnMap.insert(PV_IMAGE_HAS_PROGRESSIVE_ENCODING,	qMakePair(tr("Image has progressive encoding"),					tr("The image uses progressive encoding which is useful for websites however does not process well when sending PDFs to professional printers.")));
 	warnMap.insert(PV_MISSING_STYLE,			qMakePair(tr("Style has a missing parent style"),						tr("A paragraph or character style is based on a parent style that no longer exists in the document. Text using this style may not render as intended. Edit the style and choose an existing parent, or recreate the missing style.")));
+	warnMap.insert(PV_BROKEN_CROSS_REFERENCE,	qMakePair(tr("Cross-reference target is missing"),					tr("This page reference points to a target that no longer exists. Choose an existing target or recreate the missing target before publishing.")));
 
 }
 
@@ -399,6 +407,13 @@ void CheckDocument::buildItem(QTreeWidgetItem * item, PreflightError errorType, 
 		case PreflightError::MissingStyle:
 			item->setText(COLUMN_PROBLEM, warnMap[PV_MISSING_STYLE].first);
 			item->setToolTip(COLUMN_PROBLEM, warnMap[PV_MISSING_STYLE].second);
+			item->setIcon(COLUMN_ITEM, graveError);
+			pageGraveError = true;
+			itemError = true;
+			break;
+		case PreflightError::BrokenCrossReference:
+			item->setText(COLUMN_PROBLEM, warnMap[PV_BROKEN_CROSS_REFERENCE].first);
+			item->setToolTip(COLUMN_PROBLEM, warnMap[PV_BROKEN_CROSS_REFERENCE].second);
 			item->setIcon(COLUMN_ITEM, graveError);
 			pageGraveError = true;
 			itemError = true;

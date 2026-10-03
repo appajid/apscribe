@@ -44,6 +44,7 @@ class Biblio;
 class BookPalette;
 class UndoPalette;
 class SymbolPalette;
+class ToolPalette;
 class DockCentralWidget;
 
 class SCRIBUS_API DockManager : public CDockManager
@@ -77,6 +78,11 @@ public:
 	 */
 	bool hasTemporaryHiddenDocks();
 	/**
+	 * @brief Restores the built-in default workspace and saves it to preferences.
+	 * @return true when the default workspace was available and restored.
+	 */
+	bool resetWorkspaceToDefault();
+	/**
 	 * @brief Adds a dock widget to dock manager. Useful for docks that are not initialized by dock manager, e.g. from plugins.
 	 * @param dock
 	 * @param closed
@@ -91,6 +97,7 @@ public:
 	LayerPalette *layerPalette {nullptr};
 	AlignDistributePalette *alignDistributePalette {nullptr};
 	InlinePalette *inlinePalette {nullptr};
+	ToolPalette *toolPalette {nullptr};
 	Biblio *scrapbookPalette {nullptr};
 	BookPalette *bookPalette {nullptr};
 	UndoPalette *undoPalette {nullptr};

@@ -8,6 +8,7 @@ for which a new license (GPL+exception) is in place.
 #include "scribus171formatimpl.h"
 
 #include <ctime>
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -16,10 +17,10 @@ for which a new license (GPL+exception) is in place.
 #include <QList>
 #include <QDataStream>
 #include <QScopedPointer>
+#include <QSet>
 
 #include "../../formatidlist.h"
 
-#include "api/api_application.h"
 #include "commonstrings.h"
 #include "hyphenator.h"
 #include "notesstyles.h"
@@ -49,6 +50,11 @@ for which a new license (GPL+exception) is in place.
 #include "util_color.h"
 #include "util_text.h"
 
+namespace
+{
+const QString s_slaVersion = QStringLiteral("1.7.4");
+}
+
 QString Scribus171Format::saveElements(double xp, double yp, double wp, double hp, Selection* selection, QByteArray &prevData)
 {
 	ResourceCollection lists;
@@ -67,7 +73,7 @@ QString Scribus171Format::saveElements(double xp, double yp, double wp, double h
 	writer.writeAttribute("Width", wp);
 	writer.writeAttribute("Height", hp);
 	writer.writeAttribute("Count", selection->count());
-	writer.writeAttribute("Version", ScribusAPI::getVersion());
+	writer.writeAttribute("Version", s_slaVersion);
 	writer.writeAttribute("previewData", QString(prevData));
 	writeColors(writer, true);
 	writeGradients(writer, true);
@@ -178,7 +184,7 @@ bool Scribus171Format::saveStory(StoryText& story, PageItem* item, QByteArray& d
 	ScXmlStreamWriter writer(&documentStr);
 	writer.setAutoFormatting(true);
 	writer.writeStartElement("ScribusStory");
-	writer.writeAttribute("Version", ScribusAPI::getVersion());
+	writer.writeAttribute("Version", s_slaVersion);
 
 	writeColors(writer, lists.colorNames());
 	writeGradients(writer, lists.gradientNames());
@@ -322,7 +328,7 @@ bool Scribus171Format::saveFile(const QString & fileName, const FileFormat & /* 
 	docu.setDevice(outputFile.data());
 	docu.writeStartDocument();
 	docu.writeStartElement("SCRIBUSUTF8NEW");
-	docu.writeAttribute("Version", ScribusAPI::getVersion());
+	docu.writeAttribute("Version", s_slaVersion);
 
 	docu.writeStartElement("Document");
 	docu.writeAttribute("PageCount", m_Doc->DocPages.count());
@@ -528,6 +534,7 @@ bool Scribus171Format::saveFile(const QString & fileName, const FileFormat & /* 
 	writeHyphenatorLists(docu);
 	writeCharStyles(docu);
 	writeParagraphStyles(docu);
+	writeObjectStyles(docu);
 	writeTableStyles(docu);
 	writeCellStyles(docu);
 	writeLineStyles(docu);
@@ -538,6 +545,7 @@ bool Scribus171Format::saveFile(const QString & fileName, const FileFormat & /* 
 	writeDocItemAttributes(docu);
 	writeIndexes(docu);
 	writeTOC(docu);
+	writeDynamicVariables(docu);
 	writeMarks(docu);
 	writeNotesStyles(docu);
 	writeOpticalMarginSets(docu);
@@ -1003,6 +1011,57 @@ void Scribus171Format::putNamedCStyle(ScXmlStreamWriter& docu, const CharStyle &
 	if ( style.hasName() && style.isDefaultStyle())
 		docu.writeAttribute("DefaultStyle", style.isDefaultStyle());
 	putCStyle(docu, style);
+}
+
+void Scribus171Format::writeObjectStyles(ScXmlStreamWriter& docu) const
+{
+	const QList<int> styleList = m_Doc->getSortedObjectStyleList();
+	for (int index : styleList)
+	{
+		docu.writeStartElement("ObjectStyle");
+		putObjectStyle(docu, m_Doc->objectStyles()[index]);
+		docu.writeEndElement();
+	}
+}
+
+void Scribus171Format::putObjectStyle(ScXmlStreamWriter& docu, const ObjectStyle& style) const
+{
+	if (!style.name().isEmpty())
+		docu.writeAttribute("Name", style.name());
+	if (style.hasName() && style.isDefaultStyle())
+		docu.writeAttribute("DefaultStyle", style.isDefaultStyle());
+	if (!style.parent().isEmpty())
+		docu.writeAttribute("Parent", style.parent());
+	if (!style.shortcut().isEmpty())
+		docu.writeAttribute("Shortcut", style.shortcut());
+	if (!style.isInhFillColor())
+		docu.writeAttribute("FillColor", style.fillColor());
+	if (!style.isInhFillShade())
+		docu.writeAttribute("FillShade", style.fillShade());
+	if (!style.isInhLineColor())
+		docu.writeAttribute("LineColor", style.lineColor());
+	if (!style.isInhLineShade())
+		docu.writeAttribute("LineShade", style.lineShade());
+	if (!style.isInhLineWidth())
+		docu.writeAttribute("LineWidth", style.lineWidth());
+	if (!style.isInhLineStyle())
+		docu.writeAttribute("LineStyle", style.lineStyle());
+	if (!style.isInhLineCap())
+		docu.writeAttribute("LineCap", style.lineCap());
+	if (!style.isInhLineJoin())
+		docu.writeAttribute("LineJoin", style.lineJoin());
+	if (!style.isInhFillTransparency())
+		docu.writeAttribute("FillTransparency", style.fillTransparency());
+	if (!style.isInhLineTransparency())
+		docu.writeAttribute("LineTransparency", style.lineTransparency());
+	if (!style.isInhFillBlendMode())
+		docu.writeAttribute("FillBlendMode", style.fillBlendMode());
+	if (!style.isInhLineBlendMode())
+		docu.writeAttribute("LineBlendMode", style.lineBlendMode());
+	if (!style.isInhCornerRadius())
+		docu.writeAttribute("CornerRadius", style.cornerRadius());
+	if (!style.isInhCustomLineStyle())
+		docu.writeAttribute("CustomLineStyle", style.customLineStyle());
 }
 
 void Scribus171Format::writeTableStyles(ScXmlStreamWriter& docu) const
@@ -1528,6 +1587,8 @@ void Scribus171Format::writeMarks(ScXmlStreamWriter & docu) const
 		docu.writeEmptyElement("Mark");
 		docu.writeAttribute("label", mrk->label);
 		docu.writeAttribute("type", mrk->getType());
+		if (mrk->isType(MARKVariableTextType) && !mrk->getVariableId().isEmpty())
+			docu.writeAttribute("variableId", mrk->getVariableId());
 
 		if (mrk->isType(MARK2ItemType) && mrk->hasItemPtr())
 		{
@@ -1543,6 +1604,40 @@ void Scribus171Format::writeMarks(ScXmlStreamWriter & docu) const
 			MarkType type = mrk->getDestMarkType();
 			docu.writeAttribute("MARKlabel", label);
 			docu.writeAttribute("MARKtype", type);
+			if (mrk->getCrossReferenceFormat() != CrossReferencePageNumber)
+				docu.writeAttribute("xrefFormat", static_cast<int>(mrk->getCrossReferenceFormat()));
+			if (!mrk->getCrossReferencePrefix().isEmpty())
+				docu.writeAttribute("xrefPrefix", mrk->getCrossReferencePrefix());
+			if (!mrk->getCrossReferenceSuffix().isEmpty())
+				docu.writeAttribute("xrefSuffix", mrk->getCrossReferenceSuffix());
+		}
+	}
+	docu.writeEndElement();
+}
+
+void Scribus171Format::writeDynamicVariables(ScXmlStreamWriter& docu) const
+{
+	bool hasDynamicReference = !m_Doc->dynamicVariables().isEmpty();
+	for (const Mark* mark : m_Doc->marksList())
+		hasDynamicReference |= (mark && mark->isType(MARKVariableTextType) && !mark->getVariableId().isEmpty());
+	if (!hasDynamicReference)
+		return;
+	docu.writeStartElement("DynamicVariables");
+	docu.writeAttribute("creationDate", m_Doc->dynamicVariableCreationDate().toString(Qt::ISODateWithMs));
+	for (const DynamicVariable& variable : m_Doc->dynamicVariables())
+	{
+		docu.writeEmptyElement("Variable");
+		docu.writeAttribute("id", variable.id);
+		docu.writeAttribute("type", variable.type);
+		docu.writeAttribute("name", variable.name);
+		docu.writeAttribute("value", variable.value);
+		if (variable.type == DynamicVariableResolver::RunningHeader)
+		{
+			docu.writeAttribute("paragraphStyle", variable.paragraphStyle);
+			docu.writeAttribute("mode", variable.runningHeaderMode);
+			docu.writeAttribute("textCase", variable.runningHeaderTextCase);
+			docu.writeAttribute("removeTrailingPunctuation", variable.removeTrailingPunctuation ? 1 : 0);
+			docu.writeAttribute("fallback", variable.runningHeaderFallback);
 		}
 	}
 	docu.writeEndElement();
@@ -2012,7 +2107,52 @@ void Scribus171Format::WriteObjects(ScribusDoc *doc, ScXmlStreamWriter& docu, co
 				items = some_items;
 			else
 			{
-				itemList = doc->FrameItems.values();
+				// A table cell (or another inline text container) can itself contain
+				// inline frames. Write those dependencies first so the loader can
+				// resolve their object markers while reading the parent story.
+				QSet<PageItem*> visiting;
+				QSet<PageItem*> written;
+				std::function<void(PageItem*)> appendFrame;
+				std::function<void(PageItem*)> appendDependencies;
+				appendDependencies = [&](PageItem* owner)
+				{
+					if (!owner)
+						return;
+					for (int pos = 0; pos < owner->itemText.length(); ++pos)
+					{
+						if (!owner->itemText.hasObject(pos))
+							continue;
+						const int id = owner->itemText.object(pos).getInlineCharID();
+						if (doc->FrameItems.contains(id))
+							appendFrame(doc->FrameItems.value(id));
+					}
+					if (owner->isTable())
+					{
+						PageItem_Table* table = owner->asTable();
+						for (int row = 0; row < table->rows(); ++row)
+							for (int column = 0; column < table->columns(); ++column)
+							{
+								PageItem* cellText = table->cellAt(row, column).textFrame();
+								if (cellText)
+									appendDependencies(cellText);
+							}
+					}
+					if (owner->isGroup())
+						for (PageItem* child : std::as_const(owner->groupItemList))
+							appendDependencies(child);
+				};
+				appendFrame = [&](PageItem* frame)
+				{
+					if (!frame || written.contains(frame) || visiting.contains(frame))
+						return;
+					visiting.insert(frame);
+					appendDependencies(frame);
+					visiting.remove(frame);
+					written.insert(frame);
+					itemList.append(frame);
+				};
+				for (PageItem* frame : doc->FrameItems)
+					appendFrame(frame);
 				items = &itemList;
 			}
 			break;
@@ -2071,6 +2211,24 @@ void Scribus171Format::WriteObjects(ScribusDoc *doc, ScXmlStreamWriter& docu, co
 			docu.writeAttribute("ImageLowResType", item->pixm.imgInfo.lowResType);
 		if (item->isEmbedded)
 			docu.writeAttribute("isInline", 1);
+		const AnchorPosition& anchor = item->anchorPosition();
+		if (!anchor.isDefault())
+		{
+			docu.writeAttribute("AnchorMode", static_cast<int>(anchor.mode));
+			docu.writeAttribute("AnchorHorizontalReference", static_cast<int>(anchor.horizontalReference));
+			docu.writeAttribute("AnchorVerticalReference", static_cast<int>(anchor.verticalReference));
+			docu.writeAttribute("AnchorHorizontalAlignment", static_cast<int>(anchor.horizontalAlignment));
+			docu.writeAttribute("AnchorVerticalAlignment", static_cast<int>(anchor.verticalAlignment));
+			docu.writeAttribute("AnchorWrapMode", static_cast<int>(anchor.wrapMode));
+			docu.writeAttribute("AnchorXOffset", anchor.xOffset);
+			docu.writeAttribute("AnchorYOffset", anchor.yOffset);
+			docu.writeAttribute("AnchorWrapLeft", anchor.wrapOffsets.left());
+			docu.writeAttribute("AnchorWrapTop", anchor.wrapOffsets.top());
+			docu.writeAttribute("AnchorWrapRight", anchor.wrapOffsets.right());
+			docu.writeAttribute("AnchorWrapBottom", anchor.wrapOffsets.bottom());
+			docu.writeAttribute("AnchorKeepWithinBounds", static_cast<int>(anchor.keepWithinBounds));
+			docu.writeAttribute("AnchorLockPosition", static_cast<int>(anchor.preventManualPositioning));
+		}
 		if (!item->fillRule)
 			docu.writeAttribute("FillRule", 0);
 		if (item->doOverprint)
@@ -2706,6 +2864,8 @@ void Scribus171Format::SetItemProps(ScXmlStreamWriter& docu, PageItem* item, con
 	docu.writeAttribute("ItemType", item->realItemType());
 	docu.writeAttribute("Width", item->width());
 	docu.writeAttribute("Height", item->height());
+	if (!item->objectStyleName().isEmpty())
+		docu.writeAttribute("ObjectStyle", item->objectStyleName());
 	if (item->cornerRadius() != 0)
 		docu.writeAttribute("CornerRadius", item->cornerRadius());
 	docu.writeAttribute("FrameType", item->FrameType);

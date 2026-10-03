@@ -52,6 +52,7 @@ class QLabel;
 class QMdiArea;
 class QMdiSubWindow;
 class QQuickView;
+class QToolButton;
 
 // application specific includes
 #include "scribusapi.h"
@@ -113,6 +114,7 @@ class StoryEditor;
 class StyleManager;
 class SymbolPalette;
 class TOCGenerator;
+class ToolPalette;
 class UndoManager;
 class UndoPalette;
 class UndoState;
@@ -237,6 +239,9 @@ public:
 	DockManager * dockManager {nullptr};
 
 	QProgressBar* mainWindowProgressBar {nullptr};
+	QLabel* backgroundTaskLabel {nullptr};
+	QToolButton* statusSaveButton {nullptr};
+	QToolButton* statusPreflightButton {nullptr};
 	ScrSpinBox* zoomSpinBox {nullptr}; //zoom spinbox at bottom of view
 	PageSelector* pageSelector {nullptr}; //Page selector at bottom of view
 	QPushButton *zoomDefaultToolbarButton {nullptr};
@@ -247,6 +252,7 @@ public:
 	EditToolBar *editToolBar {nullptr};
 	FileToolBar *fileToolBar {nullptr};
 	ModeToolBar* modeToolBar {nullptr};
+	ToolPalette* toolPalette {nullptr};
 	PDFToolBar* pdfToolBar {nullptr};
 	ViewToolBar* viewToolBar {nullptr};
 	QLabel* mainWindowXPosLabel {nullptr};
@@ -313,6 +319,7 @@ public slots:
 	void ToggleStickyTools();
 	void ToggleAllGuides();
 	void ToggleAllPalettes();
+	void resetWorkspaceLayout();
 	void slotStoryEditor(bool fromTable);
 	void slotCharSelect();
 	void ImageEffects();
@@ -349,6 +356,9 @@ public slots:
 	void editSymbolStart(const QString& temp);
 	void editSymbolEnd();
 	void editInlineStart(int id);
+	void editAnchoredImage(int id);
+	void editAnchoredObjectOptions(int id);
+	void replaceAnchoredImage(int id);
 	void editInlineEnd();
 	void editMasterPagesStart(const QString& temp = "");
 	void editMasterPagesEnd();
@@ -537,6 +547,7 @@ public slots:
 	void SaveAsEps();
 	void reallySaveAsEps();
 	void SaveAsPDF();
+	void SaveAsEpub();
 	void doSaveAsPDF();
 	void setMainWindowActive();
 	void setItemEffects(int h);
@@ -554,6 +565,8 @@ public slots:
 	void UnGroupObj();
 	void AdjustGroupObj();
 	void StatusPic();
+	void replaceDocumentFonts();
+	void convertRGBColorsToCMYK();
 	void ModifyAnnot();
 	void toggleGuides();
 	void toggleBase();
@@ -580,6 +593,7 @@ public slots:
 	void slotDocSetup();
 	//! \brief Insert a frame friendly dialog
 	void slotInsertFrame();
+	void slotInsertAnchoredImage();
 	//! \brief Transform an item
 	void slotItemTransform();
 	//! \brief manages paints
@@ -599,6 +613,8 @@ public slots:
 	void slotInsertMark2Mark() { insertMark(MARK2MarkType); }
 	void slotInsertMarkAnchor() { insertMark(MARKAnchorType); }
 	void slotInsertMarkVariableText() { insertMark(MARKVariableTextType); }
+	void slotInsertDynamicVariable();
+	void slotManageDynamicVariables();
 	void slotInsertMarkItem() { insertMark(MARK2ItemType); }
 	void slotInsertMarkNote();
 	void slotInsertMarkIndex() { insertMark(MARKIndexType); }

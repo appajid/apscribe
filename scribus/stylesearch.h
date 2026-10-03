@@ -10,23 +10,12 @@
 #ifndef STYLESEARCH_H
 #define STYLESEARCH_H
 
-class QAction;
-class QMenu;
-class QMenuBar;
-
 #include <QList>
-#include <QHash>
 
 #include "scribusapi.h"
-#include "scribusdoc.h"
+#include "stylequickapplymodel.h"
 
-enum class StyleSearchType { paragraph, character };
-
-struct StyleSearchItem
-{
-	QString name;
-	StyleSearchType type {StyleSearchType::paragraph};
-};
+class ScribusDoc;
 
 class SCRIBUS_API StyleSearch
 {
@@ -42,7 +31,6 @@ public:
 
 private:
 	ScribusDoc* scribusDoc { nullptr };
-	QList<PageItem_TextFrame*> textFrames;
 	QList<StyleSearchItem> styles;
 };
 

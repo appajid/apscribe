@@ -11,12 +11,14 @@ for which a new license (GPL+exception) is in place.
 #include "docks/dock_panelbase.h"
 #include "scguardedptr.h"
 #include "widgets/stacked_container.h"
+#include <QMetaObject>
 
 class QStackedWidget;
 
 class ScribusMainWindow;
 class ScribusDoc;
 class PageItem;
+class InspectorHeader;
 
 class ContentPalette_Default;
 class ContentPalette_Page;
@@ -34,6 +36,13 @@ class SCRIBUS_API ContentPalette : public DockPanelBase
 	Q_OBJECT
 
 	public:
+		enum InspectorTarget
+		{
+			InspectorAppearance,
+			InspectorContent,
+			InspectorAlignment
+		};
+
 		ContentPalette(QWidget* parent);
 		~ContentPalette() {}
 
@@ -65,10 +74,14 @@ class SCRIBUS_API ContentPalette : public DockPanelBase
 		void unitChange();
 		void languageChange();
 
+	signals:
+		void inspectorTargetChanged(int target);
+
 	private:
 		ScribusMainWindow *m_ScMW {nullptr};
 		ScGuardedPtr<ScribusDoc> m_doc {nullptr};
-		PageItem* m_item {nullptr};
+	PageItem* m_item {nullptr};
+	QMetaObject::Connection m_textSelectionConnection;
 
 		bool m_haveDoc {false};
 		bool m_haveItem {false};
@@ -76,6 +89,7 @@ class SCRIBUS_API ContentPalette : public DockPanelBase
 		int m_unitIndex {0};
 
 		StackedContainer* stackedWidget {nullptr};
+		InspectorHeader* m_inspectorHeader {nullptr};
 		ContentPalette_Default* defaultPal {nullptr};
 		PropertiesPalette_Group* groupPal {nullptr};
 		PropertiesPalette_Image* imagePal {nullptr};

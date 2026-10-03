@@ -83,7 +83,7 @@ ads--CDockAreaWidget #tabsMenuButton::menu-indicator {
 ads--CDockAreaTitleBar
 {
        background: palette(mid);
-       min-height: 24px;
+       min-height: 30px;
        /* border-bottom: 1px solid palette(window); */
 }
 
@@ -102,7 +102,7 @@ ads--CDockWidgetTab {
        /*border-color: palette(light);
        border-style: solid;
        border-width: 0 1px 0 0;*/
-       padding: 0px;
+       padding: 0px 4px;
        border:none;
 }
 
@@ -115,10 +115,12 @@ ads--CDockWidgetTab[activeTab="false"]
 
 ads--CDockWidgetTab[activeTab="true"] {
        background: palette(window);
+       border-bottom: 2px solid palette(highlight);
 }
 
 ads--CDockWidgetTab QLabel {
        color: palette(foreground);
+       padding: 2px 3px;
 }
 
 ads--CDockWidgetTab[activeTab="true"] QLabel {
@@ -149,6 +151,82 @@ ads--CTitleBarButton {
 QScrollArea#dockWidgetScrollArea {
        padding: 0px;
        border: none;
+}
+
+/*
+ * Context inspector
+ */
+
+QWidget#inspectorHeader {
+       background: palette(base);
+       border-bottom: 1px solid palette(mid);
+}
+
+QLabel#inspectorContextIcon {
+       background: palette(midlight);
+       border: 1px solid palette(mid);
+       border-radius: 4px;
+}
+
+QLabel#inspectorContextTitle {
+       font-weight: 600;
+       color: palette(text);
+}
+
+QLabel#inspectorContextSubtitle {
+       color: palette(dark);
+}
+
+QTabBar#textInspectorTabs {
+       background: palette(midlight);
+       border: 1px solid palette(mid);
+       border-radius: 4px;
+}
+
+QTabBar#textInspectorTabs::tab {
+       background: transparent;
+       border: none;
+       color: palette(dark);
+       font-weight: 600;
+       min-height: 24px;
+       padding: 3px 10px;
+}
+
+QTabBar#textInspectorTabs::tab:selected {
+       background: palette(base);
+       color: palette(text);
+       border-radius: 3px;
+}
+
+QTabBar#textInspectorTabs::tab:hover:!selected {
+       background: palette(light);
+       color: palette(text);
+}
+
+QWidget#sectionContainerHeader QLabel#sectionContainerTitle {
+       padding-left: 2px;
+}
+
+SectionContainer[inspectorSection="true"] {
+       background: palette(base);
+       border: 1px solid palette(mid);
+       border-radius: 4px;
+}
+
+SectionContainer[inspectorSection="true"] QWidget#sectionContainerHeader {
+       border-top-left-radius: 4px;
+       border-top-right-radius: 4px;
+}
+
+QPushButton#sectionContainerCollapse {
+       border: none;
+       background: transparent;
+       padding: 2px;
+}
+
+QPushButton#sectionContainerCollapse:hover {
+       background: palette(midlight);
+       border-radius: 3px;
 }
 
 /*
@@ -225,4 +303,1095 @@ ads--CFloatingWidgetTitleBar {
 
 #floatingTitleCloseButton:pressed {
    background: rgba(___overlayRgb___, 48);
+}
+
+/*
+* Tool Palette (dockable tools)
+*/
+
+QLabel#toolSectionHeader {
+   color: palette(dark);
+   margin-top: 2px;
+   padding: 0px;
+   border: none;
+}
+
+QLabel#toolHelpLabel {
+   color: palette(foreground);
+   background: palette(window);
+   border-top: 1px solid palette(midlight);
+   padding-top: 4px;
+   margin-top: 2px;
+}
+
+QWidget#toolPaletteContent {
+   background: palette(base);
+}
+
+QToolButton#toolButton {
+   min-width: 40px;
+   max-width: 40px;
+   min-height: 40px;
+   max-height: 40px;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   background: transparent;
+   margin: 0px;
+   padding: 0px;
+}
+
+QToolButton#toolButton:hover {
+   border: 1px solid palette(mid);
+   background: palette(midlight);
+}
+
+QToolButton#toolButton:checked {
+   border: 1px solid palette(highlight);
+   background: palette(button);
+}
+
+QToolButton#toolButton:checked:hover {
+   border: 1px solid palette(highlight);
+   background: palette(button);
+}
+
+QToolButton#toolButton:focus {
+   border: 1px solid palette(highlight);
+}
+
+QToolButton#toolButton::menu-indicator {
+   image: url(___tb_menu_arrow___);
+   subcontrol-origin: border;
+   subcontrol-position: bottom right;
+   width: 6px;
+   height: 6px;
+   right: 3px;
+   bottom: 3px;
+}
+
+QFrame#toolSeparator {
+   background: palette(mid);
+   border: none;
+   margin: 0px;
+}
+
+/*
+ * Modern application chrome. All colours use Qt palette roles so the same
+ * controls follow macOS, Windows and Linux light/dark appearance settings.
+ */
+
+QToolBar[mainToolbar="true"],
+QToolBar[contextToolbar="true"] {
+   background: palette(window);
+   border: none;
+   border-bottom: 1px solid palette(mid);
+   spacing: 4px;
+   padding: 4px 8px;
+}
+
+QToolBar[mainToolbar="true"] QToolButton,
+QToolBar[contextToolbar="true"] QToolButton#contextToolButton {
+   background: transparent;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   padding: 5px;
+}
+
+QToolBar[mainToolbar="true"] QToolButton:hover,
+QToolBar[contextToolbar="true"] QToolButton#contextToolButton:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QToolBar[mainToolbar="true"] QToolButton:pressed,
+QToolBar[mainToolbar="true"] QToolButton:checked,
+QToolBar[contextToolbar="true"] QToolButton#contextToolButton:pressed,
+QToolBar[contextToolbar="true"] QToolButton#contextToolButton:checked {
+   background: palette(highlight);
+   color: palette(highlighted-text);
+   border-color: palette(highlight);
+}
+
+QToolBar[mainToolbar="true"] QToolButton:focus,
+QToolBar[contextToolbar="true"] QToolButton#contextToolButton:focus {
+   border: 2px solid palette(highlight);
+}
+
+QLabel#contextToolbarTitle {
+   color: palette(text);
+   font-weight: 600;
+   padding: 0px 6px;
+}
+
+QToolButton#appearanceButton {
+   background: transparent;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   padding: 5px;
+}
+
+QToolButton#appearanceButton:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QToolButton#appearanceButton:checked {
+   background: palette(base);
+   border: 2px solid palette(highlight);
+}
+
+QToolButton#appearanceButton:focus {
+   border: 2px solid palette(highlight);
+}
+
+ads--CDockAreaTitleBar,
+ads--CDockAreaTabBar #tabsContainerWidget {
+   background: palette(window);
+   min-height: 32px;
+}
+
+ads--CDockWidgetTab {
+   padding: 2px 8px;
+}
+
+ads--CDockWidgetTab[activeTab="true"] {
+   background: palette(base);
+   border-bottom: 2px solid palette(highlight);
+}
+
+ads--CDockWidget QComboBox,
+ads--CDockWidget QLineEdit,
+ads--CDockWidget QSpinBox,
+ads--CDockWidget QDoubleSpinBox {
+   min-height: 26px;
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 5px;
+   padding: 1px 6px;
+   selection-background-color: palette(highlight);
+   selection-color: palette(highlighted-text);
+}
+
+ads--CDockWidget QPushButton,
+ads--CDockWidget QToolButton {
+   min-height: 26px;
+   border: 1px solid palette(mid);
+   border-radius: 5px;
+   background: palette(button);
+   padding: 2px 6px;
+}
+
+ads--CDockWidget QPushButton:hover,
+ads--CDockWidget QToolButton:hover {
+   background: palette(midlight);
+}
+
+ads--CDockWidget QPushButton:focus,
+ads--CDockWidget QToolButton:focus,
+ads--CDockWidget QComboBox:focus,
+ads--CDockWidget QLineEdit:focus,
+ads--CDockWidget QSpinBox:focus,
+ads--CDockWidget QDoubleSpinBox:focus {
+   border: 2px solid palette(highlight);
+}
+
+ads--CDockWidget QPushButton:disabled,
+ads--CDockWidget QToolButton:disabled,
+ads--CDockWidget QComboBox:disabled,
+ads--CDockWidget QLineEdit:disabled,
+ads--CDockWidget QSpinBox:disabled,
+ads--CDockWidget QDoubleSpinBox:disabled {
+   color: palette(mid);
+   background: palette(window);
+}
+
+/* Flat, clearly divided contextual inspector groups. */
+SectionContainer[inspectorSection="true"] {
+   background: palette(base);
+   border: none;
+   border-bottom: 1px solid palette(mid);
+   border-radius: 0px;
+   margin: 0px;
+}
+
+SectionContainer[inspectorSection="true"] QWidget#sectionContainerHeader {
+   background: palette(base);
+   border: none;
+   padding: 4px 6px;
+}
+
+SectionContainer[inspectorSection="true"] QLabel#sectionContainerTitle {
+   color: palette(text);
+   font-weight: 600;
+}
+
+/* Modern New Document and startup surface. */
+QDialog[modernDialog="true"] {
+   background: palette(window);
+}
+
+QDialog[modernDialog="true"] QWidget[welcomeSurface="true"] {
+   background: palette(window);
+}
+
+QDialog[modernDialog="true"] QLabel#welcomeAppName {
+   color: palette(text);
+   font-weight: 600;
+}
+
+QDialog[modernDialog="true"] QLabel#welcomeTitle {
+   color: palette(text);
+   font-size: 20px;
+   font-weight: 600;
+}
+
+QDialog[modernDialog="true"] QLabel#welcomeSectionTitle {
+   color: palette(text);
+   font-weight: 600;
+}
+
+QDialog[modernDialog="true"] QFrame#welcomeHeaderDivider,
+QDialog[modernDialog="true"] QFrame#welcomeContentDivider {
+   color: palette(mid);
+}
+
+QDialog[modernDialog="true"] QPushButton[welcomeAction="true"] {
+   min-height: 50px;
+   border: 1px solid transparent;
+   border-radius: 8px;
+   background: palette(window);
+   padding: 4px 10px;
+   text-align: left;
+}
+
+QDialog[modernDialog="true"] QPushButton[welcomeAction="true"]:hover,
+QDialog[modernDialog="true"] QPushButton[welcomeAction="true"]:focus {
+   background: palette(midlight);
+   border-color: palette(highlight);
+}
+
+QDialog[modernDialog="true"] QPushButton[linkAction="true"] {
+   color: palette(highlight);
+   background: transparent;
+   border: none;
+   padding: 0px 4px;
+}
+
+QDialog[modernDialog="true"] QListWidget[welcomeRecents="true"] {
+   background: palette(window);
+   border: none;
+   padding: 0px;
+}
+
+QDialog[modernDialog="true"] QListWidget[welcomeRecents="true"]::item {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   padding: 6px 9px;
+}
+
+QDialog[modernDialog="true"] QListWidget[welcomeRecents="true"]::item:hover,
+QDialog[modernDialog="true"] QListWidget[welcomeRecents="true"]::item:selected {
+   color: palette(text);
+   background: palette(midlight);
+   border-color: palette(highlight);
+}
+
+QDialog[modernDialog="true"] QTabWidget::pane {
+   border: none;
+   background: palette(window);
+}
+
+QDialog[modernDialog="true"] QTabBar::tab {
+   min-height: 28px;
+   padding: 3px 14px;
+   margin: 0px 2px;
+   border: 1px solid transparent;
+   border-radius: 6px;
+}
+
+QDialog[modernDialog="true"] QTabBar::tab:hover:!selected {
+   background: palette(midlight);
+}
+
+QDialog[modernDialog="true"] QTabBar::tab:selected {
+   color: palette(highlighted-text);
+   background: palette(highlight);
+   border-color: palette(highlight);
+}
+
+QDialog[modernDialog="true"] QListView#listPageFormats,
+QDialog[modernDialog="true"] QListWidget#recentDocListBox {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   padding: 6px;
+   outline: 0;
+}
+
+QDialog[modernDialog="true"] QListView#listPageFormats::item,
+QDialog[modernDialog="true"] QListWidget#recentDocListBox::item {
+   border: 1px solid transparent;
+   border-radius: 7px;
+   padding: 6px;
+}
+
+QDialog[modernDialog="true"] QListView#listPageFormats::item:hover,
+QDialog[modernDialog="true"] QListWidget#recentDocListBox::item:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QDialog[modernDialog="true"] QListView#listPageFormats::item:selected,
+QDialog[modernDialog="true"] QListWidget#recentDocListBox::item:selected {
+   color: palette(highlighted-text);
+   background: palette(highlight);
+   border-color: palette(highlight);
+}
+
+QDialog[modernDialog="true"] SectionContainer[dialogSection="true"] {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   margin: 4px 0px;
+}
+
+QDialog[modernDialog="true"] SectionContainer[dialogSection="true"] QWidget#sectionContainerHeader {
+   background: palette(base);
+   border: none;
+   border-bottom: 1px solid palette(mid);
+   padding: 4px 6px;
+}
+
+QDialog[modernDialog="true"] QPushButton,
+QDialog[modernDialog="true"] QToolButton,
+QDialog[modernDialog="true"] QComboBox,
+QDialog[modernDialog="true"] QLineEdit,
+QDialog[modernDialog="true"] QSpinBox,
+QDialog[modernDialog="true"] QDoubleSpinBox {
+   min-height: 28px;
+   border: 1px solid palette(mid);
+   border-radius: 6px;
+   background: palette(base);
+   padding: 2px 8px;
+}
+
+QDialog[modernDialog="true"] QPushButton:hover,
+QDialog[modernDialog="true"] QToolButton:hover {
+   background: palette(midlight);
+}
+
+QDialog[modernDialog="true"] QPushButton[primaryAction="true"] {
+   color: palette(highlighted-text);
+   background: palette(highlight);
+   border-color: palette(highlight);
+   font-weight: 600;
+}
+
+QDialog[modernDialog="true"] QPushButton:focus,
+QDialog[modernDialog="true"] QToolButton:focus,
+QDialog[modernDialog="true"] QComboBox:focus,
+QDialog[modernDialog="true"] QLineEdit:focus,
+QDialog[modernDialog="true"] QSpinBox:focus,
+QDialog[modernDialog="true"] QDoubleSpinBox:focus {
+   border: 2px solid palette(highlight);
+}
+
+QDialog[modernDialog="true"] QPushButton:disabled,
+QDialog[modernDialog="true"] QToolButton:disabled,
+QDialog[modernDialog="true"] QComboBox:disabled,
+QDialog[modernDialog="true"] QLineEdit:disabled,
+QDialog[modernDialog="true"] QSpinBox:disabled,
+QDialog[modernDialog="true"] QDoubleSpinBox:disabled {
+   color: palette(mid);
+   background: palette(window);
+}
+
+QDialog[modernDialog="true"] QGroupBox[modernSection="true"] {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   margin-top: 14px;
+   padding: 10px 8px 8px 8px;
+}
+
+QDialog[modernDialog="true"] QGroupBox[modernSection="true"]::title {
+   subcontrol-origin: margin;
+   subcontrol-position: top left;
+   left: 10px;
+   padding: 0px 5px;
+   color: palette(text);
+   background: palette(window);
+   font-weight: 600;
+}
+
+QDialog[modernDialog="true"] QListWidget,
+QDialog[modernDialog="true"] QTreeWidget,
+QDialog[modernDialog="true"] QTableWidget,
+QDialog[modernDialog="true"] QTableView {
+   background: palette(base);
+   alternate-background-color: palette(window);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   outline: 0;
+   selection-background-color: palette(highlight);
+   selection-color: palette(highlighted-text);
+}
+
+QDialog[modernDialog="true"] QHeaderView::section {
+   background: palette(window);
+   color: palette(text);
+   border: none;
+   border-bottom: 1px solid palette(mid);
+   border-right: 1px solid palette(midlight);
+   min-height: 26px;
+   padding: 3px 7px;
+   font-weight: 600;
+}
+
+/* Preferences and Document Setup share the same searchable navigation shell. */
+QDialog[modernDialogRole="preferences"] QListWidget[modernNavigation="true"] {
+   min-width: 216px;
+   max-width: 248px;
+   padding: 6px;
+}
+
+QDialog[modernDialogRole="preferences"] QListWidget[modernNavigation="true"]::item {
+   min-height: 30px;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   padding: 3px 7px;
+}
+
+QDialog[modernDialogRole="preferences"] QListWidget[modernNavigation="true"]::item:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QDialog[modernDialogRole="preferences"] QListWidget[modernNavigation="true"]::item:selected {
+   color: palette(highlighted-text);
+   background: palette(highlight);
+   border-color: palette(highlight);
+}
+
+QDialog[modernDialogRole="preferences"] QStackedWidget[modernContent="true"] {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 9px;
+}
+
+/* Pages, Masters, Styles and Colours follow the approved library-card language. */
+QWidget[modernPagesPanel="true"],
+QWidget[modernMastersPanel="true"] {
+   background: palette(base);
+}
+
+QWidget[modernPagesPanel="true"] QLabel#masterPageLabel,
+QWidget[modernPagesPanel="true"] QLabel#pageViewLabel {
+   color: palette(text);
+   font-weight: 600;
+   padding: 3px 1px;
+}
+
+QWidget[modernPagesPanel="true"] QListWidget#masterPageList,
+QWidget[modernMastersPanel="true"] QListWidget[masterPageCards="true"] {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   outline: 0;
+   padding: 5px;
+}
+
+QWidget[modernPagesPanel="true"] QListWidget#masterPageList::item,
+QWidget[modernMastersPanel="true"] QListWidget[masterPageCards="true"]::item {
+   border: 1px solid transparent;
+   border-radius: 7px;
+   padding: 5px;
+}
+
+QWidget[modernPagesPanel="true"] QListWidget#masterPageList::item:hover,
+QWidget[modernMastersPanel="true"] QListWidget[masterPageCards="true"]::item:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QWidget[modernPagesPanel="true"] QListWidget#masterPageList::item:selected,
+QWidget[modernMastersPanel="true"] QListWidget[masterPageCards="true"]::item:selected {
+   color: palette(text);
+   background: palette(button);
+   border-color: palette(highlight);
+}
+
+QWidget[modernPagesPanel="true"] QToolButton[panelAction="true"],
+QWidget[modernMastersPanel="true"] QToolButton[panelAction="true"] {
+   min-width: 30px;
+   min-height: 30px;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   background: transparent;
+}
+
+QWidget[modernPagesPanel="true"] QToolButton[panelAction="true"]:hover,
+QWidget[modernMastersPanel="true"] QToolButton[panelAction="true"]:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QDialog[modernDialogRole="styles"] QFrame[navigationPanel="true"] {
+   background: palette(window);
+   border: none;
+}
+
+QDialog[modernDialogRole="styles"] QFrame[contentPanel="true"] {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   padding: 10px;
+}
+
+QDialog[modernDialogRole="styles"] QTreeWidget[modernNavigation="true"],
+QDialog[modernDialogRole="colours"] QTreeWidget[colourLibrary="true"] {
+   show-decoration-selected: 1;
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   outline: 0;
+   padding: 5px;
+}
+
+QDialog[modernDialogRole="styles"] QTreeWidget[modernNavigation="true"]::item,
+QDialog[modernDialogRole="colours"] QTreeWidget[colourLibrary="true"]::item {
+   min-height: 30px;
+   border: 1px solid transparent;
+   border-radius: 6px;
+   padding: 3px 6px;
+}
+
+QDialog[modernDialogRole="styles"] QTreeWidget[modernNavigation="true"]::item:hover,
+QDialog[modernDialogRole="colours"] QTreeWidget[colourLibrary="true"]::item:hover {
+   background: palette(midlight);
+}
+
+QDialog[modernDialogRole="styles"] QTreeWidget[modernNavigation="true"]::item:selected,
+QDialog[modernDialogRole="colours"] QTreeWidget[colourLibrary="true"]::item:selected {
+   color: palette(text);
+   background: palette(button);
+   border-color: palette(highlight);
+}
+
+QDialog[modernDialogRole="styles"] QPushButton[compactAction="true"] {
+   text-align: left;
+}
+
+/* Preflight remains dockable while using the same modern form and report language. */
+QWidget[modernPanel="true"] {
+   background: palette(window);
+}
+
+QWidget[modernPanelRole="preflight"] QComboBox,
+QWidget[modernPanelRole="preflight"] QPushButton {
+   min-height: 28px;
+   border: 1px solid palette(mid);
+   border-radius: 6px;
+   background: palette(base);
+   padding: 2px 8px;
+}
+
+QWidget[modernPanelRole="preflight"] QPushButton:hover {
+   background: palette(midlight);
+}
+
+QWidget[modernPanelRole="preflight"] QComboBox:focus,
+QWidget[modernPanelRole="preflight"] QPushButton:focus {
+   border: 2px solid palette(highlight);
+}
+
+QTreeWidget#preflightReport {
+   background: palette(base);
+   alternate-background-color: palette(window);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   outline: 0;
+   selection-background-color: palette(highlight);
+   selection-color: palette(highlighted-text);
+}
+
+QTreeWidget#preflightReport QHeaderView::section {
+   background: palette(window);
+   color: palette(text);
+   border: none;
+   border-bottom: 1px solid palette(mid);
+   border-right: 1px solid palette(midlight);
+   min-height: 26px;
+   padding: 3px 7px;
+   font-weight: 600;
+}
+
+/* About screen */
+QDialog#aboutDialog QTabWidget#aboutTabs::pane {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 10px;
+   top: -1px;
+}
+
+QDialog#aboutDialog QTabWidget#aboutTabs QTabBar::tab {
+   min-height: 30px;
+   padding: 3px 12px;
+   margin: 0px 1px;
+}
+
+QLabel#aboutAppIcon {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 22px;
+}
+
+QLabel#aboutSummary {
+   color: palette(text);
+   min-width: 440px;
+   padding: 4px 12px 12px 12px;
+}
+
+QDialog#aboutDialog QFrame[aboutInformation="true"] {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+}
+
+QDialog#aboutDialog QPushButton[aboutAction="true"],
+QDialog#aboutDialog QToolButton[aboutAction="true"] {
+   min-height: 30px;
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 7px;
+   padding: 3px 10px;
+}
+
+QDialog#aboutDialog QPushButton[aboutAction="true"]:hover,
+QDialog#aboutDialog QToolButton[aboutAction="true"]:hover {
+   background: palette(midlight);
+   border-color: palette(highlight);
+}
+
+QDialog#aboutDialog QLabel#aboutFooter {
+   color: palette(mid);
+   padding-top: 5px;
+}
+
+QDialog#aboutDialog QTextBrowser {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   padding: 8px;
+   selection-background-color: palette(highlight);
+   selection-color: palette(highlighted-text);
+}
+
+/* Story Editor specialist workspace */
+QMainWindow[modernStoryEditor="true"] {
+   background: palette(window);
+}
+
+QMainWindow[modernStoryEditor="true"] QMenuBar {
+   background: palette(window);
+   border-bottom: 1px solid palette(mid);
+   padding: 2px 6px;
+}
+
+QMainWindow[modernStoryEditor="true"] QToolBar[storyPrimaryToolbar="true"],
+QMainWindow[modernStoryEditor="true"] QToolBar[storyContextToolbar="true"] {
+   background: palette(window);
+   border: none;
+   border-bottom: 1px solid palette(mid);
+   spacing: 5px;
+   padding: 5px 7px;
+}
+
+QMainWindow[modernStoryEditor="true"] QToolBar[storyPrimaryToolbar="true"] QToolButton,
+QMainWindow[modernStoryEditor="true"] QToolBar[storyContextToolbar="true"] QToolButton {
+   min-width: 28px;
+   min-height: 28px;
+   border: 1px solid transparent;
+   border-radius: 5px;
+   padding: 2px;
+}
+
+QMainWindow[modernStoryEditor="true"] QToolBar[storyPrimaryToolbar="true"] QToolButton:hover,
+QMainWindow[modernStoryEditor="true"] QToolBar[storyContextToolbar="true"] QToolButton:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QMainWindow[modernStoryEditor="true"] QToolBar[storyPrimaryToolbar="true"] QToolButton:focus,
+QMainWindow[modernStoryEditor="true"] QToolBar[storyContextToolbar="true"] QToolButton:focus,
+QMainWindow[modernStoryEditor="true"] QComboBox:focus,
+QMainWindow[modernStoryEditor="true"] QSpinBox:focus,
+QMainWindow[modernStoryEditor="true"] QDoubleSpinBox:focus,
+QMainWindow[modernStoryEditor="true"] QTextEdit:focus {
+   border: 1px solid palette(highlight);
+}
+
+QSplitter#storyWorkspace {
+   background: palette(window);
+}
+
+QSplitter#storyWorkspace::handle {
+   background: palette(mid);
+   width: 1px;
+}
+
+QTextEdit#storyTextEditor {
+   background: palette(base);
+   color: palette(text);
+   border: none;
+   padding: 24px 28px;
+   selection-background-color: palette(highlight);
+   selection-color: palette(highlighted-text);
+}
+
+QFrame#storyInspectorPanel {
+   background: palette(window);
+   border: none;
+   border-left: 1px solid palette(mid);
+}
+
+QLabel#storyInspectorTitle {
+   background: palette(window);
+   color: palette(text);
+   border: none;
+   border-bottom: 1px solid palette(mid);
+   font-weight: 600;
+   padding: 12px 14px;
+}
+
+QLabel#storyParagraphStyles {
+   background: palette(base);
+   color: palette(text);
+   border: none;
+   padding: 4px 8px;
+}
+
+QMainWindow[modernStoryEditor="true"] QStatusBar {
+   background: palette(window);
+   color: palette(text);
+   border-top: 1px solid palette(mid);
+}
+
+QMainWindow[modernStoryEditor="true"] QStatusBar QLabel {
+   color: palette(text);
+   padding: 1px 3px;
+}
+
+/* Path and Node Editor specialist workspace */
+QWidget[modernNodeEditor="true"] {
+   background: palette(window);
+   color: palette(text);
+}
+
+QWidget[modernNodeEditor="true"] QGroupBox[modernSection="true"] {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   margin-top: 12px;
+   padding: 12px 8px 8px 8px;
+}
+
+QWidget[modernNodeEditor="true"] QGroupBox[modernSection="true"]::title {
+   subcontrol-origin: margin;
+   subcontrol-position: top left;
+   left: 10px;
+   padding: 0 5px;
+   color: palette(text);
+   font-weight: 600;
+}
+
+QWidget[modernNodeEditor="true"] QToolButton[nodeEditorTool="true"] {
+   background: palette(base);
+   border: 1px solid transparent;
+   border-radius: 6px;
+   padding: 4px;
+}
+
+QWidget[modernNodeEditor="true"] QToolButton[nodeEditorTool="true"]:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QWidget[modernNodeEditor="true"] QToolButton[nodeEditorTool="true"]:checked {
+   background: palette(highlight);
+   border-color: palette(highlight);
+}
+
+QWidget[modernNodeEditor="true"] QToolButton[nodeEditorTool="true"]:focus,
+QWidget[modernNodeEditor="true"] QSpinBox:focus,
+QWidget[modernNodeEditor="true"] QDoubleSpinBox:focus,
+QWidget[modernNodeEditor="true"] QPushButton:focus {
+   border: 1px solid palette(highlight);
+}
+
+QWidget[modernNodeEditor="true"] QSpinBox,
+QWidget[modernNodeEditor="true"] QDoubleSpinBox {
+   min-height: 28px;
+   background: palette(base);
+   color: palette(text);
+   border: 1px solid palette(mid);
+   border-radius: 6px;
+   padding: 1px 7px;
+}
+
+QWidget[modernNodeEditor="true"] QPushButton {
+   min-height: 30px;
+   background: palette(base);
+   color: palette(text);
+   border: 1px solid palette(mid);
+   border-radius: 7px;
+   padding: 3px 12px;
+}
+
+QWidget[modernNodeEditor="true"] QPushButton[primaryAction="true"] {
+   background: palette(highlight);
+   color: palette(highlighted-text);
+   border-color: palette(highlight);
+   font-weight: 600;
+}
+
+/* Table Editor selection inspector */
+QWidget[specialistTableEditor="true"] {
+   background: palette(window);
+   color: palette(text);
+}
+
+QWidget[specialistTableEditor="true"] QToolButton[tableInspectorAction="true"] {
+   background: palette(base);
+   border: 1px solid transparent;
+   border-radius: 6px;
+   padding: 4px;
+}
+
+QWidget[specialistTableEditor="true"] QToolButton[tableInspectorAction="true"]:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QWidget[specialistTableEditor="true"] QToolButton[tableInspectorAction="true"]:focus,
+QWidget[specialistTableEditor="true"] QComboBox:focus,
+QWidget[specialistTableEditor="true"] QSpinBox:focus,
+QWidget[specialistTableEditor="true"] QDoubleSpinBox:focus,
+QWidget[specialistTableEditor="true"] QListWidget:focus {
+   border: 1px solid palette(highlight);
+}
+
+/* Image Effects specialist workspace */
+QDialog[modernDialogRole="imageEffects"] QLabel[effectsColumnHeader="true"] {
+   color: palette(text);
+   font-weight: 600;
+   padding: 2px 4px 5px 4px;
+}
+
+QDialog[modernDialogRole="imageEffects"] QLabel#effectsPreview {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+}
+
+QDialog[modernDialogRole="imageEffects"] QListWidget#effectsAvailableList,
+QDialog[modernDialogRole="imageEffects"] QListWidget#effectsAppliedList {
+   min-width: 190px;
+   background: palette(base);
+   alternate-background-color: palette(window);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   outline: 0;
+   padding: 4px;
+}
+
+QDialog[modernDialogRole="imageEffects"] QListWidget::item {
+   min-height: 26px;
+   border-radius: 5px;
+   padding: 2px 7px;
+}
+
+QDialog[modernDialogRole="imageEffects"] QListWidget::item:hover {
+   background: palette(midlight);
+}
+
+QDialog[modernDialogRole="imageEffects"] QListWidget::item:selected {
+   background: palette(highlight);
+   color: palette(highlighted-text);
+}
+
+QDialog[modernDialogRole="imageEffects"] QPushButton[compactAction="true"] {
+   min-width: 32px;
+   max-width: 32px;
+   padding: 3px;
+}
+
+/* Asset Manager: modern surface over the compatible Scrapbook engine */
+QWidget[modernAssetManager="true"] {
+   background: palette(window);
+   color: palette(text);
+}
+
+QWidget[modernAssetManager="true"] QToolButton[assetAction="true"] {
+   background: transparent;
+   border: 1px solid transparent;
+   border-radius: 7px;
+   padding: 5px;
+}
+
+QWidget[modernAssetManager="true"] QToolButton[assetAction="true"]:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QWidget[modernAssetManager="true"] QToolButton[assetAction="true"]:pressed,
+QWidget[modernAssetManager="true"] QToolButton[assetAction="true"]:checked {
+   background: palette(highlight);
+   color: palette(highlighted-text);
+}
+
+QWidget[modernAssetManager="true"] QLineEdit#assetSearch {
+   min-height: 28px;
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   padding: 2px 9px;
+}
+
+QWidget[modernAssetManager="true"] QLineEdit#assetSearch:focus {
+   border-color: palette(highlight);
+}
+
+QWidget[modernAssetManager="true"] QToolBox#assetLibraries::tab {
+   min-height: 28px;
+   background: palette(button);
+   border: 0;
+   border-radius: 6px;
+   color: palette(button-text);
+   font-weight: 600;
+   padding: 3px 8px;
+}
+
+QWidget[modernAssetManager="true"] QToolBox#assetLibraries::tab:selected {
+   background: palette(midlight);
+}
+
+QWidget[modernAssetManager="true"] QListWidget[assetGrid="true"] {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   outline: 0;
+   padding: 5px;
+}
+
+QWidget[modernAssetManager="true"] QListWidget[assetGrid="true"]::item {
+   border: 1px solid transparent;
+   border-radius: 7px;
+   padding: 3px;
+}
+
+QWidget[modernAssetManager="true"] QListWidget[assetGrid="true"]::item:hover {
+   background: palette(midlight);
+   border-color: palette(mid);
+}
+
+QWidget[modernAssetManager="true"] QListWidget[assetGrid="true"]::item:selected {
+   background: palette(highlight);
+   color: palette(highlighted-text);
+}
+
+/* Command Palette */
+QDialog[modernDialogRole="commandPalette"] QLabel[commandPaletteTitle="true"] {
+   color: palette(text);
+   font-size: 18px;
+   font-weight: 600;
+}
+
+QDialog[modernDialogRole="commandPalette"] QLabel[commandPaletteSection="true"] {
+   color: palette(text);
+   font-weight: 600;
+}
+
+QDialog[modernDialogRole="commandPalette"] QLabel#descriptionLabel,
+QDialog[modernDialogRole="commandPalette"] QLabel#resultCountLabel,
+QDialog[modernDialogRole="commandPalette"] QLabel[commandPaletteHint="true"] {
+   color: palette(mid);
+}
+
+QDialog[modernDialogRole="commandPalette"] QLineEdit#filterLineEdit {
+   min-height: 34px;
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 9px;
+   font-size: 14px;
+   padding: 3px 10px;
+}
+
+QDialog[modernDialogRole="commandPalette"] QLineEdit#filterLineEdit:focus {
+   border-color: palette(highlight);
+}
+
+QDialog[modernDialogRole="commandPalette"] QListWidget#actionsListWidget {
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 9px;
+   outline: 0;
+   padding: 5px;
+}
+
+QDialog[modernDialogRole="commandPalette"] QListWidget#actionsListWidget::item {
+   min-height: 32px;
+   border-radius: 6px;
+   padding: 3px 8px;
+}
+
+QDialog[modernDialogRole="commandPalette"] QListWidget#actionsListWidget::item:hover {
+   background: palette(midlight);
+}
+
+QDialog[modernDialogRole="commandPalette"] QListWidget#actionsListWidget::item:selected {
+   background: palette(highlight);
+   color: palette(highlighted-text);
+}
+
+QDialog[modernDialogRole="commandPalette"] QListWidget#actionsListWidget::item:disabled {
+   color: palette(mid);
+}
+
+/* Find & Replace */
+QDialog[modernDialogRole="findReplace"] QLabel#searchTextLabel,
+QDialog[modernDialogRole="findReplace"] QLabel#replaceTextLabel {
+   color: palette(text);
+   font-weight: 600;
+}
+
+QDialog[modernDialogRole="findReplace"] QLineEdit#searchTextValue,
+QDialog[modernDialogRole="findReplace"] QLineEdit#replaceTextValue {
+   min-height: 30px;
+   background: palette(base);
+   border: 1px solid palette(mid);
+   border-radius: 8px;
+   padding: 2px 9px;
+}
+
+QDialog[modernDialogRole="findReplace"] QLineEdit#searchTextValue:focus,
+QDialog[modernDialogRole="findReplace"] QLineEdit#replaceTextValue:focus {
+   border-color: palette(highlight);
+}
+
+QDialog[modernDialogRole="findReplace"] QLabel[statusMessage="true"] {
+   min-height: 24px;
+   background: palette(midlight);
+   border-radius: 6px;
+   color: palette(text);
+   padding: 2px 8px;
+}
+
+QDialog[modernDialogRole="findReplace"] QGroupBox[modernSection="true"] {
+   min-width: 250px;
+}
+
+QDialog[modernDialogRole="findReplace"] QPushButton#collapseButton {
+   min-width: 118px;
 }

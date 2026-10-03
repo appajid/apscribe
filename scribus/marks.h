@@ -23,6 +23,12 @@ enum MarkType
 	MARKBullNumType = 7
 };
 
+enum CrossReferenceFormat
+{
+	CrossReferencePageNumber = 0,
+	CrossReferenceParagraphText = 1
+};
+
 struct MarkData
 {
 	MarkData() {}
@@ -33,6 +39,10 @@ struct MarkData
 	TextNote* notePtr { nullptr };
 	QString   destMarkName;
 	MarkType  destMarkType {MARKNoType};
+	CrossReferenceFormat crossReferenceFormat {CrossReferencePageNumber};
+	QString   crossReferencePrefix;
+	QString   crossReferenceSuffix;
+	QString   variableId;
 };
 
 class SCRIBUS_API Mark
@@ -66,6 +76,8 @@ public:
 
 	const QString& getString() const { return m_data.text; }
 	void setString(const QString& str) { m_data.text = str; }
+	const QString& getVariableId() const { return m_data.variableId; }
+	void setVariableId(const QString& id) { m_data.variableId = id; }
 
 	TextNote* getNotePtr() const { return m_data.notePtr; }
 	void setNotePtr(TextNote *note);
@@ -79,6 +91,12 @@ public:
 	//for marks to marks - set label and type of target mark from mark pointer
 	void setDestMark(Mark* mP);
 	void setDestMark(const QString& l, MarkType t);
+	CrossReferenceFormat getCrossReferenceFormat() const { return m_data.crossReferenceFormat; }
+	void setCrossReferenceFormat(CrossReferenceFormat format) { m_data.crossReferenceFormat = format; }
+	const QString& getCrossReferencePrefix() const { return m_data.crossReferencePrefix; }
+	void setCrossReferencePrefix(const QString& prefix) { m_data.crossReferencePrefix = prefix; }
+	const QString& getCrossReferenceSuffix() const { return m_data.crossReferenceSuffix; }
+	void setCrossReferenceSuffix(const QString& suffix) { m_data.crossReferenceSuffix = suffix; }
 
 	bool hasItemPtr() const;
 	bool hasString() const;
@@ -102,4 +120,3 @@ public:
 };
 
 #endif // MARKS_H
-

@@ -205,7 +205,7 @@ void PrefsManager::initDefaults()
 	appPrefs.guidesPrefs.showControls = false;
 	appPrefs.guidesPrefs.linkShown = false;
 	appPrefs.guidesPrefs.rulersShown = true;
-	appPrefs.guidesPrefs.showBleed = true;
+	appPrefs.guidesPrefs.showBleed = false;
 	appPrefs.guidesPrefs.rulerMode = 1;
 	appPrefs.guidesPrefs.grabRadius = 4;
 	appPrefs.guidesPrefs.guideRad = 10;
@@ -578,7 +578,18 @@ void PrefsManager::applyLoadedShortCuts()
 		QPointer<ScrAction> action = actions.value(it.value().actionName, QPointer<ScrAction>());
 		if (action.isNull())
 			continue;
-		action->setShortcut(it.value().keySequence);
+		const QKeySequence shortcut = it.value().keySequence;
+		if (it.key() == QLatin1String("toolsZoomIn")
+			&& (shortcut == QKeySequence(Qt::CTRL | Qt::Key_Equal)
+				|| shortcut == QKeySequence(Qt::CTRL | Qt::Key_Plus)))
+		{
+			// Retain the previous Plus binding while making the unshifted
+			// Equal key the primary shortcut on common keyboard layouts.
+			action->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_Equal),
+				QKeySequence(Qt::CTRL | Qt::Key_Plus)});
+		}
+		else
+			action->setShortcut(shortcut);
 		action->setToolTipFromTextAndShortcut();
 	}
 }
@@ -911,9 +922,9 @@ void PrefsManager::copyOldAppConfigAndData()
 			bool splashShown = ScCore->splashShowing();
 			if (splashShown)
 				ScCore->showSplash(false);
-			if (ScMessageBox::question(ScCore->primaryMainWindow(), tr("Migrate Old Scribus Settings?"),
-				tr("Scribus has detected existing Scribus 1.6.0 preferences files.\n"
-					"Do you want to migrate them to the new Scribus version?"),
+			if (ScMessageBox::question(ScCore->primaryMainWindow(), tr("Migrate Scribus Settings to Apscribe?"),
+				tr("Apscribe has detected existing Scribus 1.6.0 preferences files.\n"
+					"Do you want to migrate them to Apscribe?"),
 				QMessageBox::Yes | QMessageBox::No,
 				QMessageBox::NoButton,	// GUI default
 				QMessageBox::Yes	// batch default
@@ -3000,7 +3011,7 @@ void PrefsManager::alertSavePrefsFailed() const
 {
 	ScMessageBox::critical(ScCore->primaryMainWindow(), tr("Error Writing Preferences"),
 			"<qt>" +
-			tr("Scribus was not able to save its preferences:<br>"
+			tr("Apscribe was not able to save its preferences:<br>"
 			   "%1<br>"
 			   "Please check file and directory permissions and "
 			   "available disk space.", "scribus app error")
@@ -3017,7 +3028,7 @@ void PrefsManager::alertLoadPrefsFailed() const
 		ScCore->showSplash(false);
 	ScMessageBox::critical(ScCore->primaryMainWindow(), tr("Error Loading Preferences"),
 			"<qt>" +
-			tr("Scribus was not able to load its preferences:<br>"
+			tr("Apscribe was not able to load its preferences:<br>"
 			   "%1<br>"
 			   "Default settings will be loaded.")
 			   .arg(lastError())
@@ -3048,4 +3059,3 @@ void PrefsManager::languageChange()
 	if (appPrefs.itemToolPrefs.imageStrokeColor == CommonStrings::tr_NoneColor)
 		appPrefs.itemToolPrefs.imageStrokeColor = CommonStrings::None;
 }
-

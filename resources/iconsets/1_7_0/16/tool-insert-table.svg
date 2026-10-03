@@ -1,3 +1,7 @@
-<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><style>@import '../colors.css';</style>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M16 1H0V15H16V1ZM5 11H1V14H5V11ZM11 11H15V14H11V11ZM10 11H6V14H10V11ZM6 7H10V10H6V7ZM10 3H6V6H10V3ZM11 7H15V10H11V7ZM15 3H11V6H15V3ZM1 7H5V10H1V7ZM5 3H1V6H5V3Z"/>
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<style>@import '../colors.css';</style>
+<g class="line" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3" y="4" width="18" height="16" rx="1" stroke-width="1.4"/>
+  <path d="M9 4v16M15 4v16M3 9h18M3 15h18" stroke-width="1"/>
+</g>
 </svg>

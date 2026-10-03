@@ -12,12 +12,16 @@ for which a new license (GPL+exception) is in place.
 #include <QComboBox>
 #include <QEvent>
 #include <QFocusEvent>
+#include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QObject>
 #include <QPoint>
+#include <QSignalBlocker>
 #include <QSpacerItem>
 #include <QStackedWidget>
+#include <QStandardItemModel>
 #include <QTimer>
+#include <QToolButton>
 #include <QToolBox>
 #include <QToolTip>
 #include <QTransform>
@@ -32,6 +36,8 @@ for which a new license (GPL+exception) is in place.
 #include "appmodehelper.h"
 #include "appmodes.h"
 #include "colorpicker/colorpicker.h"
+#include "commonstrings.h"
+#include "iconmanager.h"
 #include "insertTable.h"
 #include "pageitem_table.h"
 #include "propertiespalette_attributes.h"
@@ -41,11 +47,28 @@ for which a new license (GPL+exception) is in place.
 #include "propertiespalette_shape.h"
 #include "propertiespalette_xyz.h"
 #include "scribus.h"
+#include "scribusapp.h"
 #include "scribusview.h"
 #include "selection.h"
+#include "stylemanager.h"
 #include "undomanager.h"
+#include "widgets/inspector_header.h"
 
-PropertiesPalette::PropertiesPalette(QWidget *parent) : DockPanelBase("PropertiesPalette", "panel-frame-properties", parent)
+namespace
+{
+constexpr int ObjectStyleMixedRole = Qt::UserRole + 1;
+
+void styleInspectorSection(SectionContainer* section)
+{
+	section->setProperty("inspectorSection", true);
+	section->setAttribute(Qt::WA_StyledBackground, true);
+	section->setHeaderSize(SectionContainerHeader::Normal);
+	section->setHeaderType(SectionContainerHeader::Header);
+	section->setHasStyle(true);
+}
+}
+
+PropertiesPalette::PropertiesPalette(QWidget *parent) : DockPanelBase("PropertiesPalette", "inspector-appearance", parent)
 {
 	undoManager = UndoManager::instance();
 
@@ -94,10 +117,42 @@ PropertiesPalette::PropertiesPalette(QWidget *parent) : DockPanelBase("Propertie
 	scAttributes->setWidget(attributesPal);
 	scAttributes->restorePreferences();
 
+	// Object Style
+	auto* objectStyleWidget = new QWidget(this);
+	objectStyleWidget->setProperty("inspectorObjectStyle", true);
+	auto* objectStyleLayout = new QHBoxLayout(objectStyleWidget);
+	objectStyleLayout->setContentsMargins(8, 6, 8, 6);
+	objectStyleLayout->setSpacing(6);
+	m_objectStyleCombo = new QComboBox(objectStyleWidget);
+	m_objectStyleCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+	m_objectStyleCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+	m_objectStyleCombo->setMinimumContentsLength(18);
+	m_objectStyleEditButton = new QToolButton(objectStyleWidget);
+	m_objectStyleEditButton->setAutoRaise(true);
+	m_objectStyleEditButton->setFixedSize(30, 30);
+	m_objectStyleEditButton->setIconSize(QSize(18, 18));
+	objectStyleLayout->addWidget(m_objectStyleCombo, 1);
+	objectStyleLayout->addWidget(m_objectStyleEditButton);
+	scObjectStyle = new SectionContainer("&Object Style", "SectionPPObjectStyle", true, true);
+	scObjectStyle->setCanSaveState(true);
+	scObjectStyle->setWidget(objectStyleWidget);
+	scObjectStyle->restorePreferences();
+
+	styleInspectorSection(scObjectStyle);
+	styleInspectorSection(scXYZ);
+	styleInspectorSection(scShadow);
+	styleInspectorSection(scShape);
+	styleInspectorSection(scFill);
+	styleInspectorSection(scLine);
+	styleInspectorSection(scAttributes);
+
 	// Layout stack
 	QVBoxLayout * lyt = new QVBoxLayout();
 	lyt->setContentsMargins(0, 0, 0, 0);
 	lyt->setSpacing(0);
+	m_inspectorHeader = new InspectorHeader(QStringLiteral("inspector-appearance"), this);
+	lyt->addWidget(m_inspectorHeader);
+	lyt->addWidget(scObjectStyle);
 	lyt->addWidget(scXYZ);
 	lyt->addWidget(scShape);
 	lyt->addWidget(scFill);
@@ -126,6 +181,11 @@ PropertiesPalette::PropertiesPalette(QWidget *parent) : DockPanelBase("Propertie
 	}
 
 	m_haveItem = false;
+	connect(m_objectStyleCombo, &QComboBox::activated, this, &PropertiesPalette::handleObjectStyleActivated);
+	connect(m_objectStyleEditButton, &QToolButton::clicked, this, &PropertiesPalette::handleObjectStyleEdit);
+	connect(ScQApp, &ScribusQApp::iconSetChanged, this, &PropertiesPalette::iconSetChange);
+	iconSetChange();
+	updateSelectionSummary();
 }
 
 void PropertiesPalette::closeEvent(QCloseEvent *closeEvent)
@@ -162,6 +222,7 @@ void PropertiesPalette::setMainWindow(ScribusMainWindow* mw)
 	this->attributesPal->setMainWindow(mw);
 
 	connect(m_ScMW->appModeHelper, SIGNAL(AppModeChanged(int,int)), this, SLOT(AppModeChanged()));
+	connect(m_ScMW, SIGNAL(UpdateRequest(int)), this, SLOT(handleUpdateRequest(int)));
 }
 
 void PropertiesPalette::setDoc(ScribusDoc *d)
@@ -190,6 +251,7 @@ void PropertiesPalette::setDoc(ScribusDoc *d)
 	linePal->setDoc(m_doc);
 	fillPal->setDoc(m_doc);
 	attributesPal->setDoc(m_doc);
+	updateObjectStyleControls();
 
 	connect(m_doc->m_Selection, SIGNAL(selectionChanged()), this, SLOT(handleSelectionChanged()));
 	connect(m_doc, SIGNAL(docChanged()), this, SLOT(handleSelectionChanged()));
@@ -228,9 +290,11 @@ void PropertiesPalette::unsetDoc()
 	fillPal->unsetDoc();
 	attributesPal->unsetItem();
 	attributesPal->unsetDoc();
+	updateObjectStyleControls();
 
 	m_haveItem = false;
 	enablePalettes(false);
+	updateSelectionSummary();
 }
 
 void PropertiesPalette::unsetItem()
@@ -259,12 +323,185 @@ PageItem* PropertiesPalette::currentItemFromSelection()
 
 void PropertiesPalette::enablePalettes(bool enable)
 {
+	scObjectStyle->setBodyEnabled(enable);
 	scXYZ->setBodyEnabled(enable);
 	scShape->setBodyEnabled(enable);
 	scFill->setBodyEnabled(enable);
 	scLine->setBodyEnabled(enable);
 	scShadow->setBodyEnabled(enable);
 	scAttributes->setBodyEnabled(enable);
+}
+
+void PropertiesPalette::updateObjectStyleControls()
+{
+	QSignalBlocker blocker(m_objectStyleCombo);
+	m_objectStyleCombo->clear();
+	m_objectStyleCombo->addItem(tr("No Object Style"), QString());
+	m_objectStyleCombo->setItemData(0, false, ObjectStyleMixedRole);
+
+	if (!m_haveDoc || !m_doc)
+	{
+		m_objectStyleCombo->setEnabled(false);
+		m_objectStyleEditButton->setEnabled(false);
+		return;
+	}
+
+	const QList<int> sortedStyles = m_doc->getSortedObjectStyleList();
+	for (int styleIndex : sortedStyles)
+	{
+		const ObjectStyle& style = m_doc->objectStyles()[styleIndex];
+		m_objectStyleCombo->addItem(style.displayName(), style.name());
+	}
+
+	const int selectionCount = m_doc->m_Selection->count();
+	m_objectStyleCombo->setEnabled(selectionCount > 0);
+	if (selectionCount <= 0)
+	{
+		m_objectStyleEditButton->setEnabled(false);
+		return;
+	}
+
+	QString styleName = m_doc->m_Selection->itemAt(0)->objectStyleName();
+	bool mixed = false;
+	for (int i = 1; i < selectionCount; ++i)
+	{
+		if (m_doc->m_Selection->itemAt(i)->objectStyleName() != styleName)
+		{
+			mixed = true;
+			break;
+		}
+	}
+
+	if (mixed)
+	{
+		m_objectStyleCombo->insertItem(0, tr("Multiple Object Styles"));
+		m_objectStyleCombo->setItemData(0, true, ObjectStyleMixedRole);
+		if (auto* model = qobject_cast<QStandardItemModel*>(m_objectStyleCombo->model()))
+		{
+			if (QStandardItem* item = model->item(0))
+				item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+		}
+		m_objectStyleCombo->setCurrentIndex(0);
+		m_objectStyleEditButton->setEnabled(false);
+		return;
+	}
+
+	int comboIndex = m_objectStyleCombo->findData(styleName);
+	if (comboIndex < 0 && !styleName.isEmpty())
+	{
+		m_objectStyleCombo->addItem(tr("%1 (Missing)").arg(styleName), styleName);
+		comboIndex = m_objectStyleCombo->count() - 1;
+	}
+	m_objectStyleCombo->setCurrentIndex(qMax(0, comboIndex));
+	m_objectStyleEditButton->setEnabled(!styleName.isEmpty() && m_doc->objectStyles().contains(styleName));
+}
+
+void PropertiesPalette::handleObjectStyleActivated(int index)
+{
+	if (!m_haveDoc || !m_doc || !m_ScMW || m_ScMW->scriptIsRunning() || index < 0)
+		return;
+	if (m_objectStyleCombo->itemData(index, ObjectStyleMixedRole).toBool())
+		return;
+	m_doc->itemSelection_SetNamedObjectStyle(m_objectStyleCombo->itemData(index).toString());
+}
+
+void PropertiesPalette::handleObjectStyleEdit()
+{
+	if (!m_haveDoc || !m_doc || !m_ScMW || m_ScMW->scriptIsRunning())
+		return;
+	const QString styleName = m_objectStyleCombo->currentData().toString();
+	if (!styleName.isEmpty() && m_doc->objectStyles().contains(styleName))
+		m_ScMW->styleMgr()->showAsEditObjectStyle(styleName);
+}
+
+void PropertiesPalette::handleUpdateRequest(int updateFlags)
+{
+	if (updateFlags & reqObjectStylesUpdate)
+		updateObjectStyleControls();
+}
+
+void PropertiesPalette::iconSetChange()
+{
+	m_objectStyleEditButton->setIcon(IconManager::instance().loadIcon("stroke-style-edit"));
+}
+
+QString PropertiesPalette::itemTypeName(const PageItem* item) const
+{
+	if (!item)
+		return tr("Object");
+
+	switch (item->itemType())
+	{
+	case PageItem::ImageFrame:
+		return tr("Image Frame");
+	case PageItem::TextFrame:
+		return tr("Text Frame");
+	case PageItem::Line:
+		return tr("Line");
+	case PageItem::Polygon:
+		return tr("Polygon");
+	case PageItem::PolyLine:
+		return tr("Polyline");
+	case PageItem::PathText:
+		return tr("Text on Path");
+	case PageItem::LatexFrame:
+		return tr("Render Frame");
+	case PageItem::OSGFrame:
+		return tr("3D Frame");
+	case PageItem::Symbol:
+		return tr("Symbol");
+	case PageItem::Group:
+		return tr("Group");
+	case PageItem::RegularPolygon:
+		return tr("Regular Polygon");
+	case PageItem::Arc:
+		return tr("Arc");
+	case PageItem::Spiral:
+		return tr("Spiral");
+	case PageItem::Table:
+		return tr("Table");
+	case PageItem::NoteFrame:
+		return tr("Note Frame");
+	default:
+		return tr("Object");
+	}
+}
+
+void PropertiesPalette::updateSelectionSummary()
+{
+	if (!m_inspectorHeader)
+		return;
+
+	m_inspectorHeader->setTitle(tr("Appearance"));
+
+	if (!m_haveDoc || !m_doc)
+	{
+		m_inspectorHeader->setSubtitle(tr("Open a document to edit object appearance"));
+		return;
+	}
+
+	const int selectionCount = m_doc->m_Selection->count();
+	if (selectionCount == 0)
+	{
+		m_inspectorHeader->setSubtitle(tr("Select an object to edit its appearance"));
+		return;
+	}
+	if (selectionCount > 1)
+	{
+		m_inspectorHeader->setSubtitle(tr("%n objects selected", nullptr, selectionCount));
+		return;
+	}
+
+	const PageItem* item = currentItemFromSelection();
+	if (!item)
+	{
+		m_inspectorHeader->setSubtitle(tr("Select an object to edit its appearance"));
+		return;
+	}
+
+	const QString typeName = itemTypeName(item);
+	const QString itemName = item->itemName().trimmed();
+	m_inspectorHeader->setSubtitle(itemName.isEmpty() ? typeName : tr("%1 — %2").arg(typeName, itemName));
 }
 
 void PropertiesPalette::AppModeChanged()
@@ -314,6 +551,7 @@ void PropertiesPalette::setCurrentItem(PageItem *item)
 
 	if ((m_item->isGroup()) && (!m_item->isSingleSel))
 	{
+		scObjectStyle->setBodyEnabled(true);
 		scXYZ->setBodyEnabled(true);
 		scShadow->setBodyEnabled(true);
 		scShape->setBodyEnabled(true);
@@ -333,8 +571,10 @@ void PropertiesPalette::setCurrentItem(PageItem *item)
 		fillPal->handleSelectionChanged();
 		attributesPal->handleSelectionChanged();
 	}
+	updateObjectStyleControls();
 	if (m_item->isOSGFrame())
 	{
+		scObjectStyle->setBodyEnabled(true);
 		scXYZ->setBodyEnabled(true);
 		scShadow->setBodyEnabled(true);
 		scShape->setBodyEnabled(true);
@@ -344,6 +584,7 @@ void PropertiesPalette::setCurrentItem(PageItem *item)
 	}
 	if (m_item->asSymbol())
 	{
+		scObjectStyle->setBodyEnabled(true);
 		scXYZ->setBodyEnabled(true);
 		scShadow->setBodyEnabled(true);
 		scShape->setBodyEnabled(false);
@@ -351,6 +592,7 @@ void PropertiesPalette::setCurrentItem(PageItem *item)
 		scFill->setBodyEnabled(false);
 		scAttributes->setBodyEnabled(true);
 	}
+	updateSelectionSummary();
 }
 
 void PropertiesPalette::handleSelectionChanged()
@@ -361,6 +603,7 @@ void PropertiesPalette::handleSelectionChanged()
 	PageItem* currItem = currentItemFromSelection();
 	if (m_doc->m_Selection->count() > 1)
 	{
+		scObjectStyle->setBodyEnabled(true);
 		scXYZ->setBodyEnabled(true);
 		scShape->setBodyEnabled(false);
 		scShadow->setBodyEnabled(true);
@@ -377,6 +620,7 @@ void PropertiesPalette::handleSelectionChanged()
 		{
 		case -1:
 			m_haveItem = false;
+			scObjectStyle->setBodyEnabled(false);
 			scXYZ->setBodyEnabled(false);
 			scShape->setBodyEnabled(false);
 			scLine->setBodyEnabled(false);
@@ -386,6 +630,7 @@ void PropertiesPalette::handleSelectionChanged()
 			break;
 		case PageItem::ImageFrame:
 		case PageItem::LatexFrame:
+			scObjectStyle->setBodyEnabled(true);
 			scXYZ->setBodyEnabled(true);
 			scShadow->setBodyEnabled(true);
 			scShape->setBodyEnabled(true);
@@ -394,6 +639,7 @@ void PropertiesPalette::handleSelectionChanged()
 			scAttributes->setBodyEnabled(true);
 			break;
 		case PageItem::OSGFrame:
+			scObjectStyle->setBodyEnabled(true);
 			scXYZ->setBodyEnabled(true);
 			scShadow->setBodyEnabled(true);
 			scShape->setBodyEnabled(true);
@@ -402,6 +648,7 @@ void PropertiesPalette::handleSelectionChanged()
 			scAttributes->setBodyEnabled(true);
 			break;
 		case PageItem::Line:
+			scObjectStyle->setBodyEnabled(true);
 			scXYZ->setBodyEnabled(true);
 			scShadow->setBodyEnabled(true);
 			scShape->setBodyEnabled(false);
@@ -421,6 +668,7 @@ void PropertiesPalette::handleSelectionChanged()
 		case PageItem::PolyLine:
 		case PageItem::Spiral:
 		case PageItem::PathText:
+			scObjectStyle->setBodyEnabled(true);
 			scXYZ->setBodyEnabled(true);
 			scShadow->setBodyEnabled(true);
 			scShape->setBodyEnabled(true);
@@ -438,6 +686,9 @@ void PropertiesPalette::handleSelectionChanged()
 	{
 		setCurrentItem(currItem);
 	}
+	else
+		updateObjectStyleControls();
+	updateSelectionSummary();
 
 }
 
@@ -496,8 +747,9 @@ void PropertiesPalette::changeEvent(QEvent *e)
 
 void PropertiesPalette::languageChange()
 {
-	setWindowTitle( tr("Properties"));
+	setWindowTitle(tr("Appearance"));
 
+	scObjectStyle->setText(tr("&Object Style"));
 	scXYZ->setText(tr("X, Y, &Z"));
 	scShadow->setText(tr("&Drop Shadow"));
 	scShape->setText(tr("&Shape"));
@@ -511,6 +763,12 @@ void PropertiesPalette::languageChange()
 	linePal->languageChange();
 	fillPal->languageChange();
 	attributesPal->languageChange();
+	m_objectStyleCombo->setAccessibleName(tr("Object style"));
+	m_objectStyleCombo->setToolTip(tr("Apply an object style to the current selection"));
+	m_objectStyleEditButton->setAccessibleName(tr("Edit object style"));
+	m_objectStyleEditButton->setToolTip(tr("Edit the selected object style"));
+	updateObjectStyleControls();
+	updateSelectionSummary();
 }
 
 void PropertiesPalette::setGradientEditMode(bool on)

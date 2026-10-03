@@ -8,18 +8,19 @@ for which a new license (GPL+exception) is in place.
 #include <QDebug>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QPalette>
 #include <QPixmap>
 #include <QRegularExpression>
-#include <QStyleHints>
+#include <QFontMetrics>
 
 #include "scconfig.h"
 
 #include "api/api_application.h"
+#include "iconmanager.h"
 #include "splash.h"
 #include "util.h"
 
-ScSplashScreen::ScSplashScreen(const QPixmap & pixmap, const QRect messageRect, Qt::WindowFlags f ) : QSplashScreen( pixmap, f)
+ScSplashScreen::ScSplashScreen(const QPixmap & pixmap, const QRect messageRect, Qt::WindowFlags f, bool darkMode )
+	: QSplashScreen(pixmap, f), m_darkMode(darkMode)
 {
 #if defined _WIN32
 	QFont font("Lucida Sans Unicode", 9);
@@ -34,6 +35,32 @@ ScSplashScreen::ScSplashScreen(const QPixmap & pixmap, const QRect messageRect, 
 #endif
 	setFont(font);
 	m_messageRect = messageRect;
+}
+
+void ScSplashScreen::setDarkMode(bool darkMode)
+{
+	if (m_darkMode == darkMode)
+		return;
+	m_darkMode = darkMode;
+	update();
+}
+
+bool ScSplashScreen::isModernArtwork(const QPixmap& pixmap)
+{
+	if (pixmap.isNull())
+		return false;
+	const qreal ratio = pixmap.devicePixelRatioF();
+	return qRound(pixmap.width() / ratio) == 720 && qRound(pixmap.height() / ratio) == 360;
+}
+
+QPixmap ScSplashScreen::previewPixmap(const QPixmap& background, bool darkMode)
+{
+	if (!isModernArtwork(background))
+		return background;
+	QPixmap preview = background;
+	QPainter painter(&preview);
+	paintBranding(&painter, QApplication::font(), darkMode, QString(), false);
+	return preview;
 }
 
 void ScSplashScreen::setStatus( const QString &message )
@@ -51,77 +78,71 @@ void ScSplashScreen::setStatus( const QString &message )
 		}
 	}
 
-	showMessage ( tmp, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignBottom, Qt::white );
+	showMessage(tmp);
 }
 
 void ScSplashScreen::drawContents(QPainter* painter)
 {
-	QFont f(font());
-	QRect messageRect = m_messageRect.isEmpty() ? rect() : m_messageRect;
-	QRect rM = messageRect.adjusted(0, 0, -15, -5);
-
-	// Unfortunately on Windows the palette information
-	// does not match Light/Dark theme immediately, so we
-	// force text color according to current colorScheme
-#if defined(Q_OS_WINDOWS)
-	QColor textColor;
-	switch (QApplication::styleHints()->colorScheme())
+	if (!isModernArtwork(pixmap()))
 	{
-	case Qt::ColorScheme::Dark:
-		textColor.setRgb(255, 255, 255);
-		break;
-	default:
-		textColor.setRgb(0, 0, 0);
-		break;
-	}
-#else
-	QColor textColor = palette().windowText().color();
-#endif
-
-	painter->setFont(f);
-	painter->setPen(textColor);
-	painter->drawText(rM, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignBottom, message());
-	QRect r = messageRect.adjusted(0, 0, -15, -60);
-
-	QFont lgf(font());
-#if defined _WIN32
-	lgf.setPointSize(30);
-#elif defined(__INNOTEK_LIBC__)
-	lgf.setPointSize(29);
-#elif defined(Q_OS_MACOS)
-	lgf.setPointSize(32);
-#else
-	lgf.setPointSize(29);
-#endif
-	painter->setFont(lgf);
-	painter->drawText(r,
-					  Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignBottom,
-					  ScribusAPI::getVersion());
-
-	if (!ScribusAPI::isSVN())
+		// Older icon sets already contain their branding in the image.
+		if (!message().isEmpty())
+		{
+			const QSizeF size(pixmap().width() / pixmap().devicePixelRatioF(),
+			                  pixmap().height() / pixmap().devicePixelRatioF());
+			const QRect statusRect = m_messageRect.isValid()
+				? m_messageRect : QRect(20, qRound(size.height()) - 42, qRound(size.width()) - 40, 24);
+			painter->setPen(m_darkMode ? Qt::white : Qt::black);
+			painter->drawText(statusRect, Qt::AlignLeft | Qt::AlignVCenter,
+			                  painter->fontMetrics().elidedText(message(), Qt::ElideRight, statusRect.width()));
+		}
 		return;
-
-	if (ScribusAPI::haveSVNRevision())
-	{
-		QString revText = QString("SVN Revision: %1").arg(ScribusAPI::getSVNRevision());
-		QRect r2 = messageRect.adjusted(10, 10, -15, -30);
-		painter->setFont(f);
-		painter->drawText(r2, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignBottom, revText);
 	}
-
-	QFont wf(font());
-#if defined _WIN32
-	wf.setPointSize(10);
-#elif defined(__INNOTEK_LIBC__)
-	wf.setPointSize(9);
-#elif defined(Q_OS_MACOS)
-	wf.setPointSize(12);
-#else
-	wf.setPointSize(9);
-#endif
-	painter->setFont(wf);
-	QString warningText("Development Version");
-	QRect r3 = messageRect.adjusted(10, 10, -15, -45);
-	painter->drawText(r3, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignBottom, warningText);
+	paintBranding(painter, font(), m_darkMode, message(), true);
 }
 
+void ScSplashScreen::paintBranding(QPainter* painter, const QFont& baseFont, bool isDark,
+	                              const QString& status, bool showStatus)
+{
+	painter->setRenderHint(QPainter::Antialiasing, true);
+	const QColor textColor = isDark ? QColor(245, 245, 247) : QColor(32, 34, 38);
+	const QColor secondaryColor = isDark ? QColor(190, 194, 201) : QColor(84, 88, 96);
+	const QColor accentColor(10, 132, 255);
+
+	const QPixmap appIcon = IconManager::instance().loadPixmap("app-icon", QSize(78, 78));
+	painter->drawPixmap(QRect(38, 38, 78, 78), appIcon);
+
+	QFont titleFont(baseFont);
+	titleFont.setPointSize(32);
+	titleFont.setWeight(QFont::DemiBold);
+	painter->setFont(titleFont);
+	painter->setPen(textColor);
+	painter->drawText(QRect(134, 42, 205, 48), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("Apscribe"));
+
+	QFont taglineFont(baseFont);
+	taglineFont.setPointSize(16);
+	taglineFont.setWeight(QFont::DemiBold);
+	painter->setFont(taglineFont);
+	painter->setPen(accentColor);
+	painter->drawText(QRect(134, 88, 205, 28), Qt::AlignLeft | Qt::AlignVCenter,
+	                  QFontMetrics(taglineFont).elidedText(tr("Publish beautifully."), Qt::ElideRight, 205));
+
+	QFont bodyFont(baseFont);
+	bodyFont.setPointSize(13);
+	painter->setFont(bodyFont);
+	painter->setPen(secondaryColor);
+	painter->drawText(QRect(134, 118, 205, 24), Qt::AlignLeft | Qt::AlignVCenter,
+	                  QFontMetrics(bodyFont).elidedText(tr("Version %1").arg(ScribusAPI::getVersion()), Qt::ElideRight, 205));
+	if (showStatus)
+		painter->drawText(QRect(38, 225, 286, 24), Qt::AlignLeft | Qt::AlignVCenter,
+		                  QFontMetrics(bodyFont).elidedText(status, Qt::ElideRight, 286));
+
+	QFont footerFont(baseFont);
+	footerFont.setPointSize(11);
+	painter->setFont(footerFont);
+	painter->setPen(secondaryColor);
+	painter->drawText(QRect(38, 291, 286, 24), Qt::AlignLeft | Qt::AlignVCenter,
+		tr("Open Source Desktop Publishing"));
+	if (ScribusAPI::isSVN())
+		painter->drawText(QRect(38, 318, 286, 20), Qt::AlignLeft | Qt::AlignVCenter, tr("Development build"));
+}

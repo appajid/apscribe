@@ -50,9 +50,10 @@ public:
 	void fillTable();
 
 private slots:
+	void applyImageFilters();
 	void sortByName();
 	void sortByPage();
-	void slotRightClick();
+	void slotRightClick(const QPoint& position);
 	void imageSelected(QListWidgetItem *ite);
 	void newImageSelected();
 	/*!
@@ -81,6 +82,14 @@ private slots:
 	\brief Searches for the given Picture. Displays a Dialog when more than one Picture is found.
 	*/
 	void SearchPic();
+	void relinkMissingImages();
+	void mapMissingImageFolder();
+	void extractSelectedEmbeddedImage();
+	void extractAllEmbeddedImages();
+	void exportSelectedCMYKCopy();
+	void batchExportCMYKCopies();
+	void replaceSelectedImageEverywhere();
+	void generateSelectedImageContour();
 	void FileManager();
 	void doImageEffects();
 	void doImageExtProp();
@@ -102,12 +111,17 @@ protected:
 
 	/*! \brief Load the image specified into the PageItem
 	\param newFilePath a file path */
-	bool loadPict(PageItem* item, const QString & newFilePath);
+	bool loadPict(PageItem* item, const QString & newFilePath, bool showMsg = true,
+		bool useNewEmbeddedProfile = false);
 
 private:
+	void relinkMissingImagesFromFolder(bool mapFolder);
+	QList<PageItem*> embeddedImageItems() const;
+
 	ScribusDoc *m_Doc {nullptr};
 	PageItem *currItem {nullptr};
 	int sortOrder {0};
+	QString m_lastExtractionDirectory;
 
 };
 #endif

@@ -87,6 +87,7 @@ for which a new license (GPL+exception) is in place.
 #include "sccolorengine.h"
 #include "scpage.h"
 #include "scraction.h"
+#include "scribus.h"
 #include "scribusXml.h"
 #include "scribuscore.h"
 #include "scribusdoc.h"
@@ -104,6 +105,7 @@ for which a new license (GPL+exception) is in place.
 #include "ui/outlinepalette.h"
 #include "ui/pagepalette.h"
 #include "ui/storyeditor.h"
+#include "ui/stylemanager.h"
 #include "ui/tablecolumnwidthsdialog.h"
 #include "ui/tablerowheightsdialog.h"
 #include "undomanager.h"
@@ -195,6 +197,196 @@ private:
 	int  m_updateEnabled { 0 };
 	bool m_docChangeNeeded { false };
 };
+
+static QList<ObjectStyle> objectStyleSnapshot(const StyleSet<ObjectStyle>& styles)
+{
+	QList<ObjectStyle> snapshot;
+	snapshot.reserve(styles.count());
+	for (int i = 0; i < styles.count(); ++i)
+	{
+		ObjectStyle style(styles[i]);
+		style.setContext(nullptr);
+		snapshot.append(style);
+	}
+	return snapshot;
+}
+
+static void restoreObjectStyleSnapshot(const QList<ObjectStyle>& snapshot, StyleSet<ObjectStyle>& styles)
+{
+	StyleSet<ObjectStyle> restoredStyles;
+	for (const ObjectStyle& savedStyle : snapshot)
+	{
+		ObjectStyle* restoredStyle = restoredStyles.create(savedStyle);
+		if (savedStyle.isDefaultStyle())
+			restoredStyles.makeDefault(restoredStyle);
+	}
+	styles.redefine(restoredStyles, true);
+}
+
+static bool equivalentObjectStyleSets(const StyleSet<ObjectStyle>& first, const StyleSet<ObjectStyle>& second)
+{
+	if (first.count() != second.count())
+		return false;
+	for (int i = 0; i < first.count(); ++i)
+	{
+		const ObjectStyle& firstStyle = first[i];
+		const int secondIndex = second.find(firstStyle.name());
+		if (secondIndex < 0)
+			return false;
+		const ObjectStyle& secondStyle = second[secondIndex];
+		if (firstStyle.isDefaultStyle() != secondStyle.isDefaultStyle()
+			|| firstStyle.shortcut() != secondStyle.shortcut()
+			|| !firstStyle.equiv(secondStyle))
+			return false;
+	}
+	return true;
+}
+
+struct FontStorySnapshot
+{
+	QList<QPointer<PageItem>> items;
+	StoryText story;
+};
+
+struct DocumentFontSnapshot
+{
+	QList<ParagraphStyle> paragraphStyles;
+	QList<CharStyle> characterStyles;
+	QList<FontStorySnapshot> stories;
+	QString textToolFont;
+};
+
+static QList<ParagraphStyle> paragraphStyleSnapshot(const StyleSet<ParagraphStyle>& styles)
+{
+	QList<ParagraphStyle> snapshot;
+	snapshot.reserve(styles.count());
+	for (int i = 0; i < styles.count(); ++i)
+	{
+		ParagraphStyle style(styles[i]);
+		style.setContext(nullptr);
+		snapshot.append(style);
+	}
+	return snapshot;
+}
+
+static QList<CharStyle> characterStyleSnapshot(const StyleSet<CharStyle>& styles)
+{
+	QList<CharStyle> snapshot;
+	snapshot.reserve(styles.count());
+	for (int i = 0; i < styles.count(); ++i)
+	{
+		CharStyle style(styles[i]);
+		style.setContext(nullptr);
+		snapshot.append(style);
+	}
+	return snapshot;
+}
+
+template<typename StyleType>
+static void restoreStyleSet(const QList<StyleType>& snapshot, StyleSet<StyleType>& styles)
+{
+	for (const StyleType& savedStyle : snapshot)
+	{
+		StyleType* restoredStyle = styles.create(savedStyle);
+		if (savedStyle.isDefaultStyle())
+			styles.makeDefault(restoredStyle);
+	}
+}
+
+static void collectTextItems(const QList<PageItem*>& roots, QSet<PageItem*>& seen, QList<PageItem*>& result)
+{
+	for (PageItem* item : roots)
+	{
+		if (!item || seen.contains(item))
+			continue;
+		seen.insert(item);
+		if (item->isGroup() || item->isTable())
+			collectTextItems(item->getChildren(), seen, result);
+		if (item->isTextFrame() || item->isPathText())
+			result.append(item);
+	}
+}
+
+static QList<PageItem*> documentTextItems(const ScribusDoc* doc)
+{
+	QSet<PageItem*> seen;
+	QList<PageItem*> result;
+	collectTextItems(doc->MasterItems, seen, result);
+	collectTextItems(doc->DocItems, seen, result);
+	collectTextItems(doc->FrameItems.values(), seen, result);
+	for (auto pattern = doc->docPatterns.cbegin(); pattern != doc->docPatterns.cend(); ++pattern)
+		collectTextItems(pattern.value().items, seen, result);
+	return result;
+}
+
+static QList<PageItem*> itemsUsingFont(const ScribusDoc* doc, const QString& fontName)
+{
+	QList<PageItem*> result;
+	QSet<PageItem*> seen;
+	for (PageItem* item : documentTextItems(doc))
+	{
+		ResourceCollection resources;
+		item->getNamedResources(resources);
+		if (!resources.fonts().contains(fontName))
+			continue;
+		PageItem* chainItem = item->firstInChain();
+		while (chainItem)
+		{
+			if (!seen.contains(chainItem))
+			{
+				seen.insert(chainItem);
+				result.append(chainItem);
+			}
+			chainItem = chainItem->nextInChain();
+		}
+	}
+	return result;
+}
+
+static DocumentFontSnapshot documentFontSnapshot(const ScribusDoc* doc, const QList<PageItem*>& affectedItems)
+{
+	DocumentFontSnapshot snapshot;
+	snapshot.paragraphStyles = paragraphStyleSnapshot(doc->paragraphStyles());
+	snapshot.characterStyles = characterStyleSnapshot(doc->charStyles());
+	snapshot.textToolFont = doc->itemToolPrefs().textFont;
+	QHash<PageItem*, qsizetype> storyIndexes;
+	for (PageItem* item : affectedItems)
+	{
+		if (!item)
+			continue;
+		PageItem* storyRoot = item->firstInChain();
+		const auto existing = storyIndexes.constFind(storyRoot);
+		if (existing != storyIndexes.cend())
+		{
+			snapshot.stories[existing.value()].items.append(item);
+			continue;
+		}
+		FontStorySnapshot story;
+		story.items.append(item);
+		story.story = item->itemText.copy();
+		snapshot.stories.append(story);
+		storyIndexes.insert(storyRoot, snapshot.stories.size() - 1);
+	}
+	return snapshot;
+}
+
+struct ObjectStyleImportSnapshot
+{
+	QList<ObjectStyle> objectStyles;
+	ColorList colors;
+	QHash<QString, MultiLine> lineStyles;
+};
+
+static ObjectStyleImportSnapshot objectStyleImportSnapshot(const StyleSet<ObjectStyle>& styles,
+															 const ColorList& colors,
+															 const QHash<QString, MultiLine>& lineStyles)
+{
+	ObjectStyleImportSnapshot snapshot;
+	snapshot.objectStyles = objectStyleSnapshot(styles);
+	snapshot.colors = colors;
+	snapshot.lineStyles = lineStyles;
+	return snapshot;
+}
 
 
 
@@ -410,6 +602,28 @@ void ScribusDoc::init()
 //	docParagraphStyles[0].charStyle().setName( "cdocdefault" ); // DON'T TRANSLATE
 
 	currentStyle = pstyle;
+
+	// Create a geometry-neutral default object style. Object styles deliberately
+	// do not own position or size, so applying this style cannot move an item.
+	ObjectStyle defaultObjectStyle;
+	defaultObjectStyle.setDefaultStyle(true);
+	defaultObjectStyle.setName(CommonStrings::DefaultObjectStyle);
+	defaultObjectStyle.setFillColor(CommonStrings::None);
+	defaultObjectStyle.setFillShade(100.0);
+	defaultObjectStyle.setLineColor(CommonStrings::None);
+	defaultObjectStyle.setLineShade(100.0);
+	defaultObjectStyle.setLineWidth(0.0);
+	defaultObjectStyle.setLineStyle(Qt::SolidLine);
+	defaultObjectStyle.setLineCap(Qt::FlatCap);
+	defaultObjectStyle.setLineJoin(Qt::MiterJoin);
+	defaultObjectStyle.setFillTransparency(0.0);
+	defaultObjectStyle.setLineTransparency(0.0);
+	defaultObjectStyle.setFillBlendMode(0);
+	defaultObjectStyle.setLineBlendMode(0);
+	defaultObjectStyle.setCornerRadius(0.0);
+	defaultObjectStyle.setCustomLineStyle(QString());
+	m_docObjectStyles.create(defaultObjectStyle);
+	m_docObjectStyles.makeDefault(&(m_docObjectStyles[0]));
 
 	// Create default table style.
 	// TODO: We should have preferences for the default values.
@@ -1053,6 +1267,20 @@ int ScribusDoc::removeUnusedStyles()
 	if (newCharStyleSet.count() != m_docCharStyles.count())
 		redefineCharStyles(newCharStyleSet, true);
 
+	// Object styles
+	StyleSet<ObjectStyle> newObjectStyleSet;
+	for (int i = 0; i < m_docObjectStyles.count(); ++i)
+	{
+		const ObjectStyle& objectStyle = m_docObjectStyles[i];
+		if (objectStyle.isDefaultStyle() || !objectStyle.hasName()
+				|| usedResources.objectStyles().contains(objectStyle.name()))
+			newObjectStyleSet.create(objectStyle);
+		else
+			++removedCount;
+	}
+	if (newObjectStyleSet.count() != m_docObjectStyles.count())
+		redefineObjectStyles(newObjectStyleSet, true);
+
 	// Table styles
 
 	StyleSet<TableStyle> newTableStyleSet;
@@ -1148,9 +1376,35 @@ void ScribusDoc::getUsedStylesFromItems(ResourceCollection& lists) const
 			pa.items.at(i)->getNamedResources(lists);
 	}
 
+	// A running-header definition is a document-level reference to a
+	// paragraph style. Keep that style and its dependencies even before a
+	// matching source paragraph has been added to the document.
+	for (const DynamicVariable& variable : m_dynamicVariables)
+	{
+		if (variable.type != DynamicVariableResolver::RunningHeader || variable.paragraphStyle.isEmpty())
+			continue;
+		const int styleIndex = m_docParagraphStyles.find(variable.paragraphStyle);
+		if (styleIndex < 0)
+			continue;
+		lists.collectStyle(variable.paragraphStyle);
+		m_docParagraphStyles[styleIndex].getNamedResources(lists);
+	}
+
+	// An applied object style keeps every style it is based on. Expanding the
+	// references here prevents Remove Unused Styles from deleting a parent that
+	// supplies inherited appearance to an in-use child.
+	const QStringList usedObjectStyles = lists.objectStyleNames();
+	for (const QString& styleName : usedObjectStyles)
+	{
+		const int styleIndex = m_docObjectStyles.find(styleName);
+		if (styleIndex >= 0)
+			m_docObjectStyles[styleIndex].getNamedResources(lists);
+	}
+
 	// Protect default styles
 	lists.collectStyle(CommonStrings::DefaultParagraphStyle);
 	lists.collectCharStyle(CommonStrings::DefaultCharacterStyle);
+	lists.collectObjectStyle(CommonStrings::DefaultObjectStyle);
 }
 
 void ScribusDoc::getNamedResources(ResourceCollection& lists) const
@@ -1182,6 +1436,8 @@ void ScribusDoc::getNamedResources(ResourceCollection& lists) const
 		m_docParagraphStyles[i].getNamedResources(lists);
 	for (int i = 0; i < m_docCharStyles.count(); ++i)
 		m_docCharStyles[i].getNamedResources(lists);
+	for (int i = 0; i < m_docObjectStyles.count(); ++i)
+		m_docObjectStyles[i].getNamedResources(lists);
 	for (int i = 0; i < m_docTableStyles.count(); ++i)
 		m_docTableStyles[i].getNamedResources(lists);
 	for (int i = 0; i < m_docCellStyles.count(); ++i)
@@ -1203,6 +1459,150 @@ void ScribusDoc::getNamedResources(ResourceCollection& lists) const
 			lists.collectColor(cstops.at(i)->name);
 		}
 	}
+}
+
+QStringList ScribusDoc::documentFontNames() const
+{
+	ResourceCollection resources;
+	getNamedResources(resources);
+	QStringList fonts = resources.fontNames();
+	if (!m_docPrefsData.itemToolPrefs.textFont.isEmpty() && !fonts.contains(m_docPrefsData.itemToolPrefs.textFont))
+		fonts.append(m_docPrefsData.itemToolPrefs.textFont);
+	fonts.sort(Qt::CaseInsensitive);
+	return fonts;
+}
+
+bool ScribusDoc::previewRGBProcessColorsToCMYK(QMap<QString, ScColor>& converted) const
+{
+	converted.clear();
+	const QString& rgbName = cmsSettings().DefaultSolidColorRGBProfile;
+	const QString& cmykName = cmsSettings().DefaultSolidColorCMYKProfile;
+	if (!ScCore->InputProfiles.contains(rgbName) || !ScCore->InputProfilesCMYK.contains(cmykName))
+		return false;
+
+	const int flags = cmsSettings().BlackPoint ? Ctf_BlackPointCompensation : 0;
+	ScColorMgmtEngine engine(colorEngine);
+	const ScColorProfile rgbProfile = engine.openProfileFromFile(ScCore->InputProfiles.value(rgbName).file);
+	const ScColorProfile cmykProfile = engine.openProfileFromFile(ScCore->InputProfilesCMYK.value(cmykName).file);
+	if (!rgbProfile || !cmykProfile ||
+		rgbProfile.colorSpace() != ColorSpace_Rgb || cmykProfile.colorSpace() != ColorSpace_Cmyk)
+		return false;
+	ScColorTransform transform = engine.createTransform(rgbProfile, Format_RGB_16,
+		cmykProfile, Format_CMYK_16, IntentColors, flags);
+	if (!transform)
+		return false;
+
+	for (auto it = PageColors.cbegin(); it != PageColors.cend(); ++it)
+	{
+		const ScColor& color = it.value();
+		if (color.getColorModel() != colorModelRGB || !color.isProcessColor())
+			continue;
+		double r, g, b;
+		color.getRGB(&r, &g, &b);
+		quint16 input[3] = { quint16(qRound(r * 65535.0)), quint16(qRound(g * 65535.0)), quint16(qRound(b * 65535.0)) };
+		quint16 output[4] = {};
+		if (!transform.apply(input, output, 1))
+		{
+			converted.clear();
+			return false;
+		}
+		ScColor result;
+		result.setCmykColorF(output[0] / 65535.0, output[1] / 65535.0,
+			output[2] / 65535.0, output[3] / 65535.0);
+		converted.insert(it.key(), result);
+	}
+	return true;
+}
+
+int ScribusDoc::convertRGBProcessColorsToCMYK(const QStringList& names, bool createUndo)
+{
+	QMap<QString, ScColor> preview;
+	if (!previewRGBProcessColorsToCMYK(preview))
+		return -1;
+
+	QStringList selected = names;
+	if (selected.isEmpty())
+		selected = preview.keys();
+	for (const QString& name : selected)
+	{
+		if (!preview.contains(name))
+			return -1;
+	}
+	selected.removeDuplicates();
+	if (selected.isEmpty())
+		return 0;
+
+	const ColorList oldColors = PageColors;
+	for (const QString& name : selected)
+		PageColors[name] = preview.value(name);
+	if (createUndo && !isLoading() && UndoManager::undoEnabled())
+	{
+		auto* state = new ScOldNewState<ColorList>(tr("Convert RGB Colors to CMYK"),
+			tr("%1 colors").arg(selected.size()), Um::IFill);
+		state->set("RGB_PROCESS_COLOR_CONVERSION");
+		state->setStates(oldColors, PageColors);
+		m_undoManager->action(this, state);
+	}
+	recalculateColors();
+	if (useImageColorEffects())
+		recalcPicturesRes(RecalcPicRes_ImageWithColorEffectsOnly);
+	changed();
+	regionsChanged()->update(QRectF());
+	changedPagePreview();
+	if (scMW())
+		scMW()->requestUpdate(reqColorsUpdate | reqLineStylesUpdate | reqTextStylesUpdate);
+	return selected.size();
+}
+
+bool ScribusDoc::replaceDocumentFont(const QString& sourceFont, const QString& replacementFont, bool createUndo)
+{
+	if (sourceFont.isEmpty() || replacementFont.isEmpty() || sourceFont == replacementFont)
+		return false;
+	if (!AllFonts || !AllFonts->contains(replacementFont))
+		return false;
+	const ScFace& replacementFace = (*AllFonts)[replacementFont];
+	if (!replacementFace.usable() || replacementFace.isReplacement())
+		return false;
+	if (!documentFontNames().contains(sourceFont))
+		return false;
+
+	const QList<PageItem*> affectedItems = itemsUsingFont(this, sourceFont);
+	const DocumentFontSnapshot oldState = documentFontSnapshot(this, affectedItems);
+
+	ResourceCollection replacements;
+	replacements.availableFonts = AllFonts;
+	replacements.mapFont(sourceFont, replacementFont);
+	PrefsManager::replaceToolResources(m_docPrefsData.itemToolPrefs, replacements);
+	replaceNamedResources(replacements);
+	reorganiseFonts();
+
+	const DocumentFontSnapshot newState = documentFontSnapshot(this, affectedItems);
+	if (createUndo && !isLoading() && UndoManager::undoEnabled())
+	{
+		auto *state = new ScOldNewState<DocumentFontSnapshot>(tr("Replace Font"),
+			tr("%1 with %2").arg(sourceFont, replacementFont), Um::IFont);
+		state->set("DOCUMENT_FONT_REPLACEMENT");
+		state->setStates(oldState, newState);
+		m_undoManager->action(this, state);
+	}
+
+	for (PageItem* item : affectedItems)
+	{
+		if (!item)
+			continue;
+		item->invalidateLayout();
+		item->update();
+	}
+	changed();
+	regionsChanged()->update(QRectF());
+	changedPagePreview();
+	if (scMW())
+	{
+		scMW()->requestUpdate(reqTextStylesUpdate);
+		if (scMW()->styleMgr())
+			scMW()->styleMgr()->setDoc(this);
+	}
+	return true;
 }
 
 bool ScribusDoc::styleExists(const QString& styleName) const
@@ -1274,6 +1674,39 @@ QList<int> ScribusDoc::getSortedCharStyleList() const
 		{
 			if (!retList.contains(retList2[r]))
 				retList.append(retList2[r]);
+		}
+	}
+	return retList;
+}
+
+QList<int> ScribusDoc::getSortedObjectStyleList() const
+{
+	QList<int> retList;
+	for (int i = 0; i < m_docObjectStyles.count(); ++i)
+	{
+		if (m_docObjectStyles[i].parent().isEmpty())
+		{
+			if (!retList.contains(i))
+				retList.append(i);
+			continue;
+		}
+
+		QList<int> retList2;
+		QString name = m_docObjectStyles[i].name();
+		QString parent = m_docObjectStyles[i].parent();
+		retList2.prepend(i);
+		while (!parent.isEmpty() && parent != name)
+		{
+			int parentIndex = m_docObjectStyles.find(parent);
+			if (parentIndex < 0 || retList2.contains(parentIndex))
+				break;
+			retList2.prepend(parentIndex);
+			parent = m_docObjectStyles[parentIndex].parent();
+		}
+		for (int index : std::as_const(retList2))
+		{
+			if (!retList.contains(index))
+				retList.append(index);
 		}
 	}
 	return retList;
@@ -1376,6 +1809,17 @@ void ScribusDoc::replaceNamedResources(ResourceCollection& newNames)
 		if (newNames.charStyles().contains(nStyle->marksChStyle()))
 			nStyle->setMarksCharStyle(newNames.charStyles().value(nStyle->marksChStyle()));
 	}
+	for (DynamicVariable& variable : m_dynamicVariables)
+	{
+		if (variable.type != DynamicVariableResolver::RunningHeader || variable.paragraphStyle.isEmpty())
+			continue;
+		const auto replacement = newNames.styles().constFind(variable.paragraphStyle);
+		if (replacement != newNames.styles().constEnd() && !replacement.value().isEmpty())
+		{
+			variable.paragraphStyle = replacement.value();
+			invalidateDynamicVariableFrames(variable.id, false);
+		}
+	}
 	for (auto itf = FrameItems.begin(); itf != FrameItems.end(); ++itf)
 	{
 		PageItem *currItem = itf.value();
@@ -1396,6 +1840,13 @@ void ScribusDoc::replaceNamedResources(ResourceCollection& newNames)
 			m_docCharStyles.remove(i);
 		else
 			m_docCharStyles[i].replaceNamedResources(newNames);
+	}
+	for (int i = m_docObjectStyles.count() - 1; i >= 0; --i)
+	{
+		if (newNames.objectStyles().contains(m_docObjectStyles[i].name()) && !m_docObjectStyles[i].isDefaultStyle())
+			m_docObjectStyles.remove(i);
+		else
+			m_docObjectStyles[i].replaceNamedResources(newNames);
 	}
 	for (int i = m_docTableStyles.count() - 1; i >= 0; --i)
 	{
@@ -1476,6 +1927,7 @@ void ScribusDoc::replaceNamedResources(ResourceCollection& newNames)
 	{
 		m_docCharStyles.invalidate();
 		m_docParagraphStyles.invalidate();
+		m_docObjectStyles.invalidate();
 		m_docTableStyles.invalidate();
 		m_docCellStyles.invalidate();
 	}
@@ -1485,6 +1937,8 @@ void ScribusDoc::replaceNamedResources(ResourceCollection& newNames)
 			m_docCharStyles.invalidate();
 		if (newNames.styles().count() > 0)
 			m_docParagraphStyles.invalidate();
+		if (newNames.objectStyles().count() > 0 || newNames.lineStyles().count() > 0)
+			m_docObjectStyles.invalidate();
 		if (newNames.tableStyles().count() > 0)
 			m_docTableStyles.invalidate();
 		if (newNames.cellStyles().count() > 0)
@@ -1492,7 +1946,8 @@ void ScribusDoc::replaceNamedResources(ResourceCollection& newNames)
 	}
 	if (!isLoading() && !(newNames.colors().isEmpty() && newNames.fonts().isEmpty() && newNames.patterns().isEmpty() 
 			&& newNames.styles().isEmpty() && newNames.charStyles().isEmpty() && newNames.lineStyles().isEmpty()
-			&& newNames.tableStyles().isEmpty() && newNames.cellStyles().isEmpty() && newNames.opticalMarginSets().isEmpty()))
+			&& newNames.objectStyles().isEmpty() && newNames.tableStyles().isEmpty()
+			&& newNames.cellStyles().isEmpty() && newNames.opticalMarginSets().isEmpty()))
 		changed();
 }
 
@@ -1501,6 +1956,13 @@ void ScribusDoc::replaceCharStyles(const QMap<QString,QString>& newNameForOld)
 {
 	ResourceCollection newNames;
 	newNames.mapCharStyles(newNameForOld);
+	replaceNamedResources(newNames);
+}
+
+void ScribusDoc::replaceObjectStyles(const QMap<QString, QString>& newNameForOld)
+{
+	ResourceCollection newNames;
+	newNames.mapObjectStyles(newNameForOld);
 	replaceNamedResources(newNames);
 }
 
@@ -1574,6 +2036,148 @@ void ScribusDoc::redefineCharStyles(const StyleSet<CharStyle>& newStyles, bool r
 			replaceCharStyles(deletion);
 	}
 	m_docCharStyles.invalidate();
+}
+
+void ScribusDoc::redefineObjectStyles(const StyleSet<ObjectStyle>& newStyles, bool removeUnused)
+{
+	m_docObjectStyles.redefine(newStyles, false);
+	if (removeUnused)
+	{
+		QMap<QString, QString> deletion;
+		for (int i = 0; i < m_docObjectStyles.count(); ++i)
+		{
+			const ObjectStyle& style = m_docObjectStyles[i];
+			if (!style.isDefaultStyle() && newStyles.find(style.name()) < 0)
+				deletion[style.name()] = QString();
+		}
+		if (!deletion.isEmpty())
+			replaceObjectStyles(deletion);
+	}
+	m_docObjectStyles.invalidate();
+	m_updateManager.setUpdatesDisabled();
+	for (PageItemIterator itemIt(this, PageItemIterator::IterateAll); *itemIt; ++itemIt)
+		itemIt->refreshObjectStyle();
+	m_updateManager.setUpdatesEnabled();
+}
+
+bool ScribusDoc::applyObjectStyleChanges(const StyleSet<ObjectStyle>& newStyles,
+										 const QMap<QString, QString>& replacements, bool createUndo)
+{
+	if (equivalentObjectStyleSets(m_docObjectStyles, newStyles) && replacements.isEmpty())
+		return false;
+
+	UndoTransaction transaction;
+	if (createUndo && !isLoading() && UndoManager::undoEnabled())
+	{
+		transaction = m_undoManager->beginTransaction(documentFileName(), Um::IDocument,
+			tr("Edit Object Styles"), QString(), Um::IFill);
+		auto* state = new ScOldNewState<QList<ObjectStyle>>(tr("Edit Object Styles"));
+		state->set("OBJECT_STYLE_CHANGES");
+		state->setStates(objectStyleSnapshot(m_docObjectStyles), objectStyleSnapshot(newStyles));
+		m_undoManager->action(this, state);
+	}
+
+	if (!replacements.isEmpty())
+	{
+		// Make replacement definitions available before updating item references.
+		m_docObjectStyles.redefine(newStyles, false);
+		m_docObjectStyles.invalidate();
+		replaceObjectStyles(replacements);
+	}
+	redefineObjectStyles(newStyles, true);
+
+	changed();
+	regionsChanged()->update(QRectF());
+	changedPagePreview();
+	if (scMW())
+		scMW()->requestUpdate(reqColorsUpdate | reqLineStylesUpdate | reqObjectStylesUpdate);
+	if (transaction)
+		transaction.commit();
+	return true;
+}
+
+bool ScribusDoc::applyObjectStyleImport(const StyleSet<ObjectStyle>& newStyles,
+										const ColorList& newColors,
+										const QHash<QString, MultiLine>& newLineStyles,
+										bool createUndo)
+{
+	const bool stylesChanged = !equivalentObjectStyleSets(m_docObjectStyles, newStyles);
+	const bool colorsChanged = PageColors != newColors;
+	const bool lineStylesChanged = docLineStyles != newLineStyles;
+	if (!stylesChanged && !colorsChanged && !lineStylesChanged)
+		return false;
+
+	if (createUndo && !isLoading() && UndoManager::undoEnabled())
+	{
+		auto* state = new ScOldNewState<ObjectStyleImportSnapshot>(tr("Import Object Styles"));
+		state->set("OBJECT_STYLE_IMPORT");
+		state->setStates(objectStyleImportSnapshot(m_docObjectStyles, PageColors, docLineStyles),
+			objectStyleImportSnapshot(newStyles, newColors, newLineStyles));
+		m_undoManager->action(this, state);
+	}
+
+	PageColors = newColors;
+	docLineStyles = newLineStyles;
+	redefineObjectStyles(newStyles, true);
+	changed();
+	regionsChanged()->update(QRectF());
+	changedPagePreview();
+	if (scMW())
+	{
+		scMW()->requestUpdate(reqColorsUpdate | reqLineStylesUpdate | reqObjectStylesUpdate);
+		if (scMW()->styleMgr())
+			scMW()->styleMgr()->setDoc(this);
+	}
+	return true;
+}
+
+void ScribusDoc::restoreObjectStyleChanges(SimpleState* state, bool isUndo)
+{
+	const auto* objectStyleState = dynamic_cast<ScOldNewState<QList<ObjectStyle>>*>(state);
+	if (!objectStyleState)
+	{
+		qFatal("ScribusDoc::restoreObjectStyleChanges: dynamic cast failed");
+		return;
+	}
+
+	StyleSet<ObjectStyle> restoredStyles;
+	restoreObjectStyleSnapshot(isUndo ? objectStyleState->getOldState() : objectStyleState->getNewState(), restoredStyles);
+	redefineObjectStyles(restoredStyles, true);
+	changed();
+	regionsChanged()->update(QRectF());
+	changedPagePreview();
+	if (scMW())
+	{
+		scMW()->requestUpdate(reqColorsUpdate | reqLineStylesUpdate | reqObjectStylesUpdate);
+		if (scMW()->styleMgr())
+			scMW()->styleMgr()->setDoc(this);
+	}
+}
+
+void ScribusDoc::restoreObjectStyleImport(SimpleState* state, bool isUndo)
+{
+	const auto* importState = dynamic_cast<ScOldNewState<ObjectStyleImportSnapshot>*>(state);
+	if (!importState)
+	{
+		qFatal("ScribusDoc::restoreObjectStyleImport: dynamic cast failed");
+		return;
+	}
+
+	const ObjectStyleImportSnapshot& snapshot = isUndo ? importState->getOldState() : importState->getNewState();
+	PageColors = snapshot.colors;
+	docLineStyles = snapshot.lineStyles;
+	StyleSet<ObjectStyle> restoredStyles;
+	restoreObjectStyleSnapshot(snapshot.objectStyles, restoredStyles);
+	redefineObjectStyles(restoredStyles, true);
+	changed();
+	regionsChanged()->update(QRectF());
+	changedPagePreview();
+	if (scMW())
+	{
+		scMW()->requestUpdate(reqColorsUpdate | reqLineStylesUpdate | reqObjectStylesUpdate);
+		if (scMW()->styleMgr())
+			scMW()->styleMgr()->setDoc(this);
+	}
 }
 
 void ScribusDoc::redefineTableStyles(const StyleSet<TableStyle>& newStyles, bool removeUnused)
@@ -1681,7 +2285,8 @@ void ScribusDoc::loadStylesFromFile(const QString& fileName, StyleSet<ParagraphS
 									StyleSet<CharStyle> *tempCharStyles,
 									QHash<QString, MultiLine> *tempLineStyles,
 									StyleSet<TableStyle> *tempTableStyles,
-									StyleSet<CellStyle> *tempCellStyles)
+									StyleSet<CellStyle> *tempCellStyles,
+									StyleSet<ObjectStyle> *tempObjectStyles)
 {
 	StyleSet<ParagraphStyle> *wrkStyles     = tempStyles;
 	StyleSet<CharStyle> *wrkCharStyles      = tempCharStyles;
@@ -1716,6 +2321,11 @@ void ScribusDoc::loadStylesFromFile(const QString& fileName, StyleSet<ParagraphS
 	}
 
 	if (tempCellStyles && !fl.readCellStyles(this, *tempCellStyles))
+	{
+		//TODO put in nice user warning
+	}
+
+	if (tempObjectStyles && !fl.readObjectStyles(this, *tempObjectStyles))
 	{
 		//TODO put in nice user warning
 	}
@@ -1796,6 +2406,25 @@ void ScribusDoc::loadStylesFromFile(const QString& fileName, StyleSet<ParagraphS
 						namesMap[(*tempCellStyles)[i].name()] = (*tempCellStyles)[i].name();
 				}
 				tempCellStyles->rename(namesMap);
+			}
+		}
+	}
+	if (tempObjectStyles)
+	{
+		for (int j(0) ; j < tempObjectStyles->count() ; ++j)
+		{
+			if ((*tempObjectStyles)[j].isDefaultStyle())
+			{
+				ObjectStyle& objectDefault((*tempObjectStyles)[j]);
+				objectDefault.setDefaultStyle(false);
+				QMap<QString, QString> namesMap;
+				namesMap[objectDefault.name()] = importPrefix + objectDefault.name() + importSuffix;
+				for (int i(0) ; i < tempObjectStyles->count() ; ++i)
+				{
+					if ((*tempObjectStyles)[i] != objectDefault)
+						namesMap[(*tempObjectStyles)[i].name()] = (*tempObjectStyles)[i].name();
+				}
+				tempObjectStyles->rename(namesMap);
 			}
 		}
 	}
@@ -1987,6 +2616,16 @@ void ScribusDoc::restore(UndoState* state, bool isUndo)
 		restoreDeleteNote(state, isUndo);
 	else if (ss->contains("MARK"))
 		restoreMarks(state, isUndo);
+	else if (ss->contains("DYNAMIC_VARIABLE"))
+		restoreDynamicVariable(ss, isUndo);
+	else if (ss->contains("DOCUMENT_FONT_REPLACEMENT"))
+		restoreDocumentFontReplacement(ss, isUndo);
+	else if (ss->contains("RGB_PROCESS_COLOR_CONVERSION"))
+		restoreRGBProcessColorConversion(ss, isUndo);
+	else if (ss->contains("OBJECT_STYLE_CHANGES"))
+		restoreObjectStyleChanges(ss, isUndo);
+	else if (ss->contains("OBJECT_STYLE_IMPORT"))
+		restoreObjectStyleImport(ss, isUndo);
 
 	if (layersUndo)
 	{
@@ -2000,6 +2639,76 @@ void ScribusDoc::restore(UndoState* state, bool isUndo)
 				m_ScMW->outlinePalette->BuildTree();
 		}
 	}
+}
+
+void ScribusDoc::restoreDocumentFontReplacement(SimpleState* state, bool isUndo)
+{
+	const auto *fontState = dynamic_cast<ScOldNewState<DocumentFontSnapshot>*>(state);
+	if (!fontState)
+	{
+		qFatal("ScribusDoc::restoreDocumentFontReplacement: dynamic cast failed");
+		return;
+	}
+
+	const DocumentFontSnapshot& snapshot = isUndo ? fontState->getOldState() : fontState->getNewState();
+	StyleSet<CharStyle> characterStyles;
+	restoreStyleSet(snapshot.characterStyles, characterStyles);
+	StyleSet<ParagraphStyle> paragraphStyles;
+	restoreStyleSet(snapshot.paragraphStyles, paragraphStyles);
+	redefineCharStyles(characterStyles, true);
+	redefineStyles(paragraphStyles, true);
+	m_docPrefsData.itemToolPrefs.textFont = snapshot.textToolFont;
+
+	for (const FontStorySnapshot& savedStory : snapshot.stories)
+	{
+		PageItem* restoredRoot = nullptr;
+		for (const QPointer<PageItem>& savedItem : savedStory.items)
+		{
+			PageItem* item = savedItem.data();
+			if (!item)
+				continue;
+			if (!restoredRoot)
+			{
+				item->itemText = savedStory.story.copy();
+				item->itemText.setDoc(this);
+				restoredRoot = item;
+			}
+			else
+				item->itemText = restoredRoot->itemText;
+			item->invalidateLayout();
+			item->update();
+		}
+	}
+
+	reorganiseFonts();
+	changed();
+	regionsChanged()->update(QRectF());
+	changedPagePreview();
+	if (scMW())
+	{
+		scMW()->requestUpdate(reqTextStylesUpdate);
+		if (scMW()->styleMgr())
+			scMW()->styleMgr()->setDoc(this);
+	}
+}
+
+void ScribusDoc::restoreRGBProcessColorConversion(SimpleState* state, bool isUndo)
+{
+	const auto* colorState = dynamic_cast<ScOldNewState<ColorList>*>(state);
+	if (!colorState)
+	{
+		qFatal("ScribusDoc::restoreRGBProcessColorConversion: dynamic cast failed");
+		return;
+	}
+	PageColors = isUndo ? colorState->getOldState() : colorState->getNewState();
+	recalculateColors();
+	if (useImageColorEffects())
+		recalcPicturesRes(RecalcPicRes_ImageWithColorEffectsOnly);
+	changed();
+	regionsChanged()->update(QRectF());
+	changedPagePreview();
+	if (scMW())
+		scMW()->requestUpdate(reqColorsUpdate | reqLineStylesUpdate | reqTextStylesUpdate);
 }
 
 void ScribusDoc::restoreLevelUpOrDown(SimpleState* ss, bool isUndo)
@@ -2073,7 +2782,8 @@ void ScribusDoc::restoreAddMasterPage(SimpleState* ss, bool isUndo)
 	} 
 	else 
 	{
-		ScPage* Mpage = addMasterPage(pageNr, pageName);
+		const int pageSide = ss->contains("MASTERPAGE_LEFTPG") ? ss->getInt("MASTERPAGE_LEFTPG") : -1;
+		ScPage* Mpage = addMasterPage(pageNr, pageName, pageSide);
 		setCurrentPage(Mpage);
 		UndoObject *tmp = m_undoManager->replaceObject(
 					ss->getUInt("DUMMY_ID"), Pages->at(MasterNames[pageName]));
@@ -2211,7 +2921,11 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 		{
 			Q_ASSERT(mrk != nullptr);
 			if (is->contains("labelOLD"))
-				mrk->label = is->get("labelOLD");
+			{
+				const QString oldLabel = is->get("labelOLD");
+				retargetMarkReferences(mrk->getType(), mrk->label, oldLabel);
+				mrk->label = oldLabel;
+			}
 			if (is->contains("strtxtOLD"))
 			{
 				mrk->setString(is->get("strtxtOLD"));
@@ -2219,6 +2933,12 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 			}
 			if (is->contains("dNameOLD"))
 				mrk->setDestMark(is->get("dNameOLD"), (MarkType) is->getInt("dTypeOLD"));
+			if (is->contains("xrefFormatOLD"))
+			{
+				mrk->setCrossReferenceFormat((CrossReferenceFormat) is->getInt("xrefFormatOLD"));
+				mrk->setCrossReferencePrefix(is->get("xrefPrefixOLD"));
+				mrk->setCrossReferenceSuffix(is->get("xrefSuffixOLD"));
+			}
 			if (is->getItem("itemPtrOLD") != nullptr)
 				mrk->setItemPtr((PageItem*) is->getItem("itemPtrOLD"));
 		}
@@ -2241,6 +2961,8 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 			mrk = newMark();
 			mrk->label = is->get("label");
 			mrk->setType((MarkType) is->getInt("type"));
+			if (is->contains("variableId"))
+				mrk->setVariableId(is->get("variableId"));
 			if (currItem)
 			{
 				Q_ASSERT(pos >= 0);
@@ -2253,6 +2975,12 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 			}
 			if (is->contains("dName"))
 				mrk->setDestMark(is->get("dName"), (MarkType) is->getInt("dType"));
+			if (is->contains("xrefFormat"))
+			{
+				mrk->setCrossReferenceFormat((CrossReferenceFormat) is->getInt("xrefFormat"));
+				mrk->setCrossReferencePrefix(is->get("xrefPrefix"));
+				mrk->setCrossReferenceSuffix(is->get("xrefSuffix"));
+			}
 			if (is->getItem("itemPtr") != nullptr)
 				mrk->setItemPtr((PageItem*) is->getItem("itemPtr"));
 		}
@@ -2274,6 +3002,8 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 			mrk = newMark();
 			mrk->label = is->get("label");
 			mrk->setType((MarkType) is->getInt("type"));
+			if (is->contains("variableId"))
+				mrk->setVariableId(is->get("variableId"));
 			mrk->setString(is->get("strtxt"));
 			for (int i = 0; i < is->insertItemPos.count(); ++i)
 			{
@@ -2300,6 +3030,8 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 			mrk = newMark();
 			mrk->label = is->get("label");
 			mrk->setType((MarkType) is->getInt("type"));
+			if (is->contains("variableId"))
+				mrk->setVariableId(is->get("variableId"));
 			Q_ASSERT(currItem != nullptr);
 			Q_ASSERT(pos >= 0);
 			currItem->itemText.insertMark(mrk, pos);
@@ -2307,6 +3039,12 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 				mrk->setString(is->get("strtxt"));
 			if (is->contains("dName"))
 				mrk->setDestMark(is->get("dName"), (MarkType) is->getInt("dType"));
+			if (is->contains("xrefFormat"))
+			{
+				mrk->setCrossReferenceFormat((CrossReferenceFormat) is->getInt("xrefFormat"));
+				mrk->setCrossReferencePrefix(is->get("xrefPrefix"));
+				mrk->setCrossReferenceSuffix(is->get("xrefSuffix"));
+			}
 			if (is->getItem("itemPtr") != nullptr)
 				mrk->setItemPtr((PageItem*) is->getItem("itemPtr"));
 			if (mrk->isType(MARKNoteMasterType))
@@ -2336,7 +3074,11 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 		else if (markAction == "edit")
 		{
 			if (is->contains("labelNEW"))
-				mrk->label = is->get("labelNEW");
+			{
+				const QString newLabel = is->get("labelNEW");
+				retargetMarkReferences(mrk->getType(), mrk->label, newLabel);
+				mrk->label = newLabel;
+			}
 			if (is->contains("strtxtNEW"))
 			{
 				mrk->setString(is->get("strtxtNEW"));
@@ -2344,6 +3086,12 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 			}
 			if (is->contains("dNameNEW"))
 				mrk->setDestMark(is->get("dNameNEW"), (MarkType) is->getInt("dTypeNEW"));
+			if (is->contains("xrefFormatNEW"))
+			{
+				mrk->setCrossReferenceFormat((CrossReferenceFormat) is->getInt("xrefFormatNEW"));
+				mrk->setCrossReferencePrefix(is->get("xrefPrefixNEW"));
+				mrk->setCrossReferenceSuffix(is->get("xrefSuffixNEW"));
+			}
 			if (is->getItem("itemPtrNEW") != nullptr)
 				mrk->setItemPtr((PageItem*) is->getItem("itemPtrNEW"));
 		}
@@ -2400,6 +3148,11 @@ void ScribusDoc::restoreMarks(UndoState* state, bool isUndo)
 		}
 	}
 
+	if (markAction == "delete" && static_cast<MarkType>(is->getInt("type")) == MARKAnchorType)
+	{
+		flag_updateMarksLabels = true;
+		updateMarks(false);
+	}
 	scMW()->emitUpdateRequest(reqMarksUpdate);
 	if (currItem != nullptr && !isAutoNoteFrame)
 	{
@@ -2741,11 +3494,13 @@ ScPage* ScribusDoc::addPage(int pageNumber, const QString& masterPageName, bool 
 	setLocationBasedPageLRMargins(pageNumber);
 	if (addAutoFrame && m_automaticTextFrames)
 		addAutomaticTextFrame(pageNumber);
+	if (!isLoading())
+		invalidateDynamicVariableFrames(QString(), false);
 	return addedPage;
 }
 
 
-ScPage* ScribusDoc::addMasterPage(int pageNumber, const QString& pageName)
+ScPage* ScribusDoc::addMasterPage(int pageNumber, const QString& pageName, int pageSide)
 {
 	ScPage* addedPage = new ScPage(m_docPrefsData.displayPrefs.scratch.left(), m_docPrefsData.displayPrefs.scratch.top(), m_docPrefsData.docSetupPrefs.pageWidth, m_docPrefsData.docSetupPrefs.pageHeight);
 	assert(addedPage != nullptr);
@@ -2755,6 +3510,20 @@ ScPage* ScribusDoc::addMasterPage(int pageNumber, const QString& pageName)
 	addedPage->setSize(m_docPrefsData.docSetupPrefs.pageSize);
 	addedPage->setOrientation(m_docPrefsData.docSetupPrefs.pageOrientation);
 	addedPage->marginPreset = m_docPrefsData.docSetupPrefs.marginPreset;
+	if (pageSide >= 0)
+	{
+		addedPage->LeftPg = pageSide;
+		if (pageSide == 0)
+		{
+			addedPage->Margins.setLeft(addedPage->initialMargins.left());
+			addedPage->Margins.setRight(addedPage->initialMargins.right());
+		}
+		else if (pageSide == 1)
+		{
+			addedPage->Margins.setLeft(addedPage->initialMargins.right());
+			addedPage->Margins.setRight(addedPage->initialMargins.left());
+		}
+	}
 	addedPage->clearMasterPageName();
 	int pgN = pageNumber;
 	if (pageNumber > MasterPages.count())
@@ -2775,9 +3544,30 @@ ScPage* ScribusDoc::addMasterPage(int pageNumber, const QString& pageName)
 		ss->set("MASTERPAGE_ADD");
 		ss->set("MASTERPAGE_NAME", pageName);
 		ss->set("MASTERPAGE_NBR", pgN);
+		ss->set("MASTERPAGE_LEFTPG", addedPage->LeftPg);
 		m_undoManager->action(this, ss);
 	}
 	return addedPage;
+}
+
+bool ScribusDoc::addMasterPagePair(const QString& leftPageName, const QString& rightPageName)
+{
+	if (pageSets()[pagePositioning()].Columns != 2 || leftPageName.isEmpty() || rightPageName.isEmpty())
+		return false;
+	if (leftPageName == rightPageName || MasterNames.contains(leftPageName) || MasterNames.contains(rightPageName))
+		return false;
+
+	UndoTransaction transaction;
+	if (UndoManager::undoEnabled())
+		transaction = m_undoManager->beginTransaction(getUName(), Um::IDocument, tr("Create Facing Master Pair"), "", Um::ICreate);
+
+	const int firstPageNumber = MasterPages.count();
+	addMasterPage(firstPageNumber, leftPageName, 1);
+	addMasterPage(firstPageNumber + 1, rightPageName, 0);
+
+	if (transaction)
+		transaction.commit();
+	return true;
 }
 
 
@@ -2902,6 +3692,7 @@ void ScribusDoc::deletePage(int pageNumber)
 	ScPage* page = Pages->takeAt(pageNumber);
 	delete page;
 	reformPages();
+	invalidateDynamicVariableFrames(QString(), false);
 	changed();
 }
 
@@ -2917,6 +3708,7 @@ void ScribusDoc::swapPage(int a, int b)
 	}
 	Pages->swapItemsAt(a, b);
 	reformPages();
+	invalidateDynamicVariableFrames(QString(), false);
 	changed();
 }
 
@@ -2970,6 +3762,7 @@ void ScribusDoc::movePage(int fromPage, int toPage, int dest, int position)
 		m_undoManager->action(this, ss);
 	}
 	reformPages();
+	invalidateDynamicVariableFrames(QString(), false);
 	if (m_View && m_ScMW)
 	{
 		m_View->reformPagesView();
@@ -8203,6 +8996,37 @@ void ScribusDoc::itemSelection_SetNamedParagraphStyle(const QString& name, Selec
 	itemSelection_ApplyParagraphStyle(newStyle, customSelection, false);
 }
 
+void ScribusDoc::itemSelection_SetNamedObjectStyle(const QString& name, Selection* customSelection)
+{
+	if (!name.isEmpty() && !m_docObjectStyles.contains(name))
+		return;
+
+	Selection* itemSelection = customSelection ? customSelection : m_Selection;
+	const int itemCount = itemSelection->count();
+	if (itemCount <= 0)
+		return;
+
+	UndoTransaction activeTransaction;
+	m_updateManager.setUpdatesDisabled();
+	if (UndoManager::undoEnabled() && itemCount > 1)
+		activeTransaction = m_undoManager->beginTransaction(Um::SelectionGroup, Um::IGroup,
+			tr("Apply Object Style"), name, Um::IFill);
+
+	bool changedAny = false;
+	for (int i = 0; i < itemCount; ++i)
+		changedAny = itemSelection->itemAt(i)->setObjectStyle(name) || changedAny;
+
+	if (activeTransaction)
+		activeTransaction.commit();
+	m_updateManager.setUpdatesEnabled();
+	if (changedAny)
+	{
+		changed();
+		regionsChanged()->update(QRectF());
+		changedPagePreview();
+	}
+}
+
 void ScribusDoc::itemSelection_SetNamedLineStyle(const QString &name, Selection* customSelection)
 {
 	Selection* itemSelection = (customSelection != nullptr) ? customSelection : m_Selection;
@@ -12127,6 +12951,11 @@ void ScribusDoc::itemSelection_DeleteItem(Selection* customSelection, bool force
 	
 	for (PageItem* tii : textInteractionItems)
 		tii->update();
+
+	// A deleted text frame may have supplied one or more running headers.
+	// Invalidate after removing all items so the next resolution scans the
+	// document's current item set rather than returning the previous value.
+	invalidateRunningHeaderFrames(false);
 	
 	regionsChanged()->update(QRectF());
 	if (m_View)
@@ -14537,7 +15366,10 @@ void ScribusDoc::itemSelection_ApplyImageEffects(const ScImageEffectList& newEff
 	PageItem *currItem = itemSelection->itemAt(0);
 	ScImageEffectList oldEffects(currItem->effectsInUse);
 	currItem->effectsInUse = newEffectList;
-	updatePic();
+	if (customSelection)
+		loadPict(currItem->Pfile, currItem, true);
+	else
+		updatePic();
 
 	if (UndoManager::undoEnabled())
 	{
@@ -17363,13 +18195,16 @@ void ScribusDoc::setNewPrefs(const ApplicationPrefs& prefsData, const Applicatio
 	}
 
 	bool mustInvalidateAll = false;
+	const bool sectionsChanged = oldPrefsData.docSectionMap != prefsData.docSectionMap;
 	mustInvalidateAll |= (oldPrefsData.guidesPrefs.valueBaselineGrid  != prefsData.guidesPrefs.valueBaselineGrid);
 	mustInvalidateAll |= (oldPrefsData.guidesPrefs.offsetBaselineGrid != prefsData.guidesPrefs.offsetBaselineGrid);
 	mustInvalidateAll |= (oldPrefsData.typoPrefs != prefsData.typoPrefs);
-	mustInvalidateAll |= (oldPrefsData.docSectionMap != prefsData.docSectionMap);
+	mustInvalidateAll |= sectionsChanged;
 
 	if (mustInvalidateAll)
 		this->invalidateAll();
+	if (sectionsChanged)
+		invalidateRunningHeaderFrames(false);
 }
 
 void ScribusDoc::applyPrefsPageSizingAndMargins(bool resizePages, bool resizeMasterPages, bool resizePageMargins, bool resizeMasterPageMargins)
@@ -17437,7 +18272,25 @@ QString ScribusDoc::documentFileName() const
 
 void ScribusDoc::setDocumentFileName(const QString& documentFileName)
 {
+	if (m_documentFileName == documentFileName)
+		return;
 	m_documentFileName = documentFileName;
+	if (!isLoading())
+	{
+		invalidateDynamicVariableFrames(DynamicVariableResolver::idForType(DynamicVariableResolver::FileName), false);
+		invalidateDynamicVariableFrames(DynamicVariableResolver::idForType(DynamicVariableResolver::ModificationDate), false);
+	}
+}
+
+void ScribusDoc::setDocumentInfo(DocumentInformation info)
+{
+	const bool titleChanged = (m_docPrefsData.docInfo.title() != info.title());
+	const bool authorChanged = (m_docPrefsData.docInfo.author() != info.author());
+	m_docPrefsData.docInfo = std::move(info);
+	if (!isLoading() && titleChanged)
+		invalidateDynamicVariableFrames(DynamicVariableResolver::idForType(DynamicVariableResolver::DocumentTitle), false);
+	if (!isLoading() && authorChanged)
+		invalidateDynamicVariableFrames(DynamicVariableResolver::idForType(DynamicVariableResolver::Author), false);
 }
 
 void ScribusDoc::itemSelection_UnlinkTextFrameAndCutText( Selection *customSelection)
@@ -18028,6 +18881,433 @@ Mark* ScribusDoc::getMark(const QString& l, MarkType t)
 	return nullptr;
 }
 
+Mark* ScribusDoc::getDynamicVariableMark(const QString& variableId) const
+{
+	for (Mark* mark : m_docMarksList)
+	{
+		if (mark && mark->isType(MARKVariableTextType) && mark->getVariableId() == variableId)
+			return mark;
+	}
+	return nullptr;
+}
+
+const DynamicVariable* ScribusDoc::dynamicVariable(const QString& id) const
+{
+	auto it = m_dynamicVariables.constFind(id);
+	return it == m_dynamicVariables.constEnd() ? nullptr : &it.value();
+}
+
+QString ScribusDoc::dynamicVariableIdByName(const QString& name) const
+{
+	for (auto it = m_dynamicVariables.constBegin(); it != m_dynamicVariables.constEnd(); ++it)
+	{
+		if (it.value().name == name)
+			return it.key();
+	}
+	return QString();
+}
+
+QString ScribusDoc::addDynamicVariable(const QString& name, const QString& value, const QString& id, const QString& type)
+{
+	return addDynamicVariable(name, value, id, type, QString(), QString());
+}
+
+QString ScribusDoc::addDynamicVariable(const QString& name, const QString& value, const QString& id, const QString& type,
+	const QString& paragraphStyle, const QString& runningHeaderMode, const QString& runningHeaderTextCase,
+	bool removeTrailingPunctuation)
+{
+	return addDynamicVariable(name, value, id, type, paragraphStyle, runningHeaderMode,
+		runningHeaderTextCase, removeTrailingPunctuation, DynamicVariableResolver::NoFallback);
+}
+
+QString ScribusDoc::addDynamicVariable(const QString& name, const QString& value, const QString& id, const QString& type,
+	const QString& paragraphStyle, const QString& runningHeaderMode, const QString& runningHeaderTextCase,
+	bool removeTrailingPunctuation, const QString& runningHeaderFallback)
+{
+	QString variableId = id;
+	if (variableId.isEmpty())
+		variableId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+	if (m_dynamicVariables.contains(variableId) || DynamicVariableResolver::isReservedName(name)
+		|| !dynamicVariableIdByName(name.trimmed()).isEmpty())
+		return QString();
+
+	DynamicVariable variable;
+	variable.id = variableId;
+	variable.type = type.isEmpty() ? DynamicVariableResolver::UserDefined : type;
+	variable.name = name.trimmed();
+	variable.value = value;
+	if (variable.type == DynamicVariableResolver::RunningHeader)
+	{
+		variable.paragraphStyle = paragraphStyle;
+		variable.runningHeaderMode = runningHeaderMode;
+		variable.runningHeaderTextCase = runningHeaderTextCase.isEmpty()
+			? DynamicVariableResolver::AsEnteredCase : runningHeaderTextCase;
+		variable.runningHeaderFallback = runningHeaderFallback.isEmpty()
+			? DynamicVariableResolver::NoFallback : runningHeaderFallback;
+		variable.removeTrailingPunctuation = removeTrailingPunctuation;
+	}
+	m_dynamicVariables.insert(variableId, variable);
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new SimpleState(tr("Add Variable"));
+		state->set("DYNAMIC_VARIABLE");
+		state->set("ACTION", QStringLiteral("add"));
+		state->set("ID", variable.id);
+		state->set("TYPE", variable.type);
+		state->set("NAME", variable.name);
+		state->set("VALUE", variable.value);
+		state->set("PARAGRAPH_STYLE", variable.paragraphStyle);
+		state->set("RUNNING_HEADER_MODE", variable.runningHeaderMode);
+		state->set("RUNNING_HEADER_TEXT_CASE", variable.runningHeaderTextCase);
+		state->set("RUNNING_HEADER_FALLBACK", variable.runningHeaderFallback);
+		state->set("REMOVE_TRAILING_PUNCTUATION", variable.removeTrailingPunctuation);
+		m_undoManager->action(this, state);
+	}
+	return variableId;
+}
+
+QString ScribusDoc::addRunningHeaderVariable(const QString& name, const QString& paragraphStyle,
+	DynamicVariable::RunningHeaderMode mode, const QString& id)
+{
+	return addRunningHeaderVariable(name, paragraphStyle, mode,
+		DynamicVariable::RunningHeaderTextCase::AsEntered, false, id);
+}
+
+QString ScribusDoc::addRunningHeaderVariable(const QString& name, const QString& paragraphStyle,
+	DynamicVariable::RunningHeaderMode mode, DynamicVariable::RunningHeaderTextCase textCase,
+	bool removeTrailingPunctuation, const QString& id)
+{
+	return addRunningHeaderVariable(name, paragraphStyle, mode, textCase, removeTrailingPunctuation,
+		DynamicVariable::RunningHeaderFallback::NoFallback, id);
+}
+
+QString ScribusDoc::addRunningHeaderVariable(const QString& name, const QString& paragraphStyle,
+	DynamicVariable::RunningHeaderMode mode, DynamicVariable::RunningHeaderTextCase textCase,
+	bool removeTrailingPunctuation, DynamicVariable::RunningHeaderFallback fallback, const QString& id)
+{
+	const QString modeName = DynamicVariableResolver::runningHeaderModeToString(mode);
+	const QString textCaseName = DynamicVariableResolver::runningHeaderTextCaseToString(textCase);
+	const QString fallbackName = DynamicVariableResolver::runningHeaderFallbackToString(fallback);
+	if (paragraphStyle.isEmpty() || !paragraphStyles().contains(paragraphStyle) || modeName.isEmpty()
+		|| textCaseName.isEmpty() || fallbackName.isEmpty()
+		|| (mode == DynamicVariable::RunningHeaderMode::MostRecent
+			&& fallback != DynamicVariable::RunningHeaderFallback::NoFallback))
+		return QString();
+	return addDynamicVariable(name, QString(), id, DynamicVariableResolver::RunningHeader, paragraphStyle, modeName,
+		textCaseName, removeTrailingPunctuation, fallbackName);
+}
+
+bool ScribusDoc::updateDynamicVariable(const QString& id, const QString& name, const QString& value)
+{
+	auto it = m_dynamicVariables.find(id);
+	if (it == m_dynamicVariables.end() || DynamicVariableResolver::isBuiltInId(id)
+		|| DynamicVariableResolver::isReservedName(name)
+		|| (it->type != DynamicVariableResolver::UserDefined && it->value != value))
+		return false;
+	const QString duplicateId = dynamicVariableIdByName(name.trimmed());
+	if (!duplicateId.isEmpty() && duplicateId != id)
+		return false;
+	if (it->name == name.trimmed() && it->value == value)
+		return true;
+	const QString oldName = it->name;
+	const QString oldValue = it->value;
+	it->name = name.trimmed();
+	it->value = value;
+	if (Mark* mark = getDynamicVariableMark(id))
+	{
+		QStringList otherLabels = marksLabelsList(MARKVariableTextType);
+		otherLabels.removeOne(mark->label);
+		QString markLabel = it->name;
+		getUniqueName(markLabel, otherLabels, QStringLiteral("_"));
+		mark->label = markLabel;
+		mark->setString(value);
+	}
+	invalidateDynamicVariableFrames(id, false);
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new SimpleState(tr("Edit Variable"));
+		state->set("DYNAMIC_VARIABLE");
+		state->set("ACTION", QStringLiteral("edit"));
+		state->set("ID", id);
+		state->set("OLD_NAME", oldName);
+		state->set("OLD_VALUE", oldValue);
+		state->set("NEW_NAME", it->name);
+		state->set("NEW_VALUE", it->value);
+		m_undoManager->action(this, state);
+	}
+	return true;
+}
+
+bool ScribusDoc::updateRunningHeaderVariable(const QString& id, const QString& name, const QString& paragraphStyle,
+	DynamicVariable::RunningHeaderMode mode)
+{
+	const DynamicVariable* variable = dynamicVariable(id);
+	if (!variable || variable->type != DynamicVariableResolver::RunningHeader)
+		return false;
+	return updateRunningHeaderVariable(id, name, paragraphStyle, mode,
+		DynamicVariableResolver::runningHeaderTextCaseFromString(variable->runningHeaderTextCase),
+		variable->removeTrailingPunctuation);
+}
+
+bool ScribusDoc::updateRunningHeaderVariable(const QString& id, const QString& name, const QString& paragraphStyle,
+	DynamicVariable::RunningHeaderMode mode, DynamicVariable::RunningHeaderTextCase textCase,
+	bool removeTrailingPunctuation)
+{
+	const DynamicVariable* variable = dynamicVariable(id);
+	if (!variable || variable->type != DynamicVariableResolver::RunningHeader)
+		return false;
+	return updateRunningHeaderVariable(id, name, paragraphStyle, mode, textCase, removeTrailingPunctuation,
+		DynamicVariableResolver::runningHeaderFallbackFromString(variable->runningHeaderFallback));
+}
+
+bool ScribusDoc::updateRunningHeaderVariable(const QString& id, const QString& name, const QString& paragraphStyle,
+	DynamicVariable::RunningHeaderMode mode, DynamicVariable::RunningHeaderTextCase textCase,
+	bool removeTrailingPunctuation, DynamicVariable::RunningHeaderFallback fallback)
+{
+	auto it = m_dynamicVariables.find(id);
+	const QString modeName = DynamicVariableResolver::runningHeaderModeToString(mode);
+	const QString textCaseName = DynamicVariableResolver::runningHeaderTextCaseToString(textCase);
+	const QString fallbackName = DynamicVariableResolver::runningHeaderFallbackToString(fallback);
+	if (it == m_dynamicVariables.end() || it->type != DynamicVariableResolver::RunningHeader
+		|| DynamicVariableResolver::isReservedName(name) || !paragraphStyles().contains(paragraphStyle)
+		|| modeName.isEmpty() || textCaseName.isEmpty() || fallbackName.isEmpty()
+		|| (mode == DynamicVariable::RunningHeaderMode::MostRecent
+			&& fallback != DynamicVariable::RunningHeaderFallback::NoFallback))
+		return false;
+	const QString duplicateId = dynamicVariableIdByName(name.trimmed());
+	if (!duplicateId.isEmpty() && duplicateId != id)
+		return false;
+	if (it->name == name.trimmed() && it->paragraphStyle == paragraphStyle && it->runningHeaderMode == modeName
+		&& it->runningHeaderTextCase == textCaseName
+		&& it->runningHeaderFallback == fallbackName
+		&& it->removeTrailingPunctuation == removeTrailingPunctuation)
+		return true;
+
+	const QString oldName = it->name;
+	const QString oldParagraphStyle = it->paragraphStyle;
+	const QString oldMode = it->runningHeaderMode;
+	const QString oldTextCase = it->runningHeaderTextCase;
+	const QString oldFallback = it->runningHeaderFallback;
+	const bool oldRemoveTrailingPunctuation = it->removeTrailingPunctuation;
+	it->name = name.trimmed();
+	it->paragraphStyle = paragraphStyle;
+	it->runningHeaderMode = modeName;
+	it->runningHeaderTextCase = textCaseName;
+	it->runningHeaderFallback = fallbackName;
+	it->removeTrailingPunctuation = removeTrailingPunctuation;
+	if (Mark* mark = getDynamicVariableMark(id))
+	{
+		QStringList otherLabels = marksLabelsList(MARKVariableTextType);
+		otherLabels.removeOne(mark->label);
+		QString markLabel = it->name;
+		getUniqueName(markLabel, otherLabels, QStringLiteral("_"));
+		mark->label = markLabel;
+		mark->clearString();
+	}
+	invalidateDynamicVariableFrames(id, false);
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new SimpleState(tr("Edit Running Header"));
+		state->set("DYNAMIC_VARIABLE");
+		state->set("ACTION", QStringLiteral("edit-running-header"));
+		state->set("ID", id);
+		state->set("OLD_NAME", oldName);
+		state->set("OLD_PARAGRAPH_STYLE", oldParagraphStyle);
+		state->set("OLD_RUNNING_HEADER_MODE", oldMode);
+		state->set("OLD_RUNNING_HEADER_TEXT_CASE", oldTextCase);
+		state->set("OLD_RUNNING_HEADER_FALLBACK", oldFallback);
+		state->set("OLD_REMOVE_TRAILING_PUNCTUATION", oldRemoveTrailingPunctuation);
+		state->set("NEW_NAME", it->name);
+		state->set("NEW_PARAGRAPH_STYLE", it->paragraphStyle);
+		state->set("NEW_RUNNING_HEADER_MODE", it->runningHeaderMode);
+		state->set("NEW_RUNNING_HEADER_TEXT_CASE", it->runningHeaderTextCase);
+		state->set("NEW_RUNNING_HEADER_FALLBACK", it->runningHeaderFallback);
+		state->set("NEW_REMOVE_TRAILING_PUNCTUATION", it->removeTrailingPunctuation);
+		m_undoManager->action(this, state);
+	}
+	return true;
+}
+
+bool ScribusDoc::removeDynamicVariable(const QString& id)
+{
+	auto it = m_dynamicVariables.find(id);
+	if (it == m_dynamicVariables.end())
+		return false;
+	const DynamicVariable removed = it.value();
+	m_dynamicVariables.erase(it);
+	if (Mark* mark = getDynamicVariableMark(id))
+		mark->clearString();
+	invalidateDynamicVariableFrames(id, false);
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new SimpleState(tr("Delete Variable"));
+		state->set("DYNAMIC_VARIABLE");
+		state->set("ACTION", QStringLiteral("delete"));
+		state->set("ID", removed.id);
+		state->set("TYPE", removed.type);
+		state->set("NAME", removed.name);
+		state->set("VALUE", removed.value);
+		state->set("PARAGRAPH_STYLE", removed.paragraphStyle);
+		state->set("RUNNING_HEADER_MODE", removed.runningHeaderMode);
+		state->set("RUNNING_HEADER_TEXT_CASE", removed.runningHeaderTextCase);
+		state->set("RUNNING_HEADER_FALLBACK", removed.runningHeaderFallback);
+		state->set("REMOVE_TRAILING_PUNCTUATION", removed.removeTrailingPunctuation);
+		m_undoManager->action(this, state);
+	}
+	return true;
+}
+
+void ScribusDoc::restoreDynamicVariable(SimpleState* state, bool isUndo)
+{
+	const QString action = state->get("ACTION");
+	const QString id = state->get("ID");
+	if (action == QLatin1String("add"))
+	{
+		if (isUndo)
+			removeDynamicVariable(id);
+		else
+			addDynamicVariable(state->get("NAME"), state->get("VALUE"), id, state->get("TYPE"),
+				state->get("PARAGRAPH_STYLE"), state->get("RUNNING_HEADER_MODE"),
+				state->get("RUNNING_HEADER_TEXT_CASE"), state->getBool("REMOVE_TRAILING_PUNCTUATION"),
+				state->get("RUNNING_HEADER_FALLBACK"));
+	}
+	else if (action == QLatin1String("delete"))
+	{
+		if (isUndo)
+			addDynamicVariable(state->get("NAME"), state->get("VALUE"), id, state->get("TYPE"),
+				state->get("PARAGRAPH_STYLE"), state->get("RUNNING_HEADER_MODE"),
+				state->get("RUNNING_HEADER_TEXT_CASE"), state->getBool("REMOVE_TRAILING_PUNCTUATION"),
+				state->get("RUNNING_HEADER_FALLBACK"));
+		else
+			removeDynamicVariable(id);
+	}
+	else if (action == QLatin1String("edit"))
+	{
+		if (isUndo)
+			updateDynamicVariable(id, state->get("OLD_NAME"), state->get("OLD_VALUE"));
+		else
+			updateDynamicVariable(id, state->get("NEW_NAME"), state->get("NEW_VALUE"));
+	}
+	else if (action == QLatin1String("edit-running-header"))
+	{
+		if (isUndo)
+			updateRunningHeaderVariable(id, state->get("OLD_NAME"), state->get("OLD_PARAGRAPH_STYLE"),
+				DynamicVariableResolver::runningHeaderModeFromString(state->get("OLD_RUNNING_HEADER_MODE")),
+				DynamicVariableResolver::runningHeaderTextCaseFromString(state->get("OLD_RUNNING_HEADER_TEXT_CASE")),
+				state->getBool("OLD_REMOVE_TRAILING_PUNCTUATION"),
+				DynamicVariableResolver::runningHeaderFallbackFromString(state->get("OLD_RUNNING_HEADER_FALLBACK")));
+		else
+			updateRunningHeaderVariable(id, state->get("NEW_NAME"), state->get("NEW_PARAGRAPH_STYLE"),
+				DynamicVariableResolver::runningHeaderModeFromString(state->get("NEW_RUNNING_HEADER_MODE")),
+				DynamicVariableResolver::runningHeaderTextCaseFromString(state->get("NEW_RUNNING_HEADER_TEXT_CASE")),
+				state->getBool("NEW_REMOVE_TRAILING_PUNCTUATION"),
+				DynamicVariableResolver::runningHeaderFallbackFromString(state->get("NEW_RUNNING_HEADER_FALLBACK")));
+	}
+	changed();
+	regionsChanged()->update(QRectF());
+}
+
+QString ScribusDoc::resolveDynamicVariable(const QString& id, const PageItem* frame) const
+{
+	return DynamicVariableResolver::resolve(this, id, frame);
+}
+
+bool ScribusDoc::runningHeaderCacheValue(const QString& id, int page, const PageItem* contextFrame, QString& value) const
+{
+	const auto variableIt = m_runningHeaderPageCache.constFind(id);
+	if (variableIt == m_runningHeaderPageCache.constEnd())
+		return false;
+	const auto pageIt = variableIt->constFind(page);
+	if (pageIt == variableIt->constEnd() || !pageIt->contains(contextFrame))
+		return false;
+	value = pageIt->value(contextFrame);
+	return true;
+}
+
+void ScribusDoc::setRunningHeaderCacheValue(const QString& id, int page, const PageItem* contextFrame, const QString& value) const
+{
+	m_runningHeaderPageCache[id][page].insert(contextFrame, value);
+}
+
+bool ScribusDoc::beginRunningHeaderResolution(const QString& id, int page) const
+{
+	QSet<int>& pages = m_runningHeaderResolutions[id];
+	if (pages.contains(page))
+		return false;
+	pages.insert(page);
+	return true;
+}
+
+void ScribusDoc::endRunningHeaderResolution(const QString& id, int page) const
+{
+	auto variableIt = m_runningHeaderResolutions.find(id);
+	if (variableIt == m_runningHeaderResolutions.end())
+		return;
+	variableIt->remove(page);
+	if (variableIt->isEmpty())
+		m_runningHeaderResolutions.erase(variableIt);
+}
+
+void ScribusDoc::clearRunningHeaderCache() const
+{
+	m_runningHeaderPageCache.clear();
+}
+
+bool ScribusDoc::invalidateDynamicVariableFrames(const QString& id, bool forceUpdate)
+{
+	if (id.isEmpty())
+		clearRunningHeaderCache();
+	else
+		m_runningHeaderPageCache.remove(id);
+	bool found = false;
+	for (Mark* mark : std::as_const(m_docMarksList))
+	{
+		if (!mark || !mark->isType(MARKVariableTextType) || mark->getVariableId().isEmpty())
+			continue;
+		if (!id.isEmpty() && mark->getVariableId() != id)
+			continue;
+		found |= invalidateVariableTextFrames(mark, forceUpdate);
+	}
+	return found;
+}
+
+bool ScribusDoc::invalidateRunningHeaderFrames(bool forceUpdate)
+{
+	clearRunningHeaderCache();
+	bool found = false;
+	for (Mark* mark : std::as_const(m_docMarksList))
+	{
+		if (!mark || !mark->isType(MARKVariableTextType) || mark->getVariableId().isEmpty())
+			continue;
+		const DynamicVariable* variable = dynamicVariable(mark->getVariableId());
+		if (!variable || variable->type != DynamicVariableResolver::RunningHeader)
+			continue;
+		found |= invalidateVariableTextFrames(mark, forceUpdate);
+	}
+	return found;
+}
+
+bool ScribusDoc::updateDynamicVariableValues()
+{
+	bool changedValue = false;
+	const QString currentPageId = DynamicVariableResolver::idForType(DynamicVariableResolver::CurrentPage);
+	for (Mark* mark : std::as_const(m_docMarksList))
+	{
+		if (!mark || !mark->isType(MARKVariableTextType) || mark->getVariableId().isEmpty() || mark->getVariableId() == currentPageId)
+			continue;
+		const DynamicVariable* variable = dynamicVariable(mark->getVariableId());
+		if (variable && variable->type == DynamicVariableResolver::RunningHeader)
+			continue;
+		const QString value = resolveDynamicVariable(mark->getVariableId());
+		if (mark->getString() == value)
+			continue;
+		mark->setString(value);
+		invalidateVariableTextFrames(mark, false);
+		changedValue = true;
+	}
+	return changedValue;
+}
+
 Mark *ScribusDoc::newMark(const Mark* mrk)
 {
 	Mark* newMark = new Mark();
@@ -18035,6 +19315,294 @@ Mark *ScribusDoc::newMark(const Mark* mrk)
 		*newMark = *mrk;
 	m_docMarksList.append(newMark);
 	return newMark;
+}
+
+Mark* ScribusDoc::crossReferenceTarget(const QString& name) const
+{
+	const QString targetName = name.trimmed();
+	for (Mark* mark : m_docMarksList)
+	{
+		if (mark && mark->isType(MARKAnchorType) && mark->label == targetName)
+			return mark;
+	}
+	return nullptr;
+}
+
+Mark* ScribusDoc::insertCrossReferenceTarget(const QString& name, PageItem* item, int position)
+{
+	const QString targetName = name.trimmed();
+	if (targetName.isEmpty() || crossReferenceTarget(targetName) || !item || !item->isTextFrame()
+		|| position < -1 || position > item->itemText.length())
+		return nullptr;
+	if (position < 0)
+		position = item->itemText.length();
+
+	MarkData data;
+	data.itemName = item->itemName();
+	data.itemPtr = item;
+	Mark* mark = newMark();
+	mark->setValues(targetName, item->OwnPage, MARKAnchorType, data);
+	item->itemText.insertMark(mark, position);
+	item->invalidateLayout();
+	flag_updateMarksLabels = true;
+
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new ScItemsState(UndoManager::InsertMark);
+		state->set("MARK", QStringLiteral("new"));
+		state->set("ETEA", mark->label);
+		state->set("label", mark->label);
+		state->set("type", static_cast<int>(mark->getType()));
+		state->set("strtxt", mark->getString());
+		state->set("at", position);
+		state->insertItem("inItem", item);
+		m_undoManager->action(this, state);
+	}
+	changed();
+	return mark;
+}
+
+Mark* ScribusDoc::insertCrossReferencePageNumber(const QString& targetName, PageItem* item, int position,
+	const QString& label)
+{
+	return insertCrossReference(targetName, item, position, label, CrossReferencePageNumber);
+}
+
+Mark* ScribusDoc::insertCrossReference(const QString& targetName, PageItem* item, int position,
+	const QString& label, CrossReferenceFormat format, const QString& prefix, const QString& suffix)
+{
+	Mark* target = crossReferenceTarget(targetName);
+	if (!target || !item || !item->isTextFrame() || position < -1 || position > item->itemText.length()
+		|| (format != CrossReferencePageNumber && format != CrossReferenceParagraphText))
+		return nullptr;
+	if (position < 0)
+		position = item->itemText.length();
+
+	QString referenceLabel = label.trimmed();
+	if (referenceLabel.isEmpty())
+		referenceLabel = tr("Page reference to %1").arg(target->label);
+	getUniqueName(referenceLabel, marksLabelsList(MARK2MarkType), QStringLiteral("_"));
+
+	MarkData data;
+	data.itemName = item->itemName();
+	data.destMarkName = target->label;
+	data.destMarkType = target->getType();
+	data.crossReferenceFormat = format;
+	data.crossReferencePrefix = prefix;
+	data.crossReferenceSuffix = suffix;
+	Mark* mark = newMark();
+	mark->setValues(referenceLabel, item->OwnPage, MARK2MarkType, data);
+	mark->setString(crossReferenceValue(mark));
+	item->itemText.insertMark(mark, position);
+	item->invalidateLayout();
+	flag_updateMarksLabels = true;
+
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new ScItemsState(UndoManager::InsertMark);
+		state->set("MARK", QStringLiteral("new"));
+		state->set("ETEA", mark->label);
+		state->set("label", mark->label);
+		state->set("type", static_cast<int>(mark->getType()));
+		state->set("strtxt", mark->getString());
+		state->set("dName", mark->getDestMarkName());
+		state->set("dType", static_cast<int>(mark->getDestMarkType()));
+		state->set("xrefFormat", static_cast<int>(mark->getCrossReferenceFormat()));
+		state->set("xrefPrefix", mark->getCrossReferencePrefix());
+		state->set("xrefSuffix", mark->getCrossReferenceSuffix());
+		state->set("at", position);
+		state->insertItem("inItem", item);
+		m_undoManager->action(this, state);
+	}
+	changed();
+	return mark;
+}
+
+void ScribusDoc::retargetMarkReferences(MarkType targetType, const QString& oldLabel, const QString& newLabel)
+{
+	if (oldLabel == newLabel)
+		return;
+	for (Mark* reference : std::as_const(m_docMarksList))
+	{
+		if (!reference || !reference->isType(MARK2MarkType)
+			|| reference->getDestMarkType() != targetType
+			|| reference->getDestMarkName() != oldLabel)
+			continue;
+		reference->setDestMark(newLabel, targetType);
+		PageItem* lastItem = nullptr;
+		for (PageItem* item = findMarkItem(reference, lastItem); item; item = findMarkItem(reference, lastItem))
+			item->invalidateLayout();
+	}
+}
+
+int ScribusDoc::crossReferenceTargetUsage(const QString& name) const
+{
+	const QString targetName = name.trimmed();
+	int count = 0;
+	for (const Mark* reference : m_docMarksList)
+	{
+		if (reference && reference->isType(MARK2MarkType)
+			&& reference->getDestMarkType() == MARKAnchorType
+			&& reference->getDestMarkName() == targetName)
+			++count;
+	}
+	return count;
+}
+
+bool ScribusDoc::deleteCrossReferenceTarget(const QString& name)
+{
+	Mark* target = crossReferenceTarget(name.trimmed());
+	if (!target)
+		return false;
+	setUndoDelMark(target);
+	eraseMark(target, true, target->getItemPtr(), true);
+	flag_updateMarksLabels = true;
+	changed();
+	regionsChanged()->update(QRectF());
+	if (scMW())
+		scMW()->emitUpdateRequest(reqMarksUpdate);
+	return true;
+}
+
+bool ScribusDoc::renameCrossReferenceTarget(const QString& oldName, const QString& newName)
+{
+	Mark* target = crossReferenceTarget(oldName.trimmed());
+	const QString targetName = newName.trimmed();
+	if (!target || targetName.isEmpty())
+		return false;
+	if (target->label == targetName)
+		return true;
+	if (crossReferenceTarget(targetName))
+		return false;
+
+	const QString previousName = target->label;
+	retargetMarkReferences(MARKAnchorType, previousName, targetName);
+	target->label = targetName;
+	flag_updateMarksLabels = true;
+
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new ScItemsState(UndoManager::EditMark);
+		state->set("MARK", QStringLiteral("edit"));
+		state->set("ETEA", targetName);
+		state->set("label", targetName);
+		state->set("labelOLD", previousName);
+		state->set("labelNEW", targetName);
+		state->set("type", static_cast<int>(MARKAnchorType));
+		state->set("strtxt", target->getString());
+		m_undoManager->action(this, state);
+	}
+
+	changed();
+	regionsChanged()->update(QRectF());
+	if (scMW())
+		scMW()->emitUpdateRequest(reqMarksUpdate);
+	return true;
+}
+
+QString ScribusDoc::crossReferencePageNumber(const QString& targetName) const
+{
+	Mark* target = crossReferenceTarget(targetName);
+	if (!target)
+		return QString();
+	const PageItem* item = findFirstMarkItem(target);
+	if (!item || item->OwnPage < 0 || item->OwnPage >= DocPages.count())
+		return QString();
+	return getSectionPageNumberForPageIndex(static_cast<uint>(item->OwnPage));
+}
+
+QString ScribusDoc::crossReferenceParagraphText(const QString& targetName) const
+{
+	return crossReferenceParagraphText(crossReferenceTarget(targetName));
+}
+
+QString ScribusDoc::crossReferenceParagraphText(const Mark* target) const
+{
+	PageItem* item = target ? findFirstMarkItem(target) : nullptr;
+	if (!item || !item->isTextFrame())
+		return QString();
+
+	const StoryText& story = item->itemText;
+	const int markPosition = story.findMark(target);
+	if (markPosition < 0)
+		return QString();
+	int start = markPosition;
+	while (start > 0 && story.text(start - 1) != SpecialChars::PARSEP)
+		--start;
+	int end = markPosition;
+	while (end < story.length() && story.text(end) != SpecialChars::PARSEP)
+		++end;
+
+	QString result;
+	for (int i = start; i < end; ++i)
+	{
+		if (story.hasMark(i))
+		{
+			Mark* embeddedMark = story.mark(i);
+			if (embeddedMark && embeddedMark != target)
+				result += embeddedMark->getString();
+			continue;
+		}
+		const QChar character = story.text(i);
+		if (character == SpecialChars::LINEBREAK || character == SpecialChars::COLBREAK || character == SpecialChars::FRAMEBREAK)
+			result += QLatin1Char(' ');
+		else if (character != SpecialChars::OBJECT)
+			result += character;
+	}
+	return result.simplified();
+}
+
+Mark* ScribusDoc::crossReferenceDestination(const Mark* reference) const
+{
+	if (!reference || !reference->isType(MARK2MarkType))
+		return nullptr;
+	for (Mark* candidate : m_docMarksList)
+	{
+		if (candidate && candidate->label == reference->getDestMarkName()
+			&& candidate->isType(reference->getDestMarkType()))
+			return candidate;
+	}
+	return nullptr;
+}
+
+QString ScribusDoc::crossReferenceValue(const Mark* reference) const
+{
+	Mark* target = crossReferenceDestination(reference);
+	const PageItem* targetItem = target ? findFirstMarkItem(target) : nullptr;
+	if (!targetItem || targetItem->OwnPage < 0 || targetItem->OwnPage >= DocPages.count())
+		return QString();
+	QString value;
+	if (reference->getCrossReferenceFormat() == CrossReferenceParagraphText)
+		value = crossReferenceParagraphText(target);
+	else
+		value = getSectionPageNumberForPageIndex(static_cast<uint>(targetItem->OwnPage));
+	if (value.isEmpty())
+		return QString();
+	return reference->getCrossReferencePrefix() + value + reference->getCrossReferenceSuffix();
+}
+
+bool ScribusDoc::invalidateCrossReferenceFrames(const Mark* target, bool forceUpdate)
+{
+	if (!target)
+		return false;
+	bool found = false;
+	for (Mark* reference : std::as_const(m_docMarksList))
+	{
+		if (!reference || !reference->isType(MARK2MarkType)
+			|| reference->getCrossReferenceFormat() != CrossReferenceParagraphText
+			|| reference->getDestMarkName() != target->label
+			|| reference->getDestMarkType() != target->getType())
+			continue;
+		PageItem* lastItem = nullptr;
+		for (PageItem* item = findMarkItem(reference, lastItem); item; item = findMarkItem(reference, lastItem))
+		{
+			found = true;
+			item->asTextFrame()->invalidateLayout(false);
+			if (forceUpdate)
+				item->layout();
+		}
+	}
+	return found;
 }
 
 TextNote *ScribusDoc::newNote(NotesStyle* noteStyle)
@@ -18119,10 +19687,10 @@ bool ScribusDoc::isMarkUsed(const Mark* mrk, bool visible) const
 	return false;
 }
 
-void ScribusDoc::setCursor2MarkPos(const Mark *mark)
+bool ScribusDoc::navigateToMark(const Mark* mark)
 {
 	if (mark == nullptr)
-		return;
+		return false;
 
 	PageItem* item = nullptr;
 	if (mark->isType(MARKNoteFrameType) || mark->isType(MARKNoteMasterType))
@@ -18132,14 +19700,27 @@ void ScribusDoc::setCursor2MarkPos(const Mark *mark)
 	if (item == nullptr)
 		item = findFirstMarkItem(mark);
 	if (item == nullptr)
-		return;
+		return false;
 
 	int cursorPos = findMarkCPos(mark, item);
-	if (cursorPos > -1)
-	{
-		scMW()->deselectAll();
-		scMW()->selectItemFromOutlines(item, true, cursorPos + 1);
-	}
+	if (cursorPos < 0 || !scMW())
+		return false;
+
+	PageItem* visibleItem = item->frameOfChar(cursorPos);
+	if (visibleItem == nullptr)
+		visibleItem = item;
+	scMW()->deselectAll();
+	scMW()->selectItemFromOutlines(visibleItem, true, cursorPos + 1);
+
+	QPointF canvasPos;
+	if (view() && textCanvasPosition(item, cursorPos, canvasPos))
+		view()->setCanvasCenterPos(canvasPos.x(), canvasPos.y());
+	return true;
+}
+
+void ScribusDoc::setCursor2MarkPos(const Mark* mark)
+{
+	navigateToMark(mark);
 }
 
 bool ScribusDoc::eraseMark(Mark *mrk, bool fromText, PageItem *item, bool force)
@@ -18193,6 +19774,16 @@ bool ScribusDoc::eraseMark(Mark *mrk, bool fromText, PageItem *item, bool force)
 			MarkType t = m->getDestMarkType();
 			if (mrk == getMark(l, t))
 			{
+				if (mrk->isType(MARKAnchorType))
+				{
+					// Keep page-reference fields repairable when their target is
+					// deleted. Preflight will report their missing destination.
+					m->clearString();
+					PageItem* lastItem = nullptr;
+					for (PageItem* refItem = findMarkItem(m, lastItem); refItem; refItem = findMarkItem(m, lastItem))
+						refItem->invalidateLayout();
+					continue;
+				}
 				setUndoDelMark(m);
 				eraseMark(m, true, nullptr, true);
 			}
@@ -18230,6 +19821,9 @@ void ScribusDoc::setUndoDelMark(const Mark *mrk)
 			{
 				ims->set("dName", mrk->getDestMarkName());
 				ims->set("dType", (int) mrk->getDestMarkType());
+				ims->set("xrefFormat", (int) mrk->getCrossReferenceFormat());
+				ims->set("xrefPrefix", mrk->getCrossReferencePrefix());
+				ims->set("xrefSuffix", mrk->getCrossReferenceSuffix());
 			}
 			if (mrk->isType(MARK2ItemType))
 				ims->insertItem("itemPtr", mrk->getItemPtr());
@@ -18258,6 +19852,8 @@ void ScribusDoc::setUndoDelMark(const Mark *mrk)
 		ims->set("label", mrk->label);
 		ims->set("type", (int) mrk->getType());
 		ims->set("strtxt", mrk->getString());
+		if (!mrk->getVariableId().isEmpty())
+			ims->set("variableId", mrk->getVariableId());
 		m_undoManager->action(this, ims);
 	}
 }
@@ -18267,6 +19863,8 @@ bool ScribusDoc::invalidateVariableTextFrames(const Mark* mrk, bool forceUpdate)
 	if (!mrk->isType(MARKVariableTextType))
 		return false;
 	bool found = false;
+
+	// Document frames use findMarkItem() because a story may span a chain.
 	PageItem* lastItem = nullptr;
 	PageItem* mItem = findMarkItem(mrk, lastItem);
 	while (mItem != nullptr)
@@ -18276,6 +19874,22 @@ bool ScribusDoc::invalidateVariableTextFrames(const Mark* mrk, bool forceUpdate)
 		if (forceUpdate)
 			mItem->layout();
 		mItem = findMarkItem(mrk, lastItem);
+	}
+
+	// Master-page text frames are shared by every page to which the master is
+	// applied. Invalidate their current page shadow as well so a redraw or
+	// export resolves contextual variables against the applied document page.
+	for (PageItemIterator it(MasterItems, PageItemIterator::IterateInGroups); *it; ++it)
+	{
+		PageItem* item = *it;
+		if (!item || !item->isTextFrame() || item->prevInChain() != nullptr || item->itemText.isEmpty())
+			continue;
+		if (item->itemText.findMark(mrk) < 0)
+			continue;
+		found = true;
+		item->asTextFrame()->invalidateLayout(false);
+		if (forceUpdate)
+			item->layout();
 	}
 	return found;
 }
@@ -18318,7 +19932,7 @@ bool ScribusDoc::updateMarks(bool updateNotesMarks)
 	}
 	Q_ASSERT(m_docMarksList.removeAll(nullptr) == 0);
 
-	bool docWasChanged = false;
+	bool docWasChanged = updateDynamicVariableValues();
 
 	if (!isLoading())
 	{
@@ -18405,7 +20019,7 @@ bool ScribusDoc::updateMarks(bool updateNotesMarks)
 				if (dItem != nullptr)
 				{
 					destMark->OwnPage = dItem->OwnPage;
-					mrk->setString(getSectionPageNumberForPageIndex(destMark->OwnPage));
+					mrk->setString(crossReferenceValue(mrk));
 					if (mItem != nullptr)
 					{
 						mItem->asTextFrame()->invalidateLayout(false);

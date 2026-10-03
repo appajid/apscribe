@@ -133,13 +133,6 @@ if(GESTURE_FRAME_PREVIEW)
 	 add_definitions(-DGESTURE_FRAME_PREVIEW)
 endif()
 
-if(APPLEBUNDLE)
-	set(EXE_NAME_PREFIX "Scribus")
-else()
-	set(EXE_NAME_PREFIX "scribus")
-endif()
-set(EXE_NAME "${EXE_NAME_PREFIX}${TAG_VERSION}" CACHE STRING "Scribus version")
-
 if (NOT DEFINED CMAKE_GLOBAL_AUTOGEN_TARGET_NAME)
 	set(SCRIBUS_AUTOGEN_INCLUDE_PATH "${CMAKE_CURRENT_BINARY_DIR}/${EXE_NAME}_autogen/include")
 else()
@@ -299,7 +292,7 @@ target_link_libraries(${EXE_NAME} PUBLIC qtadvanceddocking-qt${QT_VERSION_MAJOR}
 
 if(WITH_TESTS)
 	target_link_libraries(${EXE_NAME} PRIVATE
-		${QT_QTTEST_LIBRARY}
+		Qt6::Test
 		${SCRIBUS_TESTS_LIB}
 	)
 endif()

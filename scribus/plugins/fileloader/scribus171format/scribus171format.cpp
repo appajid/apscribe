@@ -12,6 +12,7 @@ for which a new license (GPL+exception) is in place.
 #include <QApplication>
 #include <QByteArray>
 #include <QCursor>
+#include <QDateTime>
 // #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -47,6 +48,7 @@ for which a new license (GPL+exception) is in place.
 #include "scribusdoc.h"
 #include "sctextstream.h"
 #include "scxmlstreamreader.h"
+#include "styles/objectstyle.h"
 #include "textnote.h"
 #include "undomanager.h"
 #include "ui/missing.h"
@@ -387,6 +389,16 @@ bool Scribus171Format::loadElements(const QString& data, const QString& fileDir,
 		{
 			CharStyle cstyle;
 			getStyle(cstyle, reader, nullptr, m_Doc, true);
+		}
+		else if (tagName == QLatin1String("ObjectStyle"))
+		{
+			ObjectStyle objectStyle;
+			readObjectStyle(reader, objectStyle);
+			if (m_Doc->objectStyles().contains(objectStyle.name()))
+				continue;
+			StyleSet<ObjectStyle> temp;
+			temp.create(objectStyle);
+			m_Doc->redefineObjectStyles(temp, false);
 		}
 		else if (tagName == QLatin1String("TableStyle"))
 		{
@@ -942,6 +954,16 @@ bool Scribus171Format::loadStory(const QByteArray& data, StoryText& story, PageI
 			StyleSet<CharStyle> temp;
 			temp.create(cstyle);
 			m_Doc->redefineCharStyles(temp, false);
+		}
+		if (tagName == QLatin1String("ObjectStyle"))
+		{
+			ObjectStyle objectStyle;
+			readObjectStyle(reader, objectStyle);
+			if (m_Doc->objectStyles().contains(objectStyle.name()))
+				continue;
+			StyleSet<ObjectStyle> temp;
+			temp.create(objectStyle);
+			m_Doc->redefineObjectStyles(temp, false);
 		}
 		if (tagName == QLatin1String("TableStyle"))
 		{
@@ -1803,6 +1825,14 @@ bool Scribus171Format::loadFile(const QString & fileName, const FileFormat & /* 
 			temp.create(cstyle);
 			m_Doc->redefineCharStyles(temp, false);
 		}
+		else if (tagName == QLatin1String("ObjectStyle"))
+		{
+			ObjectStyle objectStyle;
+			readObjectStyle(reader, objectStyle);
+			StyleSet<ObjectStyle> temp;
+			temp.create(objectStyle);
+			m_Doc->redefineObjectStyles(temp, false);
+		}
 		else if (tagName == QLatin1String("TableStyle"))
 		{
 			TableStyle tstyle;
@@ -2052,6 +2082,11 @@ bool Scribus171Format::loadFile(const QString & fileName, const FileFormat & /* 
 			success = readMarks(m_Doc, reader);
 			if (!success) break;
 			m_Doc->setUsesMarksAndNotes(true);
+		}
+		else if (tagName == QLatin1String("DynamicVariables"))
+		{
+			success = readDynamicVariables(m_Doc, reader);
+			if (!success) break;
 		}
 		else if (tagName == QLatin1String("OpticalMarginSets"))
 		{
@@ -3800,6 +3835,54 @@ void Scribus171Format::readParagraphStyle(ScribusDoc *doc, ScXmlStreamReader& re
 	fixLegacyParStyle(newStyle);
 }
 
+void Scribus171Format::readObjectStyle(ScXmlStreamReader& reader, ObjectStyle& newStyle) const
+{
+	const ScXmlStreamAttributes attrs = reader.scAttributes();
+	newStyle.erase();
+	newStyle.setName(attrs.valueAsString("Name"));
+	if (attrs.hasAttribute("DefaultStyle"))
+		newStyle.setDefaultStyle(attrs.valueAsBool("DefaultStyle"));
+	else
+		newStyle.setDefaultStyle(newStyle.name() == CommonStrings::DefaultObjectStyle
+			|| newStyle.name() == CommonStrings::trDefaultObjectStyle);
+
+	const QString parent = attrs.valueAsString("Parent");
+	if (!parent.isEmpty() && parent != newStyle.name())
+		newStyle.setParent(parent);
+	if (attrs.hasAttribute("Shortcut"))
+		newStyle.setShortcut(attrs.valueAsString("Shortcut"));
+	if (attrs.hasAttribute("FillColor"))
+		newStyle.setFillColor(attrs.valueAsString("FillColor"));
+	if (attrs.hasAttribute("FillShade"))
+		newStyle.setFillShade(attrs.valueAsDouble("FillShade"));
+	if (attrs.hasAttribute("LineColor"))
+		newStyle.setLineColor(attrs.valueAsString("LineColor"));
+	if (attrs.hasAttribute("LineShade"))
+		newStyle.setLineShade(attrs.valueAsDouble("LineShade"));
+	if (attrs.hasAttribute("LineWidth"))
+		newStyle.setLineWidth(attrs.valueAsDouble("LineWidth"));
+	if (attrs.hasAttribute("LineStyle"))
+		newStyle.setLineStyle(static_cast<Qt::PenStyle>(attrs.valueAsInt("LineStyle")));
+	if (attrs.hasAttribute("LineCap"))
+		newStyle.setLineCap(static_cast<Qt::PenCapStyle>(attrs.valueAsInt("LineCap")));
+	if (attrs.hasAttribute("LineJoin"))
+		newStyle.setLineJoin(static_cast<Qt::PenJoinStyle>(attrs.valueAsInt("LineJoin")));
+	if (attrs.hasAttribute("FillTransparency"))
+		newStyle.setFillTransparency(attrs.valueAsDouble("FillTransparency"));
+	if (attrs.hasAttribute("LineTransparency"))
+		newStyle.setLineTransparency(attrs.valueAsDouble("LineTransparency"));
+	if (attrs.hasAttribute("FillBlendMode"))
+		newStyle.setFillBlendMode(attrs.valueAsInt("FillBlendMode"));
+	if (attrs.hasAttribute("LineBlendMode"))
+		newStyle.setLineBlendMode(attrs.valueAsInt("LineBlendMode"));
+	if (attrs.hasAttribute("CornerRadius"))
+		newStyle.setCornerRadius(attrs.valueAsDouble("CornerRadius"));
+	if (attrs.hasAttribute("CustomLineStyle"))
+		newStyle.setCustomLineStyle(attrs.valueAsString("CustomLineStyle"));
+
+	reader.skipCurrentElement();
+}
+
 void Scribus171Format::readTableStyle(ScribusDoc *doc, ScXmlStreamReader& reader, TableStyle& newStyle) const
 {
 	//Remove uppercase in 1.8 format
@@ -4637,6 +4720,8 @@ bool Scribus171Format::readMarks(ScribusDoc* doc, ScXmlStreamReader& reader)
 				mark->setType(type);
 				if ((type == MARKVariableTextType || type == MARKIndexType) && attrs.hasAttribute("str"))
 					mark->setString(attrs.valueAsString("str"));
+				if (type == MARKVariableTextType && attrs.hasAttribute("variableId"))
+					mark->setVariableId(attrs.valueAsString("variableId"));
 
 				if (type == MARK2ItemType && attrs.hasAttribute("ItemID"))
 				{
@@ -4645,6 +4730,11 @@ bool Scribus171Format::readMarks(ScribusDoc* doc, ScXmlStreamReader& reader)
 				}
 				if (type == MARK2MarkType && attrs.hasAttribute("MARKlabel"))
 				{
+					const int rawFormat = attrs.valueAsInt("xrefFormat", CrossReferencePageNumber);
+					if (rawFormat == CrossReferenceParagraphText)
+						mark->setCrossReferenceFormat(CrossReferenceParagraphText);
+					mark->setCrossReferencePrefix(attrs.valueAsString("xrefPrefix"));
+					mark->setCrossReferenceSuffix(attrs.valueAsString("xrefSuffix"));
 					QString mark2Label = attrs.valueAsString("MARKlabel");
 					MarkType mark2Type = (MarkType) attrs.valueAsInt("MARKtype");
 					Mark* mark2 = doc->getMark(mark2Label, mark2Type);
@@ -4659,6 +4749,46 @@ bool Scribus171Format::readMarks(ScribusDoc* doc, ScXmlStreamReader& reader)
 				}
 			}
 		}
+	}
+	return !reader.hasError();
+}
+
+bool Scribus171Format::readDynamicVariables(ScribusDoc* doc, ScXmlStreamReader& reader)
+{
+	const QString tagName(reader.nameAsString());
+	const ScXmlStreamAttributes rootAttrs = reader.scAttributes();
+	if (rootAttrs.hasAttribute("creationDate"))
+	{
+		const QDateTime creationDate = QDateTime::fromString(rootAttrs.valueAsString("creationDate"), Qt::ISODateWithMs);
+		if (creationDate.isValid())
+			doc->setDynamicVariableCreationDate(creationDate);
+	}
+
+	while (!reader.atEnd() && !reader.hasError())
+	{
+		reader.readNext();
+		if (reader.isEndElement() && reader.name() == tagName)
+			break;
+		if (!reader.isStartElement() || reader.name() != QLatin1String("Variable"))
+			continue;
+
+		const ScXmlStreamAttributes attrs = reader.scAttributes();
+		const QString id = attrs.valueAsString("id");
+		const QString name = attrs.valueAsString("name");
+		const QString value = attrs.valueAsString("value");
+		const QString type = attrs.hasAttribute("type") ? attrs.valueAsString("type") : DynamicVariableResolver::UserDefined;
+		const QString paragraphStyle = attrs.valueAsString("paragraphStyle");
+		const QString runningHeaderMode = attrs.valueAsString("mode");
+		const QString runningHeaderTextCase = attrs.hasAttribute("textCase")
+			? attrs.valueAsString("textCase") : DynamicVariableResolver::AsEnteredCase;
+		const bool removeTrailingPunctuation = attrs.valueAsBool("removeTrailingPunctuation", false);
+		const QString runningHeaderFallback = attrs.hasAttribute("fallback")
+			? attrs.valueAsString("fallback") : DynamicVariableResolver::NoFallback;
+		if (id.isEmpty() || name.isEmpty() || DynamicVariableResolver::isBuiltInId(id))
+			continue;
+		if (!doc->dynamicVariable(id))
+			doc->addDynamicVariable(name, value, id, type, paragraphStyle, runningHeaderMode,
+				runningHeaderTextCase, removeTrailingPunctuation, runningHeaderFallback);
 	}
 	return !reader.hasError();
 }
@@ -5012,6 +5142,20 @@ bool Scribus171Format::readObject(ScribusDoc* doc, ScXmlStreamReader& reader, co
 	else
 		newItem->isAutoText = attrs.valueAsBool("AutomaticTextFrame", false);
 	newItem->isEmbedded = attrs.valueAsBool("isInline", false);
+	AnchorPosition anchor;
+	anchor.mode = static_cast<AnchorPosition::Mode>(qBound(0, attrs.valueAsInt("AnchorMode", 0), 2));
+	anchor.horizontalReference = static_cast<AnchorPosition::HorizontalReference>(qBound(0, attrs.valueAsInt("AnchorHorizontalReference", 0), 4));
+	anchor.verticalReference = static_cast<AnchorPosition::VerticalReference>(qBound(0, attrs.valueAsInt("AnchorVerticalReference", 0), 3));
+	anchor.horizontalAlignment = static_cast<AnchorPosition::HorizontalAlignment>(qBound(0, attrs.valueAsInt("AnchorHorizontalAlignment", 0), 5));
+	anchor.verticalAlignment = static_cast<AnchorPosition::VerticalAlignment>(qBound(0, attrs.valueAsInt("AnchorVerticalAlignment", 3), 4));
+	anchor.wrapMode = static_cast<AnchorPosition::WrapMode>(qBound(0, attrs.valueAsInt("AnchorWrapMode", 0), 4));
+	anchor.xOffset = attrs.valueAsDouble("AnchorXOffset", 0.0);
+	anchor.yOffset = attrs.valueAsDouble("AnchorYOffset", 0.0);
+	anchor.wrapOffsets = QMarginsF(attrs.valueAsDouble("AnchorWrapLeft", 0.0), attrs.valueAsDouble("AnchorWrapTop", 0.0),
+		attrs.valueAsDouble("AnchorWrapRight", 0.0), attrs.valueAsDouble("AnchorWrapBottom", 0.0));
+	anchor.keepWithinBounds = attrs.valueAsBool("AnchorKeepWithinBounds", false);
+	anchor.preventManualPositioning = attrs.valueAsBool("AnchorLockPosition", false);
+	newItem->setAnchorPosition(anchor);
 	newItem->gXpos = attrs.valueAsDouble("gXpos", 0.0);
 	newItem->gYpos = attrs.valueAsDouble("gYpos", 0.0);
 	newItem->gWidth = attrs.valueAsDouble("gWidth", newItem->width());
@@ -7756,6 +7900,8 @@ PageItem* Scribus171Format::pasteItem(ScribusDoc *doc, const ScXmlStreamAttribut
 		currItem->setSoftShadowXOffset(attrs.valueAsDouble("SoftShadowXOffset", 5.0));
 		currItem->setSoftShadowYOffset(attrs.valueAsDouble("SoftShadowYOffset", 5.0));
 	}
+	if (attrs.hasAttribute("ObjectStyle"))
+		currItem->setObjectStyle(attrs.valueAsString("ObjectStyle"), false);
 	//currItem->setRedrawBounding();
 	//currItem->OwnPage = view->OnPage(currItem);
 	return currItem;
@@ -8289,6 +8435,16 @@ bool Scribus171Format::loadPage(const QString & fileName, int pageNumber, bool M
 		{
 			CharStyle cstyle;
 			getStyle(cstyle, reader, nullptr, m_Doc, true);
+		}
+		if (tagName == QLatin1String("ObjectStyle"))
+		{
+			ObjectStyle objectStyle;
+			readObjectStyle(reader, objectStyle);
+			if (m_Doc->objectStyles().contains(objectStyle.name()))
+				continue;
+			StyleSet<ObjectStyle> temp;
+			temp.create(objectStyle);
+			m_Doc->redefineObjectStyles(temp, false);
 		}
 		if (tagName == QLatin1String("TableStyle"))
 		{
@@ -9160,6 +9316,37 @@ bool Scribus171Format::readCellStyles(const QString& fileName, ScribusDoc* doc, 
 	return true;
 }
 
+bool Scribus171Format::readObjectStyles(const QString& fileName, ScribusDoc* doc, StyleSet<ObjectStyle> &docObjectStyles)
+{
+	Q_UNUSED(doc)
+	QScopedPointer<QIODevice> ioDevice(slaReader(fileName));
+	if (ioDevice.isNull())
+		return false;
+
+	bool firstElement = true;
+	ScXmlStreamReader reader(ioDevice.data());
+	while (!reader.atEnd() && !reader.hasError())
+	{
+		if (reader.readNext() != QXmlStreamReader::StartElement)
+			continue;
+		QString tagName(reader.nameAsString());
+		if (firstElement)
+		{
+			if (tagName != QLatin1String("SCRIBUSUTF8NEW"))
+				return false;
+			firstElement = false;
+			continue;
+		}
+		if (tagName == QLatin1String("ObjectStyle"))
+		{
+			ObjectStyle objectStyle;
+			readObjectStyle(reader, objectStyle);
+			docObjectStyles.create(objectStyle);
+		}
+	}
+	return !reader.hasError();
+}
+
 bool Scribus171Format::readColors(const QString& fileName, ColorList & colors)
 {
 	QScopedPointer<QIODevice> ioDevice(slaReader(fileName));
@@ -9312,11 +9499,13 @@ void Scribus171Format::updateNames2Ptr() //after document load - items pointers 
 			}
 			else
 			{
-				qWarning() << "Scribus171Format::updateNames2Ptr() : wrong mark [" << mark->label << "] data - pointed mark name [" << label2 << "] not exists - DELETING MARK";
-				QString markLabel(mark->label);
-				if (!m_Doc->eraseMark(mark, true))
-					qWarning() << "Erase mark [" << markLabel << "] failed - was it defined?";
-
+				// Keep unresolved page references so Preflight can report and the
+				// user can repair them. Older loaders deleted these marks, silently
+				// removing content from externally edited or partially damaged files.
+				mark->setDestMark(label2, type2);
+				mark->clearString();
+				qWarning() << "Scribus171Format::updateNames2Ptr() : mark [" << mark->label
+					<< "] points to missing mark [" << label2 << "] - preserving broken reference";
 			}
 		}
 		markeredMarksMap.clear();

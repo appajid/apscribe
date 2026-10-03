@@ -12,6 +12,9 @@ for which a new license (GPL+exception) is in place.
  ***************************************************************************/
 #include <memory>
 
+#include <QDomDocument>
+#include <QFileInfo>
+
 #include "commonstrings.h"
 
 #include "importidml.h"
@@ -22,6 +25,7 @@ for which a new license (GPL+exception) is in place.
 #include "scpage.h"
 #include "scraction.h"
 #include "scribuscore.h"
+#include "third_party/zip/scribus_zip.h"
 #include "undomanager.h"
 #include "util_formats.h"
 
@@ -82,7 +86,7 @@ const ScActionPlugin::AboutData* ImportIdmlPlugin::getAboutData() const
 	auto* about = new AboutData;
 	about->authors = "Franz Schmid <franz@scribus.info>";
 	about->shortDescription = tr("Imports IDML Files");
-	about->description = tr("Imports most IDML files into the current document, converting their vector data into Scribus objects.");
+	about->description = tr("Imports most IDML files into the current document, converting their vector data into Apscribe objects.");
 	about->license = "GPL";
 	Q_CHECK_PTR(about);
 	return about;
@@ -127,6 +131,35 @@ void ImportIdmlPlugin::registerFormats()
 
 bool ImportIdmlPlugin::fileSupported(QIODevice* /* file */, const QString & fileName) const
 {
+	const QFileInfo fileInfo(fileName);
+	if (!fileInfo.isFile())
+		return false;
+	const QString extension = fileInfo.suffix().toLower();
+	if (extension == "idms")
+		return true;
+	if (extension != "idml")
+		return false;
+
+	ScZipHandler archive;
+	if (!archive.open(fileName) || !archive.contains("designmap.xml"))
+		return false;
+	QByteArray designMap;
+	if (!archive.read("designmap.xml", designMap))
+		return false;
+	QDomDocument document;
+	if (!document.setContent(designMap))
+		return false;
+	const QDomElement root = document.documentElement();
+	const QString rootName = root.tagName();
+	if (rootName != "Document" && rootName != "idPkg:Document")
+		return false;
+	// Reject broken packages before importFile creates a Scribus document.
+	for (QDomNode node = root.firstChild(); !node.isNull(); node = node.nextSibling())
+	{
+		const QDomElement component = node.toElement();
+		if (component.hasAttribute("src") && !archive.contains(component.attribute("src")))
+			return false;
+	}
 	return true;
 }
 
@@ -152,6 +185,8 @@ bool ImportIdmlPlugin::importFile(QString fileName, int flags)
 		fileName = diaf.selectedFile();
 		prefs->set("wdir", fileName.left(fileName.lastIndexOf("/")));
 	}
+	if (!fileSupported(nullptr, fileName))
+		return false;
 
 	m_Doc = ScCore->primaryMainWindow()->doc;
 
@@ -172,14 +207,14 @@ bool ImportIdmlPlugin::importFile(QString fileName, int flags)
 
 	auto dia = std::make_unique<IdmlPlug>(m_Doc, flags);
 	Q_CHECK_PTR(dia);
-	dia->importFile(fileName, trSettings, flags, !(flags & lfScripted));
+	const bool imported = dia->importFile(fileName, trSettings, flags, !(flags & lfScripted));
 
-	if (activeTransaction)
+	if (activeTransaction && imported)
 		activeTransaction.commit();
 	if (emptyDoc || !(flags & lfInteractive) || !(flags & lfScripted))
 		UndoManager::instance()->setUndoEnabled(true);
 
-	return true;
+	return imported;
 }
 
 QImage ImportIdmlPlugin::readThumbnail(const QString& fileName)

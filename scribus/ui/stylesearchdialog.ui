@@ -6,35 +6,207 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>300</height>
+    <width>640</width>
+    <height>560</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Style Search</string>
+   <string>Quick Apply Styles</string>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>460</width>
+    <height>420</height>
+   </size>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
-    <number>9</number>
+    <number>16</number>
    </property>
    <property name="topMargin">
-    <number>9</number>
+    <number>14</number>
    </property>
    <property name="rightMargin">
-    <number>9</number>
+    <number>16</number>
    </property>
    <property name="bottomMargin">
-    <number>9</number>
+    <number>12</number>
+   </property>
+   <property name="spacing">
+    <number>10</number>
    </property>
    <item>
-    <widget class="QLineEdit" name="filterLineEdit">
-     <property name="placeholderText">
-      <string>Search for style...</string>
+    <widget class="QLabel" name="titleLabel">
+     <property name="text">
+      <string>Quick Apply Styles</string>
+     </property>
+     <property name="commandPaletteTitle" stdset="0">
+      <bool>true</bool>
      </property>
     </widget>
    </item>
    <item>
+    <widget class="QLabel" name="descriptionLabel">
+     <property name="text">
+      <string>Apply an available paragraph, character, table, or cell style without leaving the canvas.</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="filterLineEdit">
+     <property name="placeholderText">
+      <string>Search styles; filter with p:, c:, tb:, or cl:</string>
+     </property>
+     <property name="clearButtonEnabled">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="resultsHeaderLayout">
+     <property name="spacing">
+      <number>6</number>
+     </property>
+     <item>
+      <widget class="QLabel" name="resultsLabel">
+       <property name="text">
+        <string>Available styles</string>
+       </property>
+       <property name="commandPaletteSection" stdset="0">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="resultsHeaderSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="resultCountLabel">
+       <property name="text">
+        <string>0 styles</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
     <widget class="QListWidget" name="stylesListWidget"/>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="previewGroup">
+     <property name="title">
+      <string>Live Preview</string>
+     </property>
+     <layout class="QVBoxLayout" name="previewLayout">
+      <property name="leftMargin">
+       <number>12</number>
+      </property>
+      <property name="topMargin">
+       <number>12</number>
+      </property>
+      <property name="rightMargin">
+       <number>12</number>
+      </property>
+      <property name="bottomMargin">
+       <number>10</number>
+      </property>
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="previewHeaderLayout">
+        <item>
+         <widget class="QLabel" name="previewNameLabel">
+          <property name="text">
+           <string>No style selected</string>
+          </property>
+          <property name="commandPaletteSection" stdset="0">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="previewHeaderSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QToolButton" name="favoriteButton">
+          <property name="text">
+           <string>☆ Add Favourite</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="previewSampleLabel">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>44</height>
+         </size>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="previewDetailsLabel">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="shortcutHintLabel">
+     <property name="text">
+      <string>↑↓ Navigate     Return Apply     Esc Close</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+     <property name="commandPaletteHint" stdset="0">
+      <bool>true</bool>
+     </property>
+    </widget>
    </item>
   </layout>
  </widget>

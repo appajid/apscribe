@@ -7,6 +7,7 @@
 
 #include "textcontext.h"
 #include "pageitem.h"
+#include "pageitem_textframe.h"
 #include "sctextstruct.h"
 #include "style.h"
 #include "styles/charstyle.h"
@@ -39,7 +40,18 @@ PageItem* TextContext::object(const InlineFrame& frame)  const
 
 QRectF TextContext::getVisualBoundingBox(const InlineFrame& frame)  const
 {
-	return object(frame)->getVisualBoundingRect();
+	PageItem* embedded = object(frame);
+	if (!embedded)
+		return QRectF();
+	if (embedded->anchorPosition().mode == AnchorPosition::Mode::Custom)
+		return QRectF();
+	return embedded->getVisualBoundingRect();
+}
+
+QRectF TextContext::anchoredObjectRect(const InlineFrame& frame, int storyPosition) const
+{
+	const auto* textFrame = dynamic_cast<const PageItem_TextFrame*>(m_frame);
+	return textFrame ? textFrame->resolvedAnchoredObjectRect(frame.getInlineCharID(), storyPosition) : QRectF();
 }
 	
 QString TextContext::expand(const ExpansionPoint& expansion)
@@ -91,6 +103,10 @@ QString TextContext::expand(const ExpansionPoint& expansion)
 						if (note == nullptr)
 							return QString();
 					}
+					if (mark->isType(MARKVariableTextType) && !mark->getVariableId().isEmpty())
+						return doc->resolveDynamicVariable(mark->getVariableId(), m_frame);
+					if (mark->isType(MARK2MarkType))
+						return doc->crossReferenceValue(mark);
 					if (!mark->isType(MARKAnchorType) && !mark->isType(MARKIndexType))
 						return mark->getString();
 				}

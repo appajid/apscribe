@@ -24,11 +24,20 @@ for which a new license (GPL+exception) is in place.
 
 #include <QAction>
 #include <QApplication>
+#include <QTimer>
+#include <functional>
+
+#include <cstdlib>
 #include <QByteArray>
 #include <QCloseEvent>
 #include <QColor>
 #include <QColorDialog>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QCursor>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDir>
 #include <QDomDocument>
 #include <QDrag>
 #include <QDragEnterEvent>
@@ -36,16 +45,21 @@ for which a new license (GPL+exception) is in place.
 #include <QEvent>
 #include <QEventLoop>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFrame>
 #include <QFont>
+#include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
 #include <QList>
 #include <QLocale>
+#include <QMap>
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QMessageBox>
@@ -54,13 +68,19 @@ for which a new license (GPL+exception) is in place.
 #include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QScopedPointer>
 #include <QScreen>
 #include <QSignalBlocker>
+#include <QStringList>
 #include <QStyleFactory>
 #include <QStyleHints>
 #include <QTableWidget>
+#include <QTextEdit>
 #include <QTranslator>
+#include <QToolButton>
+#include <QUuid>
+#include <QVBoxLayout>
 #include <QWindow>
 #include <QWheelEvent>
 
@@ -72,9 +92,11 @@ for which a new license (GPL+exception) is in place.
 #endif
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cassert>
+#include <memory>
 
 #include "scconfig.h"
 
@@ -103,6 +125,8 @@ for which a new license (GPL+exception) is in place.
 #include "desaxe/digester.h"
 #include "documentchecker.h"
 #include "documentlogmanager.h"
+#include "epubdocument.h"
+#include "epubexport.h"
 #include "fileloader.h"
 #include "filewatcher.h"
 #include "fpoint.h"
@@ -122,6 +146,9 @@ for which a new license (GPL+exception) is in place.
 #include "pageitem_latexframe.h"
 #include "pageitem_table.h"
 #include "pageitem_textframe.h"
+#include "text/textlayout.h"
+#include "text/boxes.h"
+#include "text/textshaper.h"
 #include "pdflib.h"
 #include "pdfoptions.h"
 #include "pluginmanager.h"
@@ -176,6 +203,7 @@ for which a new license (GPL+exception) is in place.
 #include "ui/edittoolbar.h"
 #include "ui/effectsdialog.h"
 #include "ui/filetoolbar.h"
+#include "ui/fontreplacedialog.h"
 #include "ui/guidemanager.h"
 #include "ui/helpbrowser.h"
 #include "ui/hruler.h"
@@ -194,6 +222,8 @@ for which a new license (GPL+exception) is in place.
 #include "ui/marknote.h"
 #include "ui/marksmanager.h"
 #include "ui/markvariabletext.h"
+#include "ui/dynamicvariableinsert.h"
+#include "ui/dynamicvariablemanager.h"
 #include "ui/mergedoc.h"
 #include "ui/modetoolbar.h"
 #include "ui/movepage.h"
@@ -231,6 +261,7 @@ for which a new license (GPL+exception) is in place.
 #include "ui/selectobjects.h"
 #include "ui/smcellstyle.h"
 #include "ui/smlinestyle.h"
+#include "ui/smobjectstyle.h"
 #include "ui/smtablestyle.h"
 #include "ui/smtextstyles.h"
 #include "ui/storyeditor.h"
@@ -238,6 +269,7 @@ for which a new license (GPL+exception) is in place.
 #include "ui/stylesearchdialog.h"
 #include "ui/symbolpalette.h"
 #include "ui/tabmanager.h"
+#include "ui/toolpalette.h"
 #include "ui/transformdialog.h"
 #include "ui/viewtoolbar.h"
 #include "ui/factories/scribusproxystyle.h"
@@ -581,23 +613,24 @@ void ScribusMainWindow::initToolBars()
 {
 	fileToolBar = new FileToolBar(this);
 	editToolBar = new EditToolBar(this);
-	UndoWidget* uWidget = new UndoWidget(editToolBar, "uWidget");
+	// The undo helper maintains action history without adding unrelated edit
+	// commands to the contextual row. Main exposes Undo and Redo directly.
+	UndoWidget* uWidget = new UndoWidget(this, "uWidget");
+	uWidget->hide();
 	m_undoManager->registerGui(uWidget);
 	modeToolBar = new ModeToolBar(this);
 	pdfToolBar = new PDFToolBar(this);
 	viewToolBar = new ViewToolBar(this);
 
-	addScToolBar(fileToolBar, fileToolBar->objectName());
-	addScToolBar(editToolBar, editToolBar->objectName());
-	addScToolBar(modeToolBar, modeToolBar->objectName(), Qt::ToolBarArea::LeftToolBarArea);
-	addScToolBar(pdfToolBar, pdfToolBar->objectName());
-	addScToolBar(viewToolBar, viewToolBar->objectName());
-	connect(modeToolBar, SIGNAL(visibilityChanged(bool)), scrActions["toolsToolbarTools"], SLOT(setChecked(bool)));
-	connect(scrActions["toolsToolbarPDF"], SIGNAL(toggled(bool)), pdfToolBar, SLOT(setVisible(bool)));
-	connect(pdfToolBar, SIGNAL(visibilityChanged(bool)), scrActions["toolsToolbarPDF"], SLOT(setChecked(bool)));
-	connect(scrActions["toolsToolbarTools"], SIGNAL(toggled(bool)), modeToolBar, SLOT(setVisible(bool)) );
-	connect(viewToolBar, SIGNAL(visibilityChanged(bool)), scrActions["toolsToolbarView"], SLOT(setChecked(bool)));
-	connect(scrActions["toolsToolbarView"], SIGNAL(toggled(bool)), viewToolBar, SLOT(setVisible(bool)) );
+	addScToolBar(fileToolBar, fileToolBar->objectName(), Qt::TopToolBarArea);
+	addToolBarBreak(Qt::TopToolBarArea);
+	addScToolBar(editToolBar, editToolBar->objectName(), Qt::TopToolBarArea);
+
+	// Mode, PDF, and View toolbars still own a few shared widgets and flyout
+	// models internally, but are no longer part of the visible workspace.
+	modeToolBar->hide();
+	pdfToolBar->hide();
+	viewToolBar->hide();
 }
 
 void ScribusMainWindow::setStyleSheet()
@@ -733,6 +766,10 @@ void ScribusMainWindow::initPalettes()
 	contentPalette->setToggleViewAction(scrActions["toolsContent"]);
 	contentPalette->installEventFilter(this);
 
+	// Tools
+	toolPalette = dockManager->toolPalette;
+	toolPalette->setToggleViewAction(scrActions["toolsToolPalette"]);
+
 	// Nodes
 	nodePalette = new NodePalette(this);
 	nodePalette->installEventFilter(this);
@@ -829,6 +866,7 @@ void ScribusMainWindow::initPalettes()
 	m_styleManager->addStyle(new SMTableStyle());
 	m_styleManager->addStyle(new SMCellStyle());
 	m_styleManager->addStyle(new SMLineStyle());
+	m_styleManager->addStyle(new SMObjectStyle());
 	connect( scrActions["editStyles"], SIGNAL(toggled(bool)), m_styleManager, SLOT(setPaletteShown(bool)) );
 	connect( m_styleManager, SIGNAL(paletteShown(bool)), scrActions["editStyles"], SLOT(setChecked(bool)));
 	m_styleManager->installEventFilter(this);
@@ -902,7 +940,7 @@ bool ScribusMainWindow::warningVersion(QWidget *parent)
 {
 	bool retval = false;
 	int t = ScMessageBox::warning(parent, QObject::tr("Document Version Warning"), "<qt>" +
-								 QObject::tr("The document you are working with was created by a previous version of Scribus. Saving the current file under a newer version will render it unable to be edited by that older version. To preserve the ability to edit the file with the older version, save this file under a different name and further edit the newly named file and the original will be untouched. Are you sure you wish to proceed with this operation?") + "</qt>",
+								 QObject::tr("This document was created by an older version of Apscribe or Scribus. Saving it in the current format may prevent that older version from opening it. Save a copy under a new name if you want to keep editing the original there. Continue?") + "</qt>",
 								 QMessageBox::Ok | QMessageBox::Cancel,
 								 QMessageBox::Cancel,	// GUI default
 								 QMessageBox::Ok);	// batch default
@@ -955,6 +993,7 @@ void ScribusMainWindow::initMenuBar()
 	scrMenuMgr->addMenuItemString("fileExportText", "FileExport");
 	scrMenuMgr->addMenuItemString("fileExportAsEPS", "FileExport");
 	scrMenuMgr->addMenuItemString("fileExportAsPDF", "FileExport");
+	scrMenuMgr->addMenuItemString("fileExportAsEpub", "FileExport");
 	scrMenuMgr->addMenuItemString("SEPARATOR", "File");
 	scrMenuMgr->addMenuItemString("fileDocSetup150", "File");
 	scrMenuMgr->addMenuItemString("filePreferences150", "File");
@@ -1009,6 +1048,7 @@ void ScribusMainWindow::initMenuBar()
 	scrMenuMgr->addMenuItemString("editReplaceColors", "Edit");
 	scrMenuMgr->addMenuItemString("editStyles", "Edit");
 	scrMenuMgr->addMenuItemString("editMarks", "Edit");
+	scrMenuMgr->addMenuItemString("editVariables", "Edit");
 	scrMenuMgr->addMenuItemString("editNotesStyles", "Edit");
 	scrMenuMgr->addMenuItemString("editMasterPages", "Edit");
 	scrMenuMgr->addMenuItemString("editJavascripts", "Edit");
@@ -1145,6 +1185,7 @@ void ScribusMainWindow::initMenuBar()
 	scrMenuMgr->addMenuItemString("SEPARATOR", "Insert");
 	scrMenuMgr->addMenuItemString("toolsInsertTextFrame", "Insert");
 	scrMenuMgr->addMenuItemString("toolsInsertImageFrame", "Insert");
+	scrMenuMgr->addMenuItemString("insertAnchoredImage", "Insert");
 	scrMenuMgr->addMenuItemString("toolsInsertRenderFrame", "Insert");
 	scrMenuMgr->addMenuItemString("toolsInsertTable", "Insert");
 	scrMenuMgr->addMenuItemString("toolsInsertShape", "Insert");
@@ -1243,6 +1284,7 @@ void ScribusMainWindow::initMenuBar()
 	scrMenuMgr->addMenuItemString("insertMarkItem", "InsertMark");
 	scrMenuMgr->addMenuItemString("insertMark2Mark", "InsertMark");
 	scrMenuMgr->addMenuItemString("insertMarkVariableText", "InsertMark");
+	scrMenuMgr->addMenuItemString("insertDynamicVariable", "InsertMark");
 	scrMenuMgr->addMenuItemString("insertMarkIndex", "InsertMark");
 
 	//Page menu
@@ -1266,6 +1308,8 @@ void ScribusMainWindow::initMenuBar()
 	scrMenuMgr->createMenu("View", ActionManager::defaultMenuNameEntryTranslated("View"));
 	scrMenuMgr->createMenu("ViewZoom", tr("Zoom"), "View");
 	scrMenuMgr->addMenuItemString("ViewZoom", "View");
+	scrMenuMgr->addMenuItemString("toolsZoomIn", "ViewZoom");
+	scrMenuMgr->addMenuItemString("toolsZoomOut", "ViewZoom");
 	scrMenuMgr->addMenuItemString("viewFitInWindow", "ViewZoom");
 	scrMenuMgr->addMenuItemString("viewFitWidth", "ViewZoom");
 	scrMenuMgr->addMenuItemString("viewFit50", "ViewZoom");
@@ -1341,6 +1385,8 @@ void ScribusMainWindow::initMenuBar()
 	scrMenuMgr->addMenuItemString("itemUpdateMarks", "Extras");
 	scrMenuMgr->addMenuItemString("SEPARATOR", "Extras");
 	scrMenuMgr->addMenuItemString("extrasManageImages", "Extras");
+	scrMenuMgr->addMenuItemString("extrasReplaceFonts", "Extras");
+	scrMenuMgr->addMenuItemString("extrasConvertRGBColors", "Extras");
 	scrMenuMgr->addMenuItemString("SEPARATOR", "Extras");
 	scrMenuMgr->addMenuItemString("extrasUpdateDocument", "Extras");
 //	Disabled for release as it does nothing useful
@@ -1405,9 +1451,11 @@ void ScribusMainWindow::addDefaultWindowMenuItems()
 	scrMenuMgr->addMenuItemString("windowsCascade", "Windows");
 	scrMenuMgr->addMenuItemString("windowsTile", "Windows");
 	scrMenuMgr->addMenuItemString("specialToggleAllPalettes", "Windows");
+	scrMenuMgr->addMenuItemString("windowsResetWorkspace", "Windows");
 	scrMenuMgr->addMenuItemString("SEPARATOR", "Windows");
 	scrMenuMgr->addMenuItemString("toolsProperties", "Windows");
 	scrMenuMgr->addMenuItemString("toolsContent", "Windows");
+	scrMenuMgr->addMenuItemString("toolsToolPalette", "Windows");
 	scrMenuMgr->addMenuItemString("toolsActionHistory", "Windows");
 	scrMenuMgr->addMenuItemString("toolsAlignDistribute", "Windows");
 	scrMenuMgr->addMenuItemString("SEPARATOR", "Windows");
@@ -1425,10 +1473,6 @@ void ScribusMainWindow::addDefaultWindowMenuItems()
 	scrMenuMgr->addMenuItemString("toolsMeasurements", "Windows");
 	scrMenuMgr->addMenuItemString("toolsPreflightVerifier", "Windows");
 	scrMenuMgr->addMenuItemString("toolsDocumentLog", "Windows");
-	scrMenuMgr->addMenuItemString("SEPARATOR", "Windows");
-	scrMenuMgr->addMenuItemString("toolsToolbarTools", "Windows");
-	scrMenuMgr->addMenuItemString("toolsToolbarPDF", "Windows");
-	scrMenuMgr->addMenuItemString("toolsToolbarView", "Windows");
 	scrMenuMgr->addMenuItemString("SEPARATOR", "Windows");
 	scrMenuMgr->addMenuItemStringsToMenuBar("Windows", scrActions);
 }
@@ -1488,6 +1532,15 @@ void ScribusMainWindow::initStatusBar()
 	zoomOutToolbarButton->setIcon(IconManager::instance().loadIcon("zoom-out"));
 	zoomInToolbarButton->setIcon(IconManager::instance().loadIcon("zoom-in"));
 
+	statusPreflightButton = new QToolButton(statusBar());
+	statusPreflightButton->setObjectName("statusPreflightButton");
+	statusPreflightButton->setAutoRaise(true);
+	statusPreflightButton->setDefaultAction(scrActions["toolsPreflightVerifier"]);
+	statusSaveButton = new QToolButton(statusBar());
+	statusSaveButton->setObjectName("statusSaveButton");
+	statusSaveButton->setAutoRaise(true);
+	statusSaveButton->setDefaultAction(scrActions["fileSave"]);
+
 	zoomLayout->addWidget( zoomSpinBox );
 	zoomLayout->addWidget( zoomOutToolbarButton );
 	zoomLayout->addWidget( zoomDefaultToolbarButton );
@@ -1497,8 +1550,10 @@ void ScribusMainWindow::initStatusBar()
 	m_mainWindowStatusLabel->setFont(fo);
 	mainWindowProgressBar = new QProgressBar(statusBar());
 	mainWindowProgressBar->setAlignment(Qt::AlignHCenter);
-	mainWindowProgressBar->setFixedWidth( 100 );
+	mainWindowProgressBar->setFixedWidth(110);
 	mainWindowProgressBar->reset();
+	backgroundTaskLabel = new QLabel(statusBar());
+	backgroundTaskLabel->setFont(fo);
 	mainWindowXPosLabel = new QLabel( tr("X:"), statusBar());
 	mainWindowXPosLabel->setFont(fo);
 	mainWindowYPosLabel = new QLabel( tr("Y:"), statusBar());
@@ -1525,8 +1580,8 @@ void ScribusMainWindow::initStatusBar()
 	QLabel *s3 = new QLabel(QString());
 	statusBar()->addPermanentWidget(s,1);
 	statusBar()->addPermanentWidget(s2,1);
-	statusBar()->addPermanentWidget(zoomWidget,0);
 	statusBar()->addPermanentWidget(pageSelector,0);
+	statusBar()->addPermanentWidget(zoomWidget,0);
 	statusBar()->addPermanentWidget(layerMenu,1);
 	statusBar()->addPermanentWidget(s3,3);
 	statusBar()->addPermanentWidget(mainWindowXPosLabel, 0);
@@ -1535,6 +1590,9 @@ void ScribusMainWindow::initStatusBar()
 	statusBar()->addPermanentWidget(mainWindowYPosDataLabel, 0);
 
 	statusBar()->addPermanentWidget(unitSwitcher,0);
+	statusBar()->addPermanentWidget(statusPreflightButton, 0);
+	statusBar()->addPermanentWidget(statusSaveButton, 0);
+	statusBar()->addPermanentWidget(backgroundTaskLabel, 0);
 	statusBar()->addPermanentWidget(mainWindowProgressBar, 0);
 	connect(statusBar(), SIGNAL(messageChanged(QString)), this, SLOT(setTempStatusBarText(QString)));
 
@@ -1936,8 +1994,6 @@ void ScribusMainWindow::closeEvent(QCloseEvent *ce)
 	}
 	fileToolBar->connectPrefsSlot(false);
 	editToolBar->connectPrefsSlot(false);
-	modeToolBar->connectPrefsSlot(false);
-	pdfToolBar->connectPrefsSlot(false);
 
 	// if palettes are temporary hidden restore them before saving the workspace
 	dockManager->restoreHiddenWorkspace();
@@ -2422,8 +2478,21 @@ void ScribusMainWindow::extrasMenuAboutToShow()
 			}
 			allItems.clear();
 		}
+		if (!enablePicManager)
+		{
+			for (PageItem *item : doc->FrameItems)
+			{
+				if (item && item->isImageFrame() && !item->isLatexFrame() && !item->isOSGFrame())
+				{
+					enablePicManager = true;
+					break;
+				}
+			}
+		}
 	}
 	scrActions["extrasManageImages"]->setEnabled(enablePicManager);
+	scrActions["extrasReplaceFonts"]->setEnabled(HaveDoc);
+	scrActions["extrasConvertRGBColors"]->setEnabled(HaveDoc);
 }
 
 void ScribusMainWindow::newActWin(QMdiSubWindow *w)
@@ -2579,6 +2648,8 @@ void ScribusMainWindow::newActWin(QMdiSubWindow *w)
 	symbolPalette->setDoc(doc);
 	inlinePalette->setDoc(doc);
 	modeToolBar->setDoc(doc);
+	editToolBar->setDoc(doc);
+	toolPalette->setDoc(doc);
 	viewToolBar->setDoc(doc);
 	// Give plugins a chance to react on changing the current document
 	PluginManager& pluginManager(PluginManager::instance());
@@ -2804,6 +2875,9 @@ void ScribusMainWindow::HaveNewSel()
 
 void ScribusMainWindow::slotDocCh(bool /*reb*/)
 {
+	if (!doc)
+		return;
+	doc->updateDynamicVariableValues();
 	if (!doc->isModified())
 		doc->setModified(true);
 	updateActiveWindowCaption(doc->documentFileName() + "*");
@@ -3382,7 +3456,14 @@ bool ScribusMainWindow::loadDoc(const QString& fileName)
 		return false;
 	}
 	
+	// Crash reports on macOS show Qt's Cocoa cursor conversion failing here,
+	// before the document loader runs. Keep document opening usable without
+	// changing the wait-cursor behavior on Windows or Linux.
+	bool waitCursorActive = false;
+#ifndef Q_OS_MACOS
 	QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
+	waitCursorActive = true;
+#endif
 	if (HaveDoc)
 		outlinePalette->buildReopenVals();
 	bool ret = false;
@@ -3408,7 +3489,8 @@ bool ScribusMainWindow::loadDoc(const QString& fileName)
 
 		if (docNameUnmodified == platfName)
 		{
-			QApplication::restoreOverrideCursor();
+			if (waitCursorActive)
+				QApplication::restoreOverrideCursor();
 			ScMessageBox::information(this, tr("Document is already opened"), tr("This document is already open. It will be set as the active document."));
 			windowsMenuActivated(i);
 			return true;
@@ -3423,10 +3505,11 @@ bool ScribusMainWindow::loadDoc(const QString& fileName)
 		if (testResult == -1)
 		{
 			delete fileLoader;
-			QApplication::restoreOverrideCursor();
+			if (waitCursorActive)
+				QApplication::restoreOverrideCursor();
 			QString title = tr("Fatal Error") ;
 			QString msg = "<qt>"+ tr("File %1 is not in an acceptable format").arg(filename)+"</qt>";
-			QString infoMsg = "<qt>" + tr("The file may be damaged or may have been produced in a later version of Scribus.") + "</qt>";
+			QString infoMsg = "<qt>" + tr("The file may be damaged or may have been produced in a later version of Apscribe or Scribus.") + "</qt>";
 			ScMessageBox msgBox(QMessageBox::Critical, title, msg, QMessageBox::Ok | QMessageBox::Help, this);
 			msgBox.setInformativeText(infoMsg);
 			int i = msgBox.exec();
@@ -3493,7 +3576,8 @@ bool ScribusMainWindow::loadDoc(const QString& fileName)
 			view = nullptr;
 			doc = nullptr;
 			setScriptRunning(false);
-			QApplication::restoreOverrideCursor();
+			if (waitCursorActive)
+				QApplication::restoreOverrideCursor();
 			m_mainWindowStatusLabel->setText("");
 			mainWindowProgressBar->reset();
 			ActWin = nullptr;
@@ -3784,7 +3868,8 @@ bool ScribusMainWindow::loadDoc(const QString& fileName)
 
 	m_undoManager->switchStack(doc->documentFileName());
 	pagePalette->rebuild();
-	QApplication::restoreOverrideCursor();
+	if (waitCursorActive)
+		QApplication::restoreOverrideCursor();
 	doc->setModified(false);
 	foreach (NotesStyle* NS, doc->m_docNotesStylesList)
 		doc->updateNotesFramesStyles(NS);
@@ -4184,6 +4269,10 @@ bool ScribusMainWindow::DoFileSave(const QString& fileName, QString* savedFileNa
 	QApplication::processEvents();
 	if (ret)
 	{
+		// The modification timestamp changes only after the file has been
+		// written. Refresh calculated fields now without marking the document
+		// dirty again.
+		doc->updateDynamicVariableValues();
 		updateActiveWindowCaption(fileName);
 		m_undoManager->renameStack(fileName);
 		scrActions["fileRevert"]->setEnabled(false);
@@ -4275,6 +4364,7 @@ bool ScribusMainWindow::DoFileClose()
 	nsEditor->setDoc(nullptr);
 	layerPalette->clearContent();
 	docCheckerPalette->buildErrorList(nullptr);
+	editToolBar->setDoc(nullptr);
 	viewToolBar->setDoc(nullptr);
 	HaveDoc--;
 	delete doc;
@@ -4312,7 +4402,7 @@ void ScribusMainWindow::slotFilePrint()
 			if (doc->checkerProfiles()[doc->curCheckProfile()].ignoreErrors)
 			{
 				int t = ScMessageBox::warning(this, CommonStrings::trWarning,
-											"<qt>"+ tr("Scribus has detected some errors. Consider using the Preflight Verifier to correct them")+"</qt>",
+										"<qt>"+ tr("Apscribe has detected some errors. Consider using the Preflight Verifier to correct them")+"</qt>",
 											QMessageBox::Abort | QMessageBox::Ignore,
 											QMessageBox::NoButton,	// GUI default
 											QMessageBox::Ignore);	// batch default
@@ -5129,17 +5219,17 @@ void ScribusMainWindow::slotHelpActionSearch()
 	ActionSearch actionSearch(this->menuBar());
 	actionSearch.update();
 
-	QScopedPointer<ActionSearchDialog> dialog(new ActionSearchDialog(this, actionSearch.getActionNames()));
+	QScopedPointer<ActionSearchDialog> dialog(new ActionSearchDialog(this, actionSearch.actions()));
 	dialog->setModal(true);
 
 	int result = dialog->exec();
 	if (result != QDialog::Accepted)
 		return;
 
-	QString actionName = dialog->getActionName();
-	if (actionName.isEmpty())
+	const QString actionId = dialog->actionId();
+	if (actionId.isEmpty())
 		return;
-	actionSearch.execute(actionName);
+	actionSearch.execute(actionId);
 }
 
 void ScribusMainWindow::slotHelpCheckUpdates()
@@ -5152,7 +5242,7 @@ void ScribusMainWindow::slotOnlineHelp(const QString & jumpToSection, const QStr
 {
 	if (!m_helpBrowser)
 	{
-		m_helpBrowser = new HelpBrowser(nullptr, tr("Scribus Manual"), ScCore->getGuiLanguage(), jumpToSection, jumpToFile);
+		m_helpBrowser = new HelpBrowser(nullptr, tr("Scribus Manual (upstream)"), ScCore->getGuiLanguage(), jumpToSection, jumpToFile);
 		connect(m_helpBrowser, SIGNAL(closed()), this, SLOT(slotOnlineHelpClosed()));
 	}
 	else //just set the requested page
@@ -5555,6 +5645,27 @@ void ScribusMainWindow::ToggleAllPalettes()
 		downloadsPalette->hide();
 		m_palettesStatus[PAL_ALL] = true;
 	}
+}
+
+void ScribusMainWindow::resetWorkspaceLayout()
+{
+	const auto answer = ScMessageBox::question(
+		this,
+		tr("Reset Workspace Layout"),
+		tr("Restore the default panel arrangement and visibility? Documents and document settings will not be changed."),
+		QMessageBox::Reset | QMessageBox::Cancel,
+		QMessageBox::Cancel,
+		QMessageBox::Cancel);
+	if (answer != QMessageBox::Reset)
+		return;
+
+	if (!dockManager->resetWorkspaceToDefault())
+	{
+		ScMessageBox::warning(this, tr("Reset Workspace Layout"), tr("The default workspace layout is not available."));
+		return;
+	}
+
+	statusBar()->showMessage(tr("Workspace layout restored"), 3000);
 }
 
 void ScribusMainWindow::toggleCheckPal()
@@ -6781,6 +6892,8 @@ void ScribusMainWindow::slotDocSetup()
 	emit UpdateRequest(reqCmsOptionsUpdate);
 	doc->changed();
 	modeToolBar->setDoc(doc);
+	editToolBar->setDoc(doc);
+	toolPalette->setDoc(doc);
 }
 
 int ScribusMainWindow::ShowSubs()
@@ -6803,15 +6916,386 @@ int ScribusMainWindow::ShowSubs()
 	marksManager->startup();
 	nsEditor->startup();
 	symbolPalette->startup();
+	toolPalette->startup();
 
-	// try to load custom layout from preferences
-	dockManager->restoreWorkspaceFromPrefs();
+	// Move existing profiles to the streamlined single-column workspace once.
+	// Layout changes made after this migration continue to persist normally.
+	PrefsContext* workspacePrefs = m_prefsManager.prefsFile->getContext("WorkspaceModernization");
+	const bool migrateEssentialLayout = !workspacePrefs->getBool("EssentialDockLayoutV2", false);
+	if (migrateEssentialLayout)
+	{
+		dockManager->resetWorkspaceToDefault();
+		workspacePrefs->set("EssentialDockLayoutV2", true);
+	}
+	else
+		dockManager->restoreWorkspaceFromPrefs();
 
 	// init the toolbars
 	fileToolBar->initVisibility();
 	editToolBar->initVisibility();
-	modeToolBar->initVisibility();
-	pdfToolBar->initVisibility();
+	if (migrateEssentialLayout)
+	{
+		fileToolBar->show();
+		editToolBar->show();
+	}
+	modeToolBar->hide();
+	pdfToolBar->hide();
+	viewToolBar->hide();
+
+	// [dev] env-gated diagnostics for the automated smoke test
+	auto dumpToolPalette = [this](const char* tag) {
+		auto wstate = [](QWidget* w) -> QString {
+			if (!w)
+				return QString("null");
+			CDockWidget* d = qobject_cast<CDockWidget*>(w);
+			QString s = QString("vis=%1").arg(w->isVisible() ? "y" : "n");
+			if (d)
+			{
+				s += QString("|dvis=%1").arg(d->isVisible() ? "y" : "n");
+				if (d->dockAreaWidget())
+					s += QString("|area=%1").arg(d->dockAreaWidget()->isVisible() ? "y" : "n");
+			}
+			return s;
+		};
+		if (!toolPalette)
+		{
+			qInfo().noquote() << "[toolpalette-dump]" << tag << "| missing";
+			return;
+		}
+		QStringList checked;
+		const auto buttons = toolPalette->findChildren<QToolButton*>();
+		for (const QToolButton* b : buttons)
+			if (b->isChecked())
+				checked << b->text() + "/" + (b->defaultAction() ? b->defaultAction()->data().toString() : QString());
+		qInfo().noquote() << "[toolpalette-dump]" << tag
+			<< "| tools=" << wstate(toolPalette)
+			<< "| page=" << wstate(pagePalette)
+			<< "| props=" << wstate(propertiesPalette)
+			<< "| buttons=" << buttons.count()
+			<< "| checked=" << checked.join(",");
+	};
+	if (qEnvironmentVariableIsSet("SCRIBUS_DUMP_TOOLPALETTE"))
+		dumpToolPalette("startup");
+
+	if (qEnvironmentVariableIsSet("SCRIBUS_SELFTEST"))
+	{
+		QTimer::singleShot(800, this, [this, dumpToolPalette]() {
+			dumpToolPalette("shown");
+			scrActions["toolsInsertTextFrame"]->trigger();
+			QTimer::singleShot(300, this, [this, dumpToolPalette]() {
+				dumpToolPalette("after-text-tool");
+
+				// exercise the polygon sidebar preset (e.g. 6 corners)
+				bool polyOk = false;
+				const auto menus = toolPalette->findChildren<QMenu*>();
+				for (QMenu* m : menus)
+				{
+					for (QAction* a : m->actions())
+					{
+						if (a->data().toInt() == 6)
+						{
+							a->trigger();
+							polyOk = true;
+							break;
+						}
+					}
+					if (polyOk)
+						break;
+				}
+				QTimer::singleShot(300, this, [this, polyOk]() {
+					qInfo().noquote() << "[toolpalette-dump] polygon-preset"
+						<< "| menuAction=" << (polyOk ? "y" : "n")
+						<< "| polyCorners=" << (doc ? doc->itemToolPrefs().polyCorners : -1);
+				});
+
+				// the line flyout must share the Bezier action object
+				QAction* bezAct = scrActions["toolsInsertBezier"].data();
+				QTimer::singleShot(600, this, [this, bezAct, dumpToolPalette]() {
+					bool bezInMenu = false;
+					const auto menus = toolPalette->findChildren<QMenu*>();
+					for (QMenu* m : menus)
+						for (QAction* a : m->actions())
+							if (a == bezAct)
+								bezInMenu = true;
+					qInfo().noquote() << "[toolpalette-dump] line-menu"
+						<< "| sharedBezierAction=" << (bezInMenu ? "y" : "n");
+					bezAct->trigger();
+					QTimer::singleShot(300, this, [this, dumpToolPalette]() {
+						dumpToolPalette("after-bezier");
+						// hard exit: Scribus' Qt shutdown can block in this headless
+						// batch context, so do not rely on a clean qApp->quit() here.
+						QTimer::singleShot(400, []() { ::_exit(0); });
+					});
+				});
+			});
+		});
+	}
+
+	if (qEnvironmentVariableIsSet("SCRIBUS_CANVASDUMP"))
+	{
+		QTimer::singleShot(1500, this, [this]() {
+			qInfo().noquote() << "[candump] creating default new document";
+			ScribusDoc* nd = doFileNew(595.28, 841.89, 40.0, 40.0, 40.0, 40.0, 0.0, 1,
+					false, 0, 0, 0, 0, 1, QSizeF(595.28, 841.89), true, 1, true, 0, 0);
+			qInfo().noquote() << "[candump] doFileNew returned" << (nd != nullptr) << "docpages=" << (doc->DocPages.count());
+			QTimer::singleShot(4000, this, [this]() {
+				QWidget* cw = view;
+				if (cw)
+				{
+					QPixmap pm = cw->grab();
+					pm.save("/tmp/scribus-test/canvas-dump.png");
+					qInfo().noquote() << "[candump] saved" << pm.size().width() << "x" << pm.size().height();
+				}
+				else
+					qInfo().noquote() << "[candump] no canvas";
+				::_exit(0);
+			});
+		});
+	}
+
+#if 0 // Local Indic diagnostics; keep out of production builds.
+	if (qEnvironmentVariableIsSet("SCRIBUS_INDIC_SELFTEST"))
+	{
+		QTimer::singleShot(1000, this, [this]() {
+			PageItem_TextFrame* frame = nullptr;
+			if (doc && doc->Items->count() > 0)
+			{
+				for (PageItem* itemPtr : *doc->Items)
+				{
+					if (itemPtr->isTextFrame())
+					{
+						frame = dynamic_cast<PageItem_TextFrame*>(itemPtr);
+						if (frame)
+							break;
+					}
+				}
+			}
+			if (!frame)
+			{
+				qInfo().noquote() << "[indic] no text frame found";
+				::_exit(0);
+				return;
+			}
+			struct IndicCase { const char* script; const char* font; const char* lang; QString text; };
+			const QList<IndicCase> indicCases = {
+				{ "devanagari", "Noto Sans Devanagari", "hi", QString::fromUtf8("हिन्दी क्षेत्रमापी") },
+				{ "bengali",    "Noto Sans Bengali",    "bn", QString::fromUtf8("বাংলা ক্ষমতা") },
+				{ "tamil",      "Noto Sans Tamil",      "ta", QString::fromUtf8("தமிழ் க்ஷ") },
+				{ "telugu",     "Noto Sans Telugu",     "te", QString::fromUtf8("తెలుగు క్షేత్రం") },
+				{ "kannada",    "Noto Sans Kannada",    "kn", QString::fromUtf8("ಕನ್ನಡ ಕ್ಷೇತ್ರ") },
+				{ "malayalam",  "Noto Sans Malayalam",  "ml", QString::fromUtf8("മലയാളം ക്ഷേത്രം") },
+				{ "gujarati",   "Noto Sans Gujarati",   "gu", QString::fromUtf8("ગુજરાતી ક્ષેત્ર") },
+				{ "gurmukhi",   "Noto Sans Gurmukhi",   "pa", QString::fromUtf8("ਪੰਜਾਬੀ ਕ੍ਰਿਪਾ") },
+				{ "oriya",      "Noto Sans Oriya",      "or", QString::fromUtf8("ଓଡ଼ିଆ କ୍ଷେତ୍ର") },
+				{ "sinhala",    "Noto Sans Sinhala",    "si", QString::fromUtf8("සිංහල ක්ෂේත්ර") },
+			};
+			for (const IndicCase& icase : indicCases)
+			{
+				ParagraphStyle ps;
+				ps.setDefaultStyle(true);
+				const ScFace& fc = doc->AllFonts->findFont(QString::fromUtf8(icase.font), "Regular", doc);
+				ps.charStyle().setFont(fc);
+				ps.charStyle().setFontSize(24.0);
+				ps.charStyle().setLanguage(QString::fromUtf8(icase.lang));
+				frame->itemText.clear();
+				frame->itemText.setDefaultStyle(ps);
+				frame->itemText.insertChars(icase.text, false);
+				frame->itemText.invalidateLayout();
+				frame->invalidateLayout(true);
+				frame->layout();
+
+				int clusterCount = 0;
+				int glyphCount = 0;
+				int missing = 0;
+				double totalWidth = 0.0;
+				QStringList boxDescs;
+				std::function<void(const Box*)> boxWalk = [&](const Box* b) {
+					if (!b)
+						return;
+					if (b->type() == Box::T_Glyph)
+					{
+						const GlyphCluster& run = static_cast<const GlyphBox*>(b)->glyphRun();
+						const QList<GlyphLayout>& glyphs = run.glyphs();
+						QStringList ids;
+						int inCluster = 0;
+						for (const GlyphLayout& gl : glyphs)
+						{
+							inCluster++;
+							if (gl.glyph == 0)
+								missing++;
+							ids << QString::number(gl.glyph);
+							totalWidth += gl.xadvance;
+						}
+						++clusterCount;
+						glyphCount += inCluster;
+						boxDescs << QString("t=") + run.getText()
+								 + QString(" |g=") + QString::number(inCluster)
+								 + QString(" {") + ids.join(",") + QString("}");
+					}
+					for (const Box* child : b->boxes())
+						boxWalk(child);
+				};
+				boxWalk(frame->textLayout.box());
+
+				const CharStyle& baseStyle = frame->itemText.charStyle(0);
+				qInfo().noquote() << "[indic]" << QString::fromUtf8(icase.script)
+					<< "| font=" << (baseStyle.font().isReplacement() ? QString("MISSING") + baseStyle.font().psName() : baseStyle.font().psName())
+					<< "| findFont=" << fc.psName() << "/" << fc.isReplacement()
+					<< "| storyLen=" << frame->itemText.length()
+					<< "| lang=" << QString::fromUtf8(icase.lang)
+					<< "| effLang=" << TextShaper::debugLastLanguage()
+					<< "| text=" << icase.text
+					<< "| chars=" << icase.text.length()
+					<< "| clusters=" << clusterCount
+					<< "| glyphs=" << glyphCount
+					<< "| missing=" << missing
+					<< "| width=" << QString::number(totalWidth, 'f', 1)
+					<< "| " << boxDescs.join("; ");
+			}
+
+			// Inference pass: style language left at a Latin default like a
+			// day-to-day document; the shaper must map each script to its
+			// own default language so OpenType 'locl'/-lang systems apply.
+			const QList<IndicCase> inferCases = {
+				{ "devanagari", "Noto Sans Devanagari", "en", QString::fromUtf8("हिन्दी") },
+				{ "bengali",    "Noto Sans Bengali",    "en", QString::fromUtf8("বাংলা") },
+				{ "tamil",      "Noto Sans Tamil",      "en", QString::fromUtf8("தமிழ்") },
+				{ "telugu",     "Noto Sans Telugu",     "en", QString::fromUtf8("తెలుగు") },
+				{ "kannada",    "Noto Sans Kannada",    "en", QString::fromUtf8("ಕನ್ನಡ") },
+				{ "malayalam",  "Noto Sans Malayalam",  "en", QString::fromUtf8("മലയാളം") },
+				{ "gujarati",   "Noto Sans Gujarati",   "en", QString::fromUtf8("ગુજરાતી") },
+				{ "gurmukhi",   "Noto Sans Gurmukhi",   "en", QString::fromUtf8("ਪੰਜਾਬੀ") },
+				{ "oriya",      "Noto Sans Oriya",      "en", QString::fromUtf8("ଓଡ଼ିଆ") },
+				{ "sinhala",    "Noto Sans Sinhala",    "en", QString::fromUtf8("සිංහල") },
+			};
+			for (const IndicCase& icase : inferCases)
+			{
+				ParagraphStyle ps;
+				ps.setDefaultStyle(true);
+				ps.charStyle().setFont(doc->AllFonts->findFont(QString::fromUtf8(icase.font), "Regular", doc));
+				ps.charStyle().setFontSize(24.0);
+				ps.charStyle().setLanguage(QString::fromUtf8(icase.lang));
+				frame->itemText.clear();
+				frame->itemText.setDefaultStyle(ps);
+				frame->itemText.insertChars(icase.text, false);
+				frame->itemText.invalidateLayout();
+				frame->invalidateLayout(true);
+				frame->layout();
+				qInfo().noquote() << "[indic-inf]" << QString::fromUtf8(icase.script)
+					<< "| styleLang=" << QString::fromUtf8(icase.lang)
+					<< "| effLang=" << TextShaper::debugLastLanguage();
+			}
+
+			// Danda wrap rule: in a narrow column no rendered line may start
+			// with a danda '।' or double-danda '॥'.
+			{
+				ParagraphStyle ps;
+				ps.setDefaultStyle(true);
+				ps.charStyle().setFont(doc->AllFonts->findFont(QString::fromUtf8("Noto Sans Devanagari"), "Regular", doc));
+				ps.charStyle().setFontSize(340.0);
+				ps.charStyle().setLanguage(QString::fromUtf8("hi"));
+				const QString dandaText = QString::fromUtf8("प्रथम अनुच्छेद यहाँ समाप्त होता है । द्वितीय अनुच्छेद यहाँ समाप्त होता है । तृतीय अनुच्छेद का समापन यहाँ होता है ॥");
+				frame->itemText.clear();
+				frame->itemText.setDefaultStyle(ps);
+				frame->itemText.insertChars(dandaText, false);
+				frame->setWidth(150.0);
+				frame->setHeight(8000.0);
+				frame->itemText.invalidateLayout();
+				frame->invalidateLayout(true);
+				frame->layout();
+				QStringList lineStarts;
+				for (uint li = 0; li < frame->textLayout.lines(); ++li)
+				{
+					const LineBox* lb = frame->textLayout.line(li);
+					QString firstText;
+					if (lb)
+					{
+						for (const Box* child : lb->boxes())
+						{
+							if (child->type() == Box::T_Glyph)
+							{
+								firstText = static_cast<const GlyphBox*>(child)->glyphRun().getText();
+								break;
+							}
+						}
+					}
+					lineStarts << QString("line") + QString::number(li) + QString("=\"") + firstText + QString("\"");
+				}
+				qInfo().noquote() << "[indic-danda]" << frame->itemText.length()
+					<< "| lines=" << frame->textLayout.lines()
+					<< "| itemW=" << frame->width()
+					<< "| itemH=" << frame->height()
+					<< "| lastChar=" << (frame->textLayout.lines() > 0 ? frame->textLayout.line(frame->textLayout.lines() - 1)->lastChar() : -1)
+					<< "| " << lineStarts.join("; ");
+			}
+
+			// PDF round-trip: export page 1 with Devanagari text through the
+			// regular PDF writer, then re-import the result with the importpdf
+			// plugin and verify the text comes back. Do not run for the dummy
+			// doc created by the second selftest variant (no pages).
+			if (!doc->DocPages.isEmpty() && doc->appMode == modeNormal)
+			{
+				const QString pdfFile(QString::fromUtf8("/tmp/scribus-test/rt2.pdf"));
+				const QString rtText = QString::fromUtf8("देवनागरी हिन्दी में। क्षेत्रमापी ॥");
+				PageItem_TextFrame* pdfFrame = nullptr;
+				for (int ii = 0; ii < doc->Items->count() && !pdfFrame; ++ii)
+				{
+					PageItem* ite = doc->Items->at(ii);
+					if (ite->isTextFrame() && ite->OwnPage >= 0)
+						pdfFrame = ite->asTextFrame();
+				}
+				qInfo().noquote() << "[pdf] frameOwnPage=" << (pdfFrame != nullptr ? pdfFrame->OwnPage : -2);
+				if (!pdfFrame)
+					pdfFrame = frame;
+				pdfFrame->itemText.clear();
+				ParagraphStyle pps;
+				pps.setDefaultStyle(true);
+				pps.charStyle().setFont(doc->AllFonts->findFont(QString::fromUtf8("Noto Sans Devanagari"), "Regular", doc));
+				pps.charStyle().setFontSize(160.0);
+				pps.charStyle().setLanguage(QString::fromUtf8("hi"));
+				pps.charStyle().setFillColor(QString::fromUtf8("Black"));
+				pps.charStyle().setStrokeColor(CommonStrings::None);
+				pdfFrame->itemText.setDefaultStyle(pps);
+				pdfFrame->itemText.insertChars(rtText, false);
+				pdfFrame->setWidth(500.0);
+				pdfFrame->setHeight(500.0);
+				pdfFrame->itemText.invalidateLayout();
+				pdfFrame->invalidateLayout(true);
+				pdfFrame->layout();
+				doc->reorganiseFonts();
+				doc->pdfOptions().FontEmbedding = PDFOptions::EmbedFonts;
+				doc->pdfOptions().SubsetList.append(QString::fromUtf8("Noto Sans Devanagari Regular"));
+				std::vector<int> pageNumbers;
+				pageNumbers.push_back(1);
+				QMap<int, QImage> thumbs;
+				QString error;
+				bool exported = getPDFDriver(pdfFile, pageNumbers, thumbs, error);
+				qInfo().noquote() << "[pdf] export=" << exported
+					<< "| file=" << pdfFile
+					<< "| size=" << (QFile::exists(pdfFile) ? QFileInfo(pdfFile).size() : 0)
+					<< "| err=" << error;
+				ScPlugin* pdfPl = PluginManager::instance().getPlugin(QString::fromUtf8("importpdf"), true);
+				bool imported = false;
+				if (pdfPl)
+				{
+					imported = QMetaObject::invokeMethod(pdfPl, "importFile",
+						Q_ARG(QString, pdfFile),
+						Q_ARG(int, int(LoadSavePlugin::lfScripted | LoadSavePlugin::lfUseCurrentPage)));
+				}
+				qInfo().noquote() << "[pdf] plugin=" << (pdfPl != nullptr) << "imported=" << imported;
+				QStringList rtTexts;
+				for (int ii = 0; ii < doc->Items->count(); ++ii)
+				{
+					PageItem* ite = doc->Items->at(ii);
+					if (ite->isTextFrame() && ite->itemText.length() > 0 && ite != frame && ite != pdfFrame)
+						rtTexts << ite->itemText.plainText();
+				}
+				qInfo().noquote() << "[pdf] texts=" << rtTexts;
+			}
+			::_exit(0);
+		});
+	}
+#endif
 
 	activateWindow();
 	if (!scriptIsRunning())
@@ -6829,7 +7313,7 @@ void ScribusMainWindow::printPreview()
 			if (checkerProfile.ignoreErrors)
 			{
 				int i = ScMessageBox::warning(this, CommonStrings::trWarning,
-											"<qt>"+ tr("Scribus has detected some errors. Consider using the Preflight Verifier to correct them")+"</qt>",
+										"<qt>"+ tr("Apscribe has detected some errors. Consider using the Preflight Verifier to correct them")+"</qt>",
 											QMessageBox::Abort | QMessageBox::Ignore,
 											QMessageBox::NoButton,	// GUI default
 											QMessageBox::Ignore);	// batch default
@@ -6906,7 +7390,7 @@ void ScribusMainWindow::outputPreviewPDF()
 			if (checkerProfile.ignoreErrors)
 			{
 				int i = ScMessageBox::warning(this, CommonStrings::trWarning,
-											"<qt>"+ tr("Scribus has detected some errors. Consider using the Preflight Verifier to correct them")+"</qt>",
+										"<qt>"+ tr("Apscribe has detected some errors. Consider using the Preflight Verifier to correct them")+"</qt>",
 											QMessageBox::Abort | QMessageBox::Ignore,
 											QMessageBox::NoButton,	// GUI default
 											QMessageBox::Ignore);	// batch default
@@ -6978,7 +7462,7 @@ void ScribusMainWindow::outputPreviewPS()
 			if (checkerProfile.ignoreErrors)
 			{
 				int i = ScMessageBox::warning(this, CommonStrings::trWarning,
-											"<qt>"+ tr("Scribus has detected some errors. Consider using the Preflight Verifier to correct them")+"</qt>",
+										"<qt>"+ tr("Apscribe has detected some errors. Consider using the Preflight Verifier to correct them")+"</qt>",
 											QMessageBox::Abort | QMessageBox::Ignore,
 											QMessageBox::NoButton,	// GUI default
 											QMessageBox::Ignore);	// batch default
@@ -7096,7 +7580,7 @@ void ScribusMainWindow::SaveAsEps()
 			if (doc->checkerProfiles()[doc->curCheckProfile()].ignoreErrors)
 			{
 				int t = ScMessageBox::warning(this, CommonStrings::trWarning,
-											tr("Scribus detected some errors.\nConsider using the Preflight Verifier  to correct them."),
+											tr("Apscribe detected some errors.\nConsider using the Preflight Verifier to correct them."),
 											QMessageBox::Abort | QMessageBox::Ignore,
 											QMessageBox::NoButton,	// GUI default,
 											QMessageBox::Ignore);	// batch default
@@ -7166,6 +7650,175 @@ void ScribusMainWindow::reallySaveAsEps()
 			message += QString("\n%1").arg(epsError);
 		ScMessageBox::warning(this, CommonStrings::trWarning, message);
 	}
+}
+
+void ScribusMainWindow::SaveAsEpub()
+{
+	if (!doc)
+		return;
+	QDialog dialog(this);
+	dialog.setWindowTitle(tr("Export Limited Reflowable EPUB"));
+	dialog.resize(680, 560);
+	auto* layout = new QVBoxLayout(&dialog);
+	auto* explanation = new QLabel(tr("This export supports ranked text stories and linked PNG/JPEG images. "
+		"Unsupported document content blocks export; image-frame appearance is not preserved."), &dialog);
+	explanation->setWordWrap(true);
+	layout->addWidget(explanation);
+	auto* fields = new QFormLayout;
+	const QString documentName = QFileInfo(doc->documentFileName()).completeBaseName();
+	auto* titleEdit = new QLineEdit(doc->documentInfo().title().isEmpty()
+		? (documentName.isEmpty() ? tr("Untitled") : documentName) : doc->documentInfo().title(), &dialog);
+	auto* authorEdit = new QLineEdit(doc->documentInfo().author(), &dialog);
+	auto* languageEdit = new QLineEdit(doc->documentInfo().langInfo().isEmpty()
+		? QStringLiteral("en") : doc->documentInfo().langInfo(), &dialog);
+	auto* identifierEdit = new QLineEdit(doc->documentInfo().ident().isEmpty()
+		? QStringLiteral("urn:uuid:") + QUuid::createUuid().toString(QUuid::WithoutBraces)
+		: doc->documentInfo().ident(), &dialog);
+	const QFileInfo sourceFile(doc->documentFileName());
+	const QString outputName = (documentName.isEmpty() ? tr("Untitled") : documentName) + QStringLiteral(".epub");
+	const QString defaultPath = doc->documentFileName().isEmpty() || sourceFile.isRelative()
+		? QDir::home().filePath(outputName)
+		: sourceFile.absoluteDir().filePath(outputName);
+	auto* pathEdit = new QLineEdit(defaultPath, &dialog);
+	auto* browse = new QPushButton(tr("Browse…"), &dialog);
+	auto* pathRow = new QHBoxLayout;
+	pathRow->addWidget(pathEdit);
+	pathRow->addWidget(browse);
+	fields->addRow(tr("Title"), titleEdit);
+	fields->addRow(tr("Author"), authorEdit);
+	fields->addRow(tr("Language"), languageEdit);
+	fields->addRow(tr("Identifier"), identifierEdit);
+	fields->addRow(tr("Output file"), pathRow);
+	layout->addLayout(fields);
+	QMap<QString, QComboBox*> paragraphChoices;
+	QMap<QString, QComboBox*> characterChoices;
+	const EpubDocument::StyleNames usedStyles = EpubDocument::usedStyleNames(*doc);
+	if (!usedStyles.paragraph.isEmpty() || !usedStyles.character.isEmpty())
+	{
+		auto* styleGroup = new QGroupBox(tr("Text style semantics"), &dialog);
+		auto* styleLayout = new QVBoxLayout(styleGroup);
+		auto* styleHint = new QLabel(tr("Map each used named style explicitly. Unmapped styles block export."), styleGroup);
+		styleHint->setWordWrap(true);
+		styleLayout->addWidget(styleHint);
+		auto* styleRows = new QWidget(styleGroup);
+		auto* styleForm = new QFormLayout(styleRows);
+		for (const QString& name : usedStyles.paragraph)
+		{
+			auto* choice = new QComboBox(styleRows);
+			choice->addItem(tr("Unmapped"), -1);
+			choice->addItem(tr("Body paragraph"), 0);
+			for (int level = 1; level <= 6; ++level)
+				choice->addItem(tr("Heading %1").arg(level), level);
+			styleForm->addRow(tr("Paragraph: %1").arg(name), choice);
+			paragraphChoices.insert(name, choice);
+		}
+		for (const QString& name : usedStyles.character)
+		{
+			auto* choice = new QComboBox(styleRows);
+			choice->addItem(tr("Unmapped"), 0);
+			choice->addItem(tr("Emphasis"), 1);
+			choice->addItem(tr("Strong"), 2);
+			styleForm->addRow(tr("Character: %1").arg(name), choice);
+			characterChoices.insert(name, choice);
+		}
+		if (usedStyles.paragraph.size() + usedStyles.character.size() > 6)
+		{
+			auto* styleScroll = new QScrollArea(styleGroup);
+			styleScroll->setWidgetResizable(true);
+			styleScroll->setMaximumHeight(190);
+			styleScroll->setFocusPolicy(Qt::NoFocus);
+			styleScroll->setWidget(styleRows);
+			styleLayout->addWidget(styleScroll);
+		}
+		else
+			styleLayout->addWidget(styleRows);
+		layout->addWidget(styleGroup);
+	}
+	layout->addWidget(new QLabel(tr("Document preflight"), &dialog));
+	auto* report = new QTextEdit(&dialog);
+	report->setReadOnly(true);
+	layout->addWidget(report);
+	auto* buttons = new QDialogButtonBox(&dialog);
+	auto* exportButton = buttons->addButton(tr("Export EPUB"), QDialogButtonBox::AcceptRole);
+	buttons->addButton(QDialogButtonBox::Cancel);
+	layout->addWidget(buttons);
+	auto publication = [&]() -> EpubExport::Book {
+		return { identifierEdit->text(), titleEdit->text(), languageEdit->text(), authorEdit->text(), {} };
+	};
+	auto paragraphMappings = [&]() {
+		EpubReadingOrder::ParagraphStyleMap mappings;
+		for (auto it = paragraphChoices.cbegin(); it != paragraphChoices.cend(); ++it)
+		{
+			const int semantic = it.value()->currentData().toInt();
+			if (semantic >= 0)
+				mappings.insert(it.key(), semantic);
+		}
+		return mappings;
+	};
+	auto characterMappings = [&]() {
+		EpubReadingOrder::CharacterStyleMap mappings;
+		for (auto it = characterChoices.cbegin(); it != characterChoices.cend(); ++it)
+		{
+			const int semantic = it.value()->currentData().toInt();
+			if (semantic > 0)
+				mappings.insert(it.key(), static_cast<EpubExport::InlineKind>(semantic));
+		}
+		return mappings;
+	};
+	auto refresh = [&]() {
+		const EpubDocument::PreflightReport preflight = EpubDocument::preflightMixedSavedOrder(
+			*doc, publication(), pathEdit->text(), true, paragraphMappings(), characterMappings());
+		QStringList lines;
+		if (preflight.ready())
+		{
+			lines << tr("Ready: %1 content blocks, %2 linked images.")
+				.arg(preflight.extraction.book.blocks.size()).arg(preflight.extraction.book.images.size());
+		}
+		else
+			lines << tr("Cannot export: resolve the errors below.");
+		for (const EpubDocument::PreflightIssue& issue : preflight.issues)
+			lines << QStringLiteral("%1 [%2] %3")
+				.arg(issue.severity == EpubDocument::PreflightSeverity::Error ? tr("Error") : tr("Warning"), issue.code, issue.detail);
+		report->setPlainText(lines.join(QLatin1Char('\n')));
+		exportButton->setEnabled(preflight.ready());
+	};
+	for (QLineEdit* edit : { titleEdit, authorEdit, languageEdit, identifierEdit, pathEdit })
+		connect(edit, &QLineEdit::textChanged, &dialog, [&refresh](const QString&) { refresh(); });
+	for (QComboBox* choice : paragraphChoices)
+		connect(choice, &QComboBox::currentIndexChanged, &dialog, [&refresh](int) { refresh(); });
+	for (QComboBox* choice : characterChoices)
+		connect(choice, &QComboBox::currentIndexChanged, &dialog, [&refresh](int) { refresh(); });
+	connect(browse, &QPushButton::clicked, &dialog, [&]() {
+		QString path = QFileDialog::getSaveFileName(&dialog, tr("Export EPUB"), pathEdit->text(),
+			tr("EPUB publication (*.epub)"));
+		if (!path.isEmpty())
+		{
+			if (!path.endsWith(QLatin1String(".epub"), Qt::CaseInsensitive))
+				path += QStringLiteral(".epub");
+			pathEdit->setText(path);
+		}
+	});
+	connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+	connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+	refresh();
+	if (dialog.exec() != QDialog::Accepted)
+		return;
+	const EpubDocument::PreflightReport preflight = EpubDocument::preflightMixedSavedOrder(
+		*doc, publication(), pathEdit->text(), true, paragraphMappings(), characterMappings());
+	if (!preflight.ready())
+	{
+		QStringList errors;
+		for (const EpubDocument::PreflightIssue& issue : preflight.issues)
+		{
+			if (issue.severity == EpubDocument::PreflightSeverity::Error)
+				errors << issue.detail;
+		}
+		ScMessageBox::warning(this, CommonStrings::trWarning, errors.join(QLatin1Char('\n')));
+		return;
+	}
+	const EpubExport::Result written = EpubExport::writeBook(preflight.extraction.book, pathEdit->text());
+	if (!written.exported())
+		ScMessageBox::warning(this, CommonStrings::trWarning, written.detail);
 }
 
 bool ScribusMainWindow::getPDFDriver(const QString &filename, const std::vector<int> & pageNumbers,
@@ -7684,6 +8337,24 @@ void ScribusMainWindow::editInlineStart(int id)
 	updateActiveWindowCaption( tr("Editing Inline Item"));
 }
 
+void ScribusMainWindow::editAnchoredImage(int id)
+{
+	if (HaveDoc && inlinePalette)
+		inlinePalette->editAnchoredImage(id);
+}
+
+void ScribusMainWindow::editAnchoredObjectOptions(int id)
+{
+	if (HaveDoc && inlinePalette)
+		inlinePalette->editAnchorOptions(id);
+}
+
+void ScribusMainWindow::replaceAnchoredImage(int id)
+{
+	if (HaveDoc && inlinePalette)
+		inlinePalette->replaceAnchoredImage(id);
+}
+
 void ScribusMainWindow::editInlineEnd()
 {
 	view->hideInlinePage();
@@ -8098,6 +8769,53 @@ void ScribusMainWindow::StatusPic()
 	connect(dia, SIGNAL(selectElementByItem(PageItem*,bool,int)), this, SLOT(selectItemsFromOutlines(PageItem*,bool,int)));
 	dia->exec();
 	delete dia;
+}
+
+void ScribusMainWindow::replaceDocumentFonts()
+{
+	if (!HaveDoc || !doc)
+		return;
+
+	DocumentFontReplacementDialog dialog(this, doc, doc->documentFontNames());
+	if (dialog.exec() != QDialog::Accepted)
+		return;
+	if (!doc->replaceDocumentFont(dialog.sourceFont(), dialog.replacementFont()))
+	{
+		ScMessageBox::warning(this, tr("Replace Fonts"),
+			tr("The font could not be replaced. Choose a different installed font and try again."));
+	}
+}
+
+void ScribusMainWindow::convertRGBColorsToCMYK()
+{
+	if (!HaveDoc || !doc)
+		return;
+	QMap<QString, ScColor> preview;
+	if (!doc->previewRGBProcessColorsToCMYK(preview))
+	{
+		ScMessageBox::warning(this, tr("Convert RGB Colors to CMYK"),
+			tr("A valid RGB and CMYK ICC profile pair is required. Check this document's color management settings."));
+		return;
+	}
+	if (preview.isEmpty())
+	{
+		ScMessageBox::information(this, tr("Convert RGB Colors to CMYK"),
+			tr("This document has no RGB process colors to convert."));
+		return;
+	}
+	RGBToCMYKDialog dialog(this, doc, preview);
+	if (dialog.exec() != QDialog::Accepted)
+		return;
+	const QStringList selectedColors = dialog.selectedColors();
+	if (selectedColors.isEmpty())
+		return;
+	if (doc->convertRGBProcessColorsToCMYK(selectedColors) < 0)
+	{
+		ScMessageBox::warning(this, tr("Convert RGB Colors to CMYK"),
+			tr("The colors could not be converted. Check the document profiles and try again."));
+		return;
+	}
+	view->DrawNew();
 }
 
 QPair<QString, uint> ScribusMainWindow::CFileDialog(const QString& workingDirectory, const QString& dialogCaption, const QString& fileFilter, const QString& defaultFilename, int optionFlags, bool *useCompression, bool *useFonts, bool *useProfiles)
@@ -8677,6 +9395,10 @@ void ScribusMainWindow::statusBarLanguageChange()
 	mainWindowXPosDataLabel->setText("         ");
 	mainWindowYPosDataLabel->setText("         ");
 	m_mainWindowStatusLabel->setText( tr("Ready"));
+	statusPreflightButton->setToolTip(tr("Open the Preflight Verifier"));
+	statusSaveButton->setToolTip(tr("Save the current document"));
+	backgroundTaskLabel->setText(tr("Tasks"));
+	mainWindowProgressBar->setToolTip(tr("Background task progress"));
 }
 
 void ScribusMainWindow::setDefaultPrinter(const QString& name, const QString& file, const QString& command)
@@ -8923,6 +9645,147 @@ void ScribusMainWindow::slotInsertFrame()
 		dia.getNewFrameProperties(iafData);
 		doc->itemAddUserFrame(iafData);
 	}
+}
+
+void ScribusMainWindow::slotInsertAnchoredImage()
+{
+	if (!HaveDoc || (doc->appMode != modeEdit && doc->appMode != modeEditTable)
+		|| doc->m_Selection->isEmpty())
+		return;
+
+	PageItem* selected = doc->m_Selection->itemAt(0);
+	PageItem_TextFrame* textFrame = nullptr;
+	if (doc->appMode == modeEdit && selected->isTextFrame())
+		textFrame = selected->asTextFrame();
+	else if (doc->appMode == modeEditTable && selected->isTable())
+		textFrame = selected->asTable()->activeCell().textFrame();
+	if (!textFrame || doc->layerLocked(textFrame->m_layerID))
+		return;
+
+	const QString format = FormatsManager::instance()->fileDialogFormatList(FormatsManager::IMAGESIMGFRAME);
+	PrefsContext* dirsContext = m_prefsManager.prefsFile->getContext("dirs");
+	const QString docDir = m_prefsManager.documentDir();
+	const QString imageDir = dirsContext->get("images", docDir.isEmpty() ? "." : docDir);
+	CustomFDialog fileDialog(this, imageDir, tr("Insert Image in Text"), format,
+		fdShowPreview | fdExistingFiles | fdDisableOk, contextImages);
+	if (fileDialog.exec() != QDialog::Accepted)
+		return;
+	const QString fileName = fileDialog.selectedFiles().value(0);
+	if (fileName.isEmpty())
+		return;
+
+	const double columnWidth = textFrame->columnWidth();
+	if (columnWidth <= 0.0)
+		return;
+	QDialog options(this);
+	options.setWindowTitle(tr("Insert Image in Text"));
+	auto* form = new QFormLayout(&options);
+	auto* placement = new QComboBox(&options);
+	placement->addItem(tr("Inline"), static_cast<int>(AnchorPosition::Mode::Inline));
+	placement->addItem(tr("Above Line"), static_cast<int>(AnchorPosition::Mode::AboveLine));
+	placement->addItem(tr("Floating"), static_cast<int>(AnchorPosition::Mode::Custom));
+	form->addRow(tr("Placement:"), placement);
+	auto* width = new ScrSpinBox(unitGetRatioFromIndex(doc->unitIndex()),
+		columnWidth * unitGetRatioFromIndex(doc->unitIndex()), &options, doc->unitIndex());
+	width->setValue(qMin(180.0, columnWidth), SC_PT);
+	form->addRow(tr("Width:"), width);
+	auto* wrap = new QCheckBox(tr("Wrap text around image"), &options);
+	wrap->setChecked(true);
+	wrap->setEnabled(false);
+	connect(placement, &QComboBox::currentIndexChanged, &options, [placement, wrap] {
+		wrap->setEnabled(placement->currentData().toInt() == static_cast<int>(AnchorPosition::Mode::Custom));
+	});
+	form->addRow(QString(), wrap);
+	auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &options);
+	connect(buttons, &QDialogButtonBox::accepted, &options, &QDialog::accept);
+	connect(buttons, &QDialogButtonBox::rejected, &options, &QDialog::reject);
+	form->addRow(buttons);
+	if (options.exec() != QDialog::Accepted)
+		return;
+
+	const double requestedWidth = qMin(width->getValue(SC_PT), columnWidth);
+	std::unique_ptr<PageItem_ImageFrame> image(new PageItem_ImageFrame(doc, 0.0, 0.0,
+		requestedWidth, requestedWidth, 0.0, CommonStrings::None, CommonStrings::None));
+	image->isEmbedded = true;
+	image->m_layerID = textFrame->m_layerID;
+	{
+		UndoBlocker undoBlocker;
+		if (!doc->loadPict(fileName, image.get()))
+		{
+			ScMessageBox::warning(this, CommonStrings::trWarning, tr("The selected image could not be loaded."));
+			return;
+		}
+		const double xres = image->pixm.imgInfo.xres;
+		const double yres = image->pixm.imgInfo.yres;
+		const double naturalWidth = xres > 0.0 ? image->OrigW * 72.0 / xres : image->OrigW;
+		const double naturalHeight = yres > 0.0 ? image->OrigH * 72.0 / yres : image->OrigH;
+		if (!std::isfinite(naturalWidth) || !std::isfinite(naturalHeight)
+			|| naturalWidth <= 0.0 || naturalHeight <= 0.0)
+		{
+			ScMessageBox::warning(this, CommonStrings::trWarning, tr("The selected image has no usable dimensions."));
+			return;
+		}
+		const double frameHeight = requestedWidth * naturalHeight / naturalWidth;
+		if (!std::isfinite(frameHeight) || frameHeight <= 0.0)
+		{
+			ScMessageBox::warning(this, CommonStrings::trWarning, tr("The selected image has no usable dimensions."));
+			return;
+		}
+		image->setWidth(requestedWidth);
+		image->setHeight(frameHeight);
+		image->OldB2 = requestedWidth;
+		image->OldH2 = frameHeight;
+		image->gWidth = requestedWidth;
+		image->gHeight = frameHeight;
+		image->updateClip();
+		image->setFitImageToFrame(true);
+		image->setKeepAspectRatio(true);
+		image->adjustPictScale();
+		image->setItemName(QFileInfo(fileName).completeBaseName());
+
+		AnchorPosition anchor;
+		anchor.mode = static_cast<AnchorPosition::Mode>(placement->currentData().toInt());
+		if (anchor.mode == AnchorPosition::Mode::Custom)
+		{
+			anchor.horizontalReference = AnchorPosition::HorizontalReference::TextColumn;
+			anchor.horizontalAlignment = AnchorPosition::HorizontalAlignment::Right;
+			anchor.verticalAlignment = AnchorPosition::VerticalAlignment::Top;
+			anchor.wrapMode = wrap->isChecked() ? AnchorPosition::WrapMode::BoundingBox : AnchorPosition::WrapMode::None;
+			anchor.wrapOffsets = QMarginsF(6.0, 6.0, 6.0, 6.0);
+		}
+		image->setAnchorPosition(anchor);
+	}
+
+	UndoTransaction transaction;
+	if (UndoManager::undoEnabled())
+		transaction = m_undoManager->beginTransaction();
+	if (textFrame->HasSel)
+		textFrame->deleteSelectedTextFromFrame();
+	const int insertAt = textFrame->itemText.cursorPosition();
+	int frameIndex;
+	{
+		UndoBlocker undoBlocker;
+		frameIndex = doc->addToInlineFrames(image.get());
+	}
+	image.release();
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new SimpleState(Um::Paste, QString(), Um::IPaste);
+		state->set("PASTE_INLINE");
+		state->set("START", insertAt);
+		state->set("INDEX", frameIndex);
+		m_undoManager->action(textFrame, state);
+	}
+	textFrame->itemText.insertObject(frameIndex);
+	textFrame->invalidateLayout();
+	textFrame->update();
+	if (transaction)
+		transaction.commit();
+	dirsContext->set("images", QFileInfo(fileName).absolutePath());
+	inlinePalette->unsetDoc();
+	inlinePalette->setDoc(doc);
+	doc->changed();
+	view->DrawNew();
 }
 
 void ScribusMainWindow::slotItemTransform()
@@ -9471,6 +10334,81 @@ void ScribusMainWindow::insertMark(MarkType mType)
 		trans.commit();
 }
 
+void ScribusMainWindow::slotManageDynamicVariables()
+{
+	if (!HaveDoc)
+		return;
+	DynamicVariableManager dialog(doc, this);
+	dialog.exec();
+	view->DrawNew();
+}
+
+void ScribusMainWindow::slotInsertDynamicVariable()
+{
+	if (!HaveDoc || doc->m_Selection->count() != 1 || doc->appMode != modeEdit)
+		return;
+	PageItem* selectedItem = doc->m_Selection->itemAt(0);
+	if (!selectedItem || !selectedItem->isTextFrame())
+		return;
+	auto* currItem = selectedItem->asTextFrame();
+	DynamicVariableInsert dialog(doc, currItem, this);
+	if (dialog.exec() != QDialog::Accepted || dialog.variableId().isEmpty())
+		return;
+
+	UndoTransaction transaction;
+	if (UndoManager::undoEnabled())
+		transaction = m_undoManager->beginTransaction();
+	if (currItem->HasSel)
+		currItem->deleteSelectedTextFromFrame();
+
+	const QString variableId = dialog.variableId();
+	Mark* mark = doc->getDynamicVariableMark(variableId);
+	const bool existingMark = (mark != nullptr);
+	if (!mark)
+	{
+		QString label;
+		if (DynamicVariableResolver::isBuiltInId(variableId))
+			label = DynamicVariableResolver::displayNameForType(DynamicVariableResolver::typeForId(variableId));
+		else if (const DynamicVariable* variable = doc->dynamicVariable(variableId))
+			label = variable->name;
+		if (label.isEmpty())
+			label = tr("Missing Variable");
+		getUniqueName(label, doc->marksLabelsList(MARKVariableTextType), "_");
+		MarkData data;
+		data.itemName = currItem->itemName();
+		data.variableId = variableId;
+		data.text = doc->resolveDynamicVariable(variableId, currItem);
+		mark = doc->newMark();
+		mark->setValues(label, currItem->OwnPage, MARKVariableTextType, data);
+	}
+
+	currItem->itemText.insertMark(mark);
+	if (UndoManager::undoEnabled())
+	{
+		auto* state = new ScItemsState(UndoManager::InsertMark);
+		state->set("ETEA", mark->label);
+		state->set("label", mark->label);
+		state->set("type", static_cast<int>(mark->getType()));
+		state->set("strtxt", mark->getString());
+		state->set("variableId", mark->getVariableId());
+		state->set("MARK", existingMark ? QStringLiteral("insert_existing") : QStringLiteral("new"));
+		state->set("at", currItem->itemText.cursorPosition() - 1);
+		if (currItem->isNoteFrame())
+			state->set("noteframeName", currItem->getUName());
+		else
+			state->insertItem("inItem", currItem);
+		m_undoManager->action(doc, state);
+	}
+
+	currItem->invalidateLayout();
+	currItem->layout();
+	doc->changed();
+	doc->flag_updateMarksLabels = true;
+	view->DrawNew();
+	if (transaction)
+		transaction.commit();
+}
+
 void ScribusMainWindow::slotEditMark()
 {
 	if (!HaveDoc)
@@ -9665,16 +10603,29 @@ bool ScribusMainWindow::insertMarkDialog(PageItem_TextFrame* currItem, MarkType 
 			markData.text = QString::number(markData.itemPtr->OwnPage +1);
 			break;
 		case MARK2MarkType:
-			//gets pointer to referenced mark
-			Mark* markPtr;
-			insertMDialog->values(label, markPtr);
-			if (markPtr == nullptr)
-				return false; //FIX ME here user should be warned that inserting of mark fails and why
-			if (label.isEmpty())
-				label = tr("Mark to %1 mark").arg(markPtr->label);
-			markData.text = QString::number(markPtr->OwnPage + 1);
-			markData.destMarkName = markPtr->label;
-			markData.destMarkType = markPtr->getType();
+			{
+				Mark* markPtr = nullptr;
+				CrossReferenceFormat format = CrossReferencePageNumber;
+				QString prefix;
+				QString suffix;
+				auto* referenceDialog = dynamic_cast<Mark2Mark*>(insertMDialog.get());
+				if (!referenceDialog)
+					return false;
+				referenceDialog->crossReferenceValues(label, markPtr, format, prefix, suffix);
+				if (markPtr == nullptr)
+					return false; //FIX ME here user should be warned that inserting of mark fails and why
+				if (label.isEmpty())
+					label = tr("Cross-reference to %1").arg(markPtr->label);
+				markData.destMarkName = markPtr->label;
+				markData.destMarkType = markPtr->getType();
+				markData.crossReferenceFormat = format;
+				markData.crossReferencePrefix = prefix;
+				markData.crossReferenceSuffix = suffix;
+				const QString value = (format == CrossReferenceParagraphText)
+					? doc->crossReferenceParagraphText(markPtr)
+					: doc->getSectionPageNumberForPageIndex(markPtr->OwnPage);
+				markData.text = value.isEmpty() ? QString() : prefix + value + suffix;
+			}
 			break;
 		case MARKNoteMasterType:
 			//gets pointer to chosen notes style
@@ -9792,6 +10743,9 @@ bool ScribusMainWindow::insertMarkDialog(PageItem_TextFrame* currItem, MarkType 
 				MarkType dType = mrk->getDestMarkType();
 				is->set("dName", dName);
 				is->set("dType", (int) dType);
+				is->set("xrefFormat", (int) mrk->getCrossReferenceFormat());
+				is->set("xrefPrefix", mrk->getCrossReferencePrefix());
+				is->set("xrefSuffix", mrk->getCrossReferenceSuffix());
 			}
 			if (mrk->isType(MARK2ItemType))
 				is->insertItem("itemPtr", mrk->getItemPtr());
@@ -9814,6 +10768,11 @@ bool ScribusMainWindow::insertMarkDialog(PageItem_TextFrame* currItem, MarkType 
 
 bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 {
+	if (mrk && mrk->isType(MARKVariableTextType) && !mrk->getVariableId().isEmpty())
+	{
+		slotManageDynamicVariables();
+		return false;
+	}
 	MarkInsert* editMDialog = nullptr;
 	switch (mrk->getType())
 	{
@@ -9836,11 +10795,13 @@ bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 			break;
 		case MARK2MarkType:
 			{
-				editMDialog = (MarkInsert*) new Mark2Mark(doc->marksList(), mrk, this);
+				auto* referenceDialog = new Mark2Mark(doc->marksList(), mrk, this);
+				editMDialog = referenceDialog;
 				QString l = mrk->getDestMarkName();
 				MarkType t = mrk->getDestMarkType();
 				Mark* m = doc->getMark(l, t);
-				editMDialog->setValues(mrk->label, m);
+				referenceDialog->setCrossReferenceValues(mrk->label, m, mrk->getCrossReferenceFormat(),
+					mrk->getCrossReferencePrefix(), mrk->getCrossReferenceSuffix());
 			}
 			break;
 		case MARKNoteMasterType:
@@ -9904,6 +10865,7 @@ bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 			markData.itemName = currItem->itemName();
 		bool newMark = false;
 		bool replaceMark = false;
+		bool undoRecorded = false;
 		switch (mrk->getType())
 		{
 			case MARKAnchorType:
@@ -9914,8 +10876,11 @@ bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 				if (mrk->label != label)
 				{
 					getUniqueName(label, doc->marksLabelsList(mrk->getType()), "_"); //FIX ME here user should be warned that inserted mark`s label was changed
-					mrk->label = label;
-					emit UpdateRequest(reqMarksUpdate);
+					if (doc->renameCrossReferenceTarget(mrk->label, label))
+					{
+						docWasChanged = true;
+						undoRecorded = true;
+					}
 				}
 				break;
 			case MARKVariableTextType:
@@ -9977,19 +10942,29 @@ bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 				break;
 			case MARK2MarkType:
 				{
-					//gets pointer to referenced mark
 					Mark* markPtr = nullptr;
-					editMDialog->values(label, markPtr);
+					CrossReferenceFormat format = CrossReferencePageNumber;
+					QString prefix;
+					QString suffix;
+					auto* referenceDialog = dynamic_cast<Mark2Mark*>(editMDialog);
+					if (!referenceDialog)
+						return false;
+					referenceDialog->crossReferenceValues(label, markPtr, format, prefix, suffix);
 					if (markPtr == nullptr)
 						return false; //FIX ME here user should be warned that inserting of mark fails and why
 					if (label.isEmpty())
-						label = tr("Mark to %1 mark").arg(markPtr->label);
+						label = tr("Cross-reference to %1").arg(markPtr->label);
 					QString destLabel = markPtr->label;
 					MarkType destType = markPtr->getType();
-					if (markData.destMarkName != destLabel || markData.destMarkType != destType)
+					if (oldData.destMarkName != destLabel || oldData.destMarkType != destType
+						|| oldData.crossReferenceFormat != format || oldData.crossReferencePrefix != prefix
+						|| oldData.crossReferenceSuffix != suffix)
 					{
 						mrk->setDestMark(markPtr);
-						mrk->setString(doc->getSectionPageNumberForPageIndex(markPtr->OwnPage));
+						mrk->setCrossReferenceFormat(format);
+						mrk->setCrossReferencePrefix(prefix);
+						mrk->setCrossReferenceSuffix(suffix);
+						mrk->setString(doc->crossReferenceValue(mrk));
 						docWasChanged = true;
 					}
 					if (mrk->label != label)
@@ -10016,7 +10991,7 @@ bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 			default:
 				break;
 		}
-		if (UndoManager::undoEnabled())
+		if (UndoManager::undoEnabled() && !undoRecorded)
 		{
 			ScItemsState* is = nullptr;
 			if (newMark || replaceMark)
@@ -10042,6 +11017,9 @@ bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 				{
 					is->set("dName", mrk->getDestMarkName());
 					is->set("dType", (int) mrk->getDestMarkType());
+					is->set("xrefFormat", (int) mrk->getCrossReferenceFormat());
+					is->set("xrefPrefix", mrk->getCrossReferencePrefix());
+					is->set("xrefSuffix", mrk->getCrossReferenceSuffix());
 				}
 				if (mrk->isType(MARK2ItemType))
 					is->insertItem("itemPtr", mrk->getItemPtr());
@@ -10077,6 +11055,17 @@ bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 						is->set("dNameNEW", dName);
 						is->set("dTypeNEW", (int) dType);
 					}
+					if (mrk->getCrossReferenceFormat() != oldData.crossReferenceFormat
+						|| mrk->getCrossReferencePrefix() != oldData.crossReferencePrefix
+						|| mrk->getCrossReferenceSuffix() != oldData.crossReferenceSuffix)
+					{
+						is->set("xrefFormatOLD", (int) oldData.crossReferenceFormat);
+						is->set("xrefPrefixOLD", oldData.crossReferencePrefix);
+						is->set("xrefSuffixOLD", oldData.crossReferenceSuffix);
+						is->set("xrefFormatNEW", (int) mrk->getCrossReferenceFormat());
+						is->set("xrefPrefixNEW", mrk->getCrossReferencePrefix());
+						is->set("xrefSuffixNEW", mrk->getCrossReferenceSuffix());
+					}
 				}
 				if (mrk->isType(MARK2ItemType) && mrk->getItemPtr() != oldData.itemPtr)
 				{
@@ -10094,6 +11083,7 @@ bool ScribusMainWindow::editMarkDlg(Mark *mrk, PageItem_TextFrame* currItem)
 void ScribusMainWindow::setPreviewToolbar()
 {
 	modeToolBar->setEnabled(!doc->drawAsPreview);
+	toolPalette->setEnabled(!doc->drawAsPreview);
 	editToolBar->setEnabled(!doc->drawAsPreview);
 	pdfToolBar->setEnabled(!doc->drawAsPreview);
 	symbolPalette->setEnabled(!doc->drawAsPreview);

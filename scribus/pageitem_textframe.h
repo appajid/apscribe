@@ -24,6 +24,7 @@ for which a new license (GPL+exception) is in place.
 
 #include <QHash>
 #include <QRectF>
+#include <QRegion>
 #include <QString>
 #include <QKeyEvent>
 
@@ -76,6 +77,13 @@ public:
 	 * TableCell::updateContent().
 	 */
 	void setDerivedVerticalAlignment(int val);
+	QRectF resolvedAnchoredObjectRect(int inlineCharId, int storyPosition = -1) const;
+	// The same exclusion region used by text layout, in text-frame coordinates.
+	QRegion anchoredObjectInteractionRegion(const PageItem* item, const QRectF& objectRect) const;
+	int anchoredObjectAt(const QPointF& framePoint, int* storyPosition = nullptr) const;
+	int anchoredObjectAtCanvas(const QPointF& canvasPoint, int* storyPosition = nullptr);
+	PageItem* selectedAnchoredObject() const;
+	PageItem* selectedAnchoredImage() const;
 
 	void clearContents() override;
 	void truncateContents() override;
@@ -149,6 +157,14 @@ protected:
 	void adjustParagraphEndings ();
 
 private:
+	bool updateAnchoredObjectRects();
+	QRectF anchorHorizontalReferenceRect(const AnchorPosition& anchor, const QPointF& anchorPoint, const QRectF& columnRect) const;
+	QRectF anchorVerticalReferenceRect(const AnchorPosition& anchor, const QRectF& paragraphRect) const;
+	QRectF pageRectInFrameCoordinates(int pageIndex) const;
+	QRectF spreadRectInFrameCoordinates(int pageIndex) const;
+
+	QHash<int, QRectF> m_anchoredObjectRects;
+	int m_anchorLayoutDepth { 0 };
 	bool cursorBiasBackward {false};
 	// If the last paragraph had to be split, this is how many lines of the paragraph are in this frame.
 	// Used for orphan/widow control

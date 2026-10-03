@@ -28,6 +28,7 @@ for which a new license (GPL+exception) is in place.
 #endif
 // include files for QT
 #include <QColor>
+#include <QDateTime>
 #include <QFile>
 #include <QFont>
 #include <QHash>
@@ -36,6 +37,7 @@ for which a new license (GPL+exception) is in place.
 #include <QObject>
 #include <QPixmap>
 #include <QRectF>
+#include <QSet>
 #include <QStringList>
 #include <QTimer>
 #include <QUuid>
@@ -46,6 +48,7 @@ for which a new license (GPL+exception) is in place.
 #include "colormgmt/sccolormgmtengine.h"
 #include "colormgmt/sccolormgmtstructs.h"
 #include "documentinformation.h"
+#include "dynamicvariable.h"
 #include "numeration.h"
 #include "marks.h"
 #include "nodeeditcontext.h"
@@ -62,6 +65,7 @@ for which a new license (GPL+exception) is in place.
 #include "scpage.h"
 #include "sclayer.h"
 #include "styles/styleset.h"
+#include "styles/objectstyle.h"
 #include "styles/tablestyle.h"
 #include "styles/cellstyle.h"
 #include "undoobject.h"
@@ -243,13 +247,17 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		TypoPrefs& typographicPrefs() { return m_docPrefsData.typoPrefs; }
 		GuidesPrefs& guidesPrefs() { return m_docPrefsData.guidesPrefs; }
 		ItemToolPrefs& itemToolPrefs() { return m_docPrefsData.itemToolPrefs; }
+		const ItemToolPrefs& itemToolPrefs() const { return m_docPrefsData.itemToolPrefs; }
 		OperatorToolPrefs& opToolPrefs() { return m_docPrefsData.opToolPrefs; }
 		ColorPrefs& colorPrefs() { return m_docPrefsData.colorPrefs; }
 		CMSData& cmsSettings() { return m_docPrefsData.colorPrefs.DCMSset; }
+		const CMSData& cmsSettings() const { return m_docPrefsData.colorPrefs.DCMSset; }
 		DocumentInformation& documentInfo() { return m_docPrefsData.docInfo; }
+		const DocumentInformation& documentInfo() const { return m_docPrefsData.docInfo; }
 		HyphenatorPrefs& hyphenatorPrefs() { return m_docPrefsData.hyphPrefs; }
-		void setDocumentInfo(DocumentInformation di) { m_docPrefsData.docInfo = di; }
+		void setDocumentInfo(DocumentInformation di);
 		DocumentSectionMap& sections() { return m_docPrefsData.docSectionMap; }
+		const DocumentSectionMap& sections() const { return m_docPrefsData.docSectionMap; }
 		void setSections(DocumentSectionMap dsm) { m_docPrefsData.docSectionMap = std::move(dsm); }
 		const QMap<QString, int> & usedFonts() const { return UsedFonts; }
 
@@ -261,7 +269,9 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		ScPage* addPage(int pageNumber, const QString& masterPageName = QString(), bool addAutoFrame = false);
 		void deletePage(int);
 		//! @brief Add a master page with this function, do not use addPage
-		ScPage* addMasterPage(int, const QString&);
+		ScPage* addMasterPage(int, const QString&, int pageSide = -1);
+		//! @brief Add coordinated left and right master pages to a facing-page document
+		bool addMasterPagePair(const QString& leftPageName, const QString& rightPageName);
 		void deleteMasterPage(int);
 		//! @brief Rebuild master name list
 		void rebuildMasterNames();
@@ -578,6 +588,44 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		const QHash<QString, MultiLine>& lineStyles() const { return docLineStyles; }
 
 		/**
+		 * Returns the object style named @a name.
+		 */
+		const ObjectStyle& objectStyle(const QString& name) const { return m_docObjectStyles.get(name); }
+		/**
+		 * Returns the set of object styles in the document.
+		 */
+		const StyleSet<ObjectStyle>& objectStyles() const { return m_docObjectStyles; }
+		void invalidateObjectStyles() { m_docObjectStyles.invalidate(); }
+		/**
+		 * Returns <code>true</code> if @a style is the default object style.
+		 */
+		bool isDefaultStyle(const ObjectStyle& style) const { return m_docObjectStyles.isDefault(style); }
+		/**
+		 * Redefines the set of object styles in the document using styles in @a newStyles.
+		 */
+		void redefineObjectStyles(const StyleSet<ObjectStyle>& newStyles, bool removeUnused = false);
+		/**
+		 * Applies an Object Style edit as one undoable document operation.
+		 *
+		 * Replacement entries rename or remove styles and update every item and
+		 * dependent Object Style that refers to them.
+		 */
+		bool applyObjectStyleChanges(const StyleSet<ObjectStyle>& newStyles,
+								 const QMap<QString, QString>& replacements = {}, bool createUndo = true);
+		/**
+		 * Applies imported Object Styles and their color and line-style dependencies
+		 * as one atomic undoable document operation.
+		 */
+		bool applyObjectStyleImport(const StyleSet<ObjectStyle>& newStyles,
+								const ColorList& newColors,
+								const QHash<QString, MultiLine>& newLineStyles,
+								bool createUndo = true);
+		/**
+		 * Removes references to old object styles and replaces them with new names.
+		 */
+		void replaceObjectStyles(const QMap<QString, QString>& newNameForOld);
+
+		/**
 		 * Returns the table style named @a name.
 		 */
 		const TableStyle& tableStyle(const QString& name) { return m_docTableStyles.get(name); }
@@ -662,6 +710,18 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		void getUsedStylesFromItems(ResourceCollection& lists) const;
 
 		void getNamedResources(ResourceCollection& lists) const;
+		/** Return every font referenced by document content or document styles. */
+		QStringList documentFontNames() const;
+		/** Preview ICC conversion of named RGB process swatches in document color spaces. */
+		bool previewRGBProcessColorsToCMYK(QMap<QString, ScColor>& converted) const;
+		/** Convert selected RGB process swatches; an empty list selects all. Returns -1 on failure. */
+		int convertRGBProcessColorsToCMYK(const QStringList& names = QStringList(), bool createUndo = true);
+		/**
+		 * Replace one font throughout document content, master pages, patterns,
+		 * paragraph styles, character styles, and the document text-tool default.
+		 * The operation is stored as one collision-safe undo step.
+		 */
+		bool replaceDocumentFont(const QString& sourceFont, const QString& replacementFont, bool createUndo = true);
 		struct ResMapped
 		{
 				ResMapped(ResourceCollection& newNames) { m_newNames = newNames;}
@@ -680,6 +740,7 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 
 		QList<int> getSortedStyleList() const;
 		QList<int> getSortedCharStyleList() const;
+		QList<int> getSortedObjectStyleList() const;
 		QList<int> getSortedTableStyleList() const;
 		QList<int> getSortedCellStyleList() const;
 
@@ -705,12 +766,14 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		 * @param tempLineStyles A map which will be filled by line styles
 		 * @param tempTableStyles A pointer to a StyleSet which will be filled by table styles
 		 * @param tempCellStyles A pointer to a StyleSet which will be filled by cell styles
+		 * @param tempObjectStyles A pointer to a StyleSet which will be filled by object styles
 		 */
 		void loadStylesFromFile(const QString& fileName, StyleSet<ParagraphStyle> *tempStyles,
 								StyleSet<CharStyle> *tempCharStyles,
 								QHash<QString, MultiLine> *tempLineStyles,
 								StyleSet<TableStyle> *tempTableStyles = nullptr,
-								StyleSet<CellStyle> *tempCellStyles = nullptr);
+								StyleSet<CellStyle> *tempCellStyles = nullptr,
+								StyleSet<ObjectStyle> *tempObjectStyles = nullptr);
 
 		const CharStyle& charStyle(const QString& name) const { return m_docCharStyles.get(name); }
 		const StyleSet<CharStyle>& charStyles() const { return m_docCharStyles; }
@@ -1180,6 +1243,7 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		void itemSelection_EraseCharStyle(Selection* customSelection = nullptr);
 		void itemSelection_SetNamedParagraphStyle(const QString & name, Selection* customSelection = nullptr);
 		void itemSelection_SetNamedCharStyle(const QString & name, Selection* customSelection = nullptr);
+		void itemSelection_SetNamedObjectStyle(const QString& name, Selection* customSelection = nullptr);
 		void itemSelection_SetNamedLineStyle(const QString & name, Selection* customSelection = nullptr);
 		void itemSelection_SetNamedCellStyle(const QString & name, Selection* customSelection = nullptr);
 		void itemSelection_SetNamedTableStyle(const QString & name, Selection* customSelection = nullptr);
@@ -1382,7 +1446,18 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		QString m_currentEditedSymbol;
 		int m_currentEditedIFrame {0};
 		QString m_documentFileName;
+		QMap<QString, DynamicVariable> m_dynamicVariables;
+		QDateTime m_dynamicVariableCreationDate {QDateTime::currentDateTime()};
+		mutable QHash<QString, QHash<int, QHash<const PageItem*, QString>>> m_runningHeaderPageCache;
+		mutable QHash<QString, QSet<int>> m_runningHeaderResolutions;
 		QUuid m_uuid;
+
+		friend class DynamicVariableResolver;
+		bool runningHeaderCacheValue(const QString& id, int page, const PageItem* contextFrame, QString& value) const;
+		void setRunningHeaderCacheValue(const QString& id, int page, const PageItem* contextFrame, const QString& value) const;
+		bool beginRunningHeaderResolution(const QString& id, int page) const;
+		void endRunningHeaderResolution(const QString& id, int page) const;
+		void clearRunningHeaderCache() const;
 
 	public: // Public attributes
 		int NrItems {0};
@@ -1453,6 +1528,7 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 	private:
 		StyleSet<ParagraphStyle> m_docParagraphStyles;
 		StyleSet<CharStyle> m_docCharStyles;
+		StyleSet<ObjectStyle> m_docObjectStyles;
 		StyleSet<TableStyle> m_docTableStyles;
 		StyleSet<CellStyle> m_docCellStyles;
 
@@ -1876,10 +1952,67 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 
 		//return mark with given label and given type
 		Mark* getMark(const QString& label, MarkType type); //returns mark with label and type (labels are unique only for same type marks)
+		Mark* getDynamicVariableMark(const QString& variableId) const;
 		Mark* newMark(const Mark* mrk = nullptr);
+		Mark* crossReferenceTarget(const QString& name) const;
+		Mark* insertCrossReferenceTarget(const QString& name, PageItem* item, int position = -1);
+		Mark* insertCrossReferencePageNumber(const QString& targetName, PageItem* item, int position = -1,
+			const QString& label = QString());
+		Mark* insertCrossReference(const QString& targetName, PageItem* item, int position = -1,
+			const QString& label = QString(), CrossReferenceFormat format = CrossReferencePageNumber,
+			const QString& prefix = QString(), const QString& suffix = QString());
+		bool deleteCrossReferenceTarget(const QString& name);
+		int crossReferenceTargetUsage(const QString& name) const;
+		bool renameCrossReferenceTarget(const QString& oldName, const QString& newName);
+		QString crossReferencePageNumber(const QString& targetName) const;
+		QString crossReferenceParagraphText(const QString& targetName) const;
+		QString crossReferenceParagraphText(const Mark* target) const;
+		Mark* crossReferenceDestination(const Mark* reference) const;
+		QString crossReferenceValue(const Mark* reference) const;
+		bool invalidateCrossReferenceFrames(const Mark* target, bool forceUpdate = false);
+
+		const QMap<QString, DynamicVariable>& dynamicVariables() const { return m_dynamicVariables; }
+		const DynamicVariable* dynamicVariable(const QString& id) const;
+		QString dynamicVariableIdByName(const QString& name) const;
+		QString addDynamicVariable(const QString& name, const QString& value, const QString& id = QString(), const QString& type = DynamicVariableResolver::UserDefined);
+		QString addDynamicVariable(const QString& name, const QString& value, const QString& id, const QString& type,
+			const QString& paragraphStyle, const QString& runningHeaderMode,
+			const QString& runningHeaderTextCase = QString(), bool removeTrailingPunctuation = false);
+		QString addDynamicVariable(const QString& name, const QString& value, const QString& id, const QString& type,
+			const QString& paragraphStyle, const QString& runningHeaderMode,
+			const QString& runningHeaderTextCase, bool removeTrailingPunctuation, const QString& runningHeaderFallback);
+		QString addRunningHeaderVariable(const QString& name, const QString& paragraphStyle, DynamicVariable::RunningHeaderMode mode,
+			const QString& id = QString());
+		QString addRunningHeaderVariable(const QString& name, const QString& paragraphStyle, DynamicVariable::RunningHeaderMode mode,
+			DynamicVariable::RunningHeaderTextCase textCase, bool removeTrailingPunctuation, const QString& id = QString());
+		QString addRunningHeaderVariable(const QString& name, const QString& paragraphStyle, DynamicVariable::RunningHeaderMode mode,
+			DynamicVariable::RunningHeaderTextCase textCase, bool removeTrailingPunctuation,
+			DynamicVariable::RunningHeaderFallback fallback, const QString& id = QString());
+		bool updateDynamicVariable(const QString& id, const QString& name, const QString& value);
+		bool updateRunningHeaderVariable(const QString& id, const QString& name, const QString& paragraphStyle,
+			DynamicVariable::RunningHeaderMode mode);
+		bool updateRunningHeaderVariable(const QString& id, const QString& name, const QString& paragraphStyle,
+			DynamicVariable::RunningHeaderMode mode, DynamicVariable::RunningHeaderTextCase textCase,
+			bool removeTrailingPunctuation);
+		bool updateRunningHeaderVariable(const QString& id, const QString& name, const QString& paragraphStyle,
+			DynamicVariable::RunningHeaderMode mode, DynamicVariable::RunningHeaderTextCase textCase,
+			bool removeTrailingPunctuation, DynamicVariable::RunningHeaderFallback fallback);
+		bool removeDynamicVariable(const QString& id);
+		QString resolveDynamicVariable(const QString& id, const PageItem* frame = nullptr) const;
+		bool invalidateDynamicVariableFrames(const QString& id = QString(), bool forceUpdate = false);
+		bool invalidateRunningHeaderFrames(bool forceUpdate = false);
+		bool updateDynamicVariableValues();
+		QDateTime dynamicVariableCreationDate() const { return m_dynamicVariableCreationDate; }
+		void setDynamicVariableCreationDate(const QDateTime& dateTime) { m_dynamicVariableCreationDate = dateTime; }
+		void restoreDynamicVariable(SimpleState* state, bool isUndo);
+		void restoreDocumentFontReplacement(SimpleState* state, bool isUndo);
+		void restoreRGBProcessColorConversion(SimpleState* state, bool isUndo);
+		void restoreObjectStyleChanges(SimpleState* state, bool isUndo);
+		void restoreObjectStyleImport(SimpleState* state, bool isUndo);
 		TextNote* newNote(NotesStyle* NS);
 
 		bool isMarkUsed(const Mark* mrk, bool visible = false) const;
+		bool navigateToMark(const Mark* mark);
 		//set cursor in text where given mark will be found
 		void setCursor2MarkPos(const Mark* mark);
 		//return false if mark was not found
@@ -1960,6 +2093,7 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		bool updateEndNotesNums(); //return true if doc needs update
 		void invalidateNoteFrames(const NotesStyle* nStyle);
 		void invalidateMasterFrames(const NotesStyle* nStyle);
+		void retargetMarkReferences(MarkType targetType, const QString& oldLabel, const QString& newLabel);
 
 
 	public slots:
