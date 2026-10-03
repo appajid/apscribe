@@ -50,7 +50,13 @@ jobs:
           cmake --build build/release-appimage --parallel 2
 
       - name: Run native integration tests
-        run: ctest --test-dir build/release-appimage -L phase-5 --output-on-failure
+        # The existing CTest fixture installs into CMAKE_INSTALL_PREFIX=/usr.
+        # The hosted runner is disposable; retain Qt's runtime paths under sudo.
+        run: |
+          sudo env QT_QPA_PLATFORM=offscreen \
+            LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+            QT_PLUGIN_PATH="$QT_PLUGIN_PATH" \
+            ctest --test-dir build/release-appimage -L phase-5 --output-on-failure
 
       - name: Stage application and check release contents
         run: |
