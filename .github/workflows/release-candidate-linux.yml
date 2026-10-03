@@ -45,6 +45,8 @@ jobs:
         with:
           path: build/release-appimage
           key: apscribe-appimage-qt6112-ubuntu2404-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'scribus/**', 'apscribe.appdata.xml.in') }}-v1
+          restore-keys: |
+            apscribe-appimage-qt6112-ubuntu2404-
 
       - name: Configure and build Apscribe
         run: |

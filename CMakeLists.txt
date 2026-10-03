@@ -628,7 +628,7 @@ configure_file(
 )
 install(FILES
 	${CMAKE_CURRENT_BINARY_DIR}/apscribe.appdata.xml
-	RENAME apscribe${TAG_VERSION}.appdata.xml
+	RENAME com.appajid.apscribe.metainfo.xml
 	DESTINATION ${APPDATADIR}
 )
 
