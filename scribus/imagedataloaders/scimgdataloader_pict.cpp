@@ -14,6 +14,7 @@ for which a new license (GPL+exception) is in place.
 #include <QStack>
 #include <QDebug>
 
+#include <algorithm>
 #include <cstdlib>
 
 #include "scimgdataloader_pict.h"
@@ -1334,7 +1335,7 @@ void ScImgDataLoader_PICT::handlePixmap(QDataStream &ts, quint16 opCode)
 		}
 		else
 			ts >> pixByteCount;
-		if (!m_skipOpcode)
+		if ((!m_skipOpcode) && !image.isNull())
 		{
 			QByteArray data;
 			data.resize(pixByteCount);
@@ -1347,36 +1348,39 @@ void ScImgDataLoader_PICT::handlePixmap(QDataStream &ts, quint16 opCode)
 				img = data;
 			else
 				img = decodeRLE(data, bytesPerLine, twoByte);
+			const qsizetype scanBytes = image.bytesPerLine();
+			const qsizetype copyLen = std::min<qsizetype>( { bytesPerLine, img.size(), scanBytes } );
 			if ((opCode == 0x0098) || (opCode == 0x0099))
 			{
 				if (!isPixmap)
 				{
-					memcpy(image.scanLine(rr), img.data(), bytesPerLine);
+					memcpy(image.scanLine(rr), img.data(), copyLen);
 				}
 				else if (component_count == 1)
 				{
 					if (component_size == 4)
 					{
 						uchar *q = (uchar*)(image.scanLine(rr));
-						for (int xx = 0; xx < img.size(); xx++)
+						qsizetype outPos = 0;
+						for (qsizetype xx = 0; (xx < img.size()) && (outPos + 1 < scanBytes); xx++)
 						{
-							uchar i = (img[xx] >> 4) & 0x0F;
-							uchar j = img[xx] & 0x0F;
-							*q++ = i;
-							*q++ = j;
+							q[outPos++] = (img[xx] >> 4) & 0x0F;
+							q[outPos++] = img[xx] & 0x0F;
 						}
 					}
 					else
-						memcpy(image.scanLine(rr), img.data(), bytesPerLine);
+						memcpy(image.scanLine(rr), img.data(), copyLen);
 				}
 			}
 			else if ((opCode == 0x009A) || (opCode == 0x009B))
 			{
+				const qsizetype maxPix = (image.format() == QImage::Format_ARGB32) ? qMin<qsizetype>(pixCols, scanBytes / 4) : 0;
 				if (component_size == 5)
 				{
 					QRgb *q = (QRgb*)(image.scanLine(rr));
-					int imgDcount = 0;
-					for (quint16 xx = 0; xx < pixCols; xx++)
+					qsizetype imgDcount = 0;
+					const qsizetype rowPix = qMin(maxPix, img.size() / 2);
+					for (qsizetype xx = 0; xx < rowPix; xx++)
 					{
 						uchar i = img[imgDcount++];
 						uchar j = img[imgDcount++];
@@ -1389,7 +1393,10 @@ void ScImgDataLoader_PICT::handlePixmap(QDataStream &ts, quint16 opCode)
 				else if ((component_size == 8) || (component_size == 24))
 				{
 					QRgb *q = (QRgb*)(image.scanLine(rr));
-					for (uint xx = 0; xx < (uint) pixCols; xx++)
+					const qsizetype planes = (component_count == 4) ? 4 : ((component_count == 3) ? 3 : 1);
+					const qsizetype srcLimit = qMax(0, img.size() - (planes - 1) * (int) pixCols);
+					const qsizetype rowPix = qMin(maxPix, srcLimit);
+					for (qsizetype xx = 0; xx < rowPix; xx++)
 					{
 						uchar r = 0;
 						uchar g = 0;
@@ -1662,33 +1669,25 @@ QRect ScImgDataLoader_PICT::readRect(QDataStream &ts)
 QByteArray ScImgDataLoader_PICT::decodeRLE(QByteArray &in, quint16 bytesPerLine, int multByte)
 {
 	QByteArray ret(bytesPerLine, ' ');
-	uchar *ptrOut, *ptrIn;
-	ptrOut = (uchar*)ret.data();
-	ptrIn = (uchar*)in.data();
-	quint16 count = 0;
+	uchar* ptrOut = (uchar*) ret.data();
+	uchar* ptrIn  = (uchar*) in.data();
+	const uchar* endIn  = ptrIn + in.size();
+	const uchar* endOut = ptrOut + ret.size();
 	uchar c, c2;
 	quint16 len;
-	while (count < in.size())
+	while (ptrIn < endIn)
 	{
 		c = *ptrIn++;
-		count++;
 		len = c;
 		if (len < 128)
 		{
 			// Copy next len+1 bytes literally.
 			len++;
 			len *= multByte;
-			while (len != 0)
+			while ((len != 0) && (ptrIn < endIn) && (ptrOut < endOut))
 			{
 				*ptrOut++ = *ptrIn++;
 				len--;
-				count++;
-				if (multByte == 2)
-				{
-					*ptrOut++ = *ptrIn++;
-					len--;
-					count++;
-				}
 			}
 		}
 		else if (len > 128)
@@ -1700,23 +1699,23 @@ QByteArray ScImgDataLoader_PICT::decodeRLE(QByteArray &in, quint16 bytesPerLine,
 			len *= multByte;
 			if (multByte == 2)
 			{
+				if (endIn - ptrIn < 2)
+					break;
 				c = *ptrIn++;
-				count++;
 				c2 = *ptrIn++;
-				count++;
-				while (len != 0)
+				while ((len > 1) && (endOut - ptrOut > 1))
 				{
 					*ptrOut++ = c;
 					*ptrOut++ = c2;
-					len--;
-					len--;
+					len -= 2;
 				}
 			}
 			else
 			{
+				if (ptrIn >= endIn)
+					break;
 				c = *ptrIn++;
-				count++;
-				while (len != 0)
+				while ((len != 0) && (ptrOut < endOut))
 				{
 					*ptrOut++ = c;
 					len--;

@@ -499,7 +499,7 @@ int ScribusMainWindow::initScMW(bool primaryMainWindow)
 	setStyleSheet();
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-	connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, [this]()
+	connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this]()
 	{
 		emit ScQApp->iconSetChanged();
 		// THIS IS A WORKAROUND!
@@ -646,6 +646,14 @@ void ScribusMainWindow::setStyleSheet()
 		QByteArray tba;
 		tba.append(toolbararrow.toUtf8());
 		stylesheet.replace("___tb_menu_arrow___", tba);
+
+		const QColor overlayColor = QApplication::palette().color(QPalette::WindowText);
+		const QByteArray overlayRgb = QString("%1, %2, %3")
+			.arg(overlayColor.red())
+			.arg(overlayColor.green())
+			.arg(overlayColor.blue())
+			.toUtf8();
+		stylesheet.replace("___overlayRgb___", overlayRgb);
 	}
 
 	dockManager->setStyleSheet(stylesheet); // style sheet should be enabled when theme manager is implemented to handle color palettes in css file.
@@ -662,6 +670,9 @@ void ScribusMainWindow::setStyleSheet()
 	modeToolBar->setStyleSheet(stylesheet);
 	pdfToolBar->setStyleSheet(stylesheet);
 	viewToolBar->setStyleSheet(stylesheet);
+
+	// QMdiArea stores its background brush, so refresh it after palette changes.
+	mdiArea->setBackground(QApplication::palette().brush(QPalette::Active, QPalette::Dark));
 }
 
 
@@ -2844,7 +2855,6 @@ void ScribusMainWindow::HaveNewSel()
 		}
 		break;
 	}
-	propertiesPalette->xyzPal->basePointWidget->setSelectedAnchor(doc->rotationMode());
 
 	if (docSelectionCount != 0)
 	{
@@ -6696,6 +6706,10 @@ void ScribusMainWindow::slotPrefsOrg()
 			ScribusProxyStyle::instance()->setApplicationTheme(ScribusProxyStyle::ApplicationTheme::Light);
 		else
 			ScribusProxyStyle::instance()->setApplicationTheme(ScribusProxyStyle::ApplicationTheme::System);
+
+		// ADS reloads its bundled stylesheet after the palette change. Reapply
+		// the Scribus stylesheet after that queued palette-change handling.
+		QMetaObject::invokeMethod(this, [this]() { setStyleSheet(); }, Qt::QueuedConnection);
 	}
 #endif
 

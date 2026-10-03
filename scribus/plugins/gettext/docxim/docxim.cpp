@@ -15,6 +15,7 @@ for which a new license (GPL+exception) is in place.
 #include <QApplication>
 #include <QByteArray>
 
+#include "langmgr.h"
 #include "scribusdoc.h"
 #include "styles/charstyle.h"
 #include "styles/paragraphstyle.h"
@@ -212,6 +213,8 @@ void DocXIm::parseStyles()
 	currentParagraphStyle.charStyle().setParent(CommonStrings::DefaultCharacterStyle);
 	currentParagraphStyle.setLineSpacingMode(ParagraphStyle::AutomaticLineSpacing);
 
+	defaultCharacterStyle.setParent(CommonStrings::DefaultCharacterStyle);
+
 	QDomElement docElem = designMapDom.documentElement();
 	for (QDomElement drawPag = docElem.firstChildElement(); !drawPag.isNull(); drawPag = drawPag.nextSiblingElement())
 	{
@@ -224,7 +227,10 @@ void DocXIm::parseStyles()
 					for (QDomElement spr = spf.firstChildElement(); !spr.isNull(); spr = spr.nextSiblingElement())
 					{
 						if (spr.tagName() == "w:rPr")
+						{
 							parseCharProps(spr, defaultParagraphStyle);
+							parseCharProps(spr, defaultCharacterStyle);
+						}
 					}
 				}
 				else if (spf.tagName() == "w:pPrDefault")
@@ -245,9 +251,9 @@ void DocXIm::parseStyles()
 				if (!nam.isNull())
 				{
 					if (m_prefixName)
-						map_ID_to_Name.insert(drawPag.attribute("w:styleId"), m_item->itemName() + "_" + nam.attribute("w:val"));
+						paraStyleIDToNameMap.insert(drawPag.attribute("w:styleId"), m_item->itemName() + "_" + nam.attribute("w:val"));
 					else
-						map_ID_to_Name.insert(drawPag.attribute("w:styleId"), nam.attribute("w:val"));
+						paraStyleIDToNameMap.insert(drawPag.attribute("w:styleId"), nam.attribute("w:val"));
 					ParagraphStyle newStyle;
 					newStyle = defaultParagraphStyle;
 					if (m_prefixName)
@@ -259,9 +265,9 @@ void DocXIm::parseStyles()
 						if (spf.tagName() == "w:basedOn")
 						{
 							QString parentN = spf.attribute("w:val");
-							if (map_ID_to_Name.contains(parentN))
+							if (paraStyleIDToNameMap.contains(parentN))
 							{
-								parentN = map_ID_to_Name[parentN];
+								parentN = paraStyleIDToNameMap[parentN];
 								if (m_Doc->paragraphStyles().contains(parentN))
 									newStyle.setParent(parentN);
 							}
@@ -274,6 +280,41 @@ void DocXIm::parseStyles()
 					StyleSet<ParagraphStyle>tmp;
 					tmp.create(newStyle);
 					m_Doc->redefineStyles(tmp, false);
+				}
+			}
+			else if (drawPag.attribute("w:type") == "character")
+			{
+				QDomElement nam = drawPag.firstChildElement("w:name");
+				if (!nam.isNull())
+				{
+					if (m_prefixName)
+						charStyleIDToNameMap.insert(drawPag.attribute("w:styleId"), m_item->itemName() + "_" + nam.attribute("w:val"));
+					else
+						charStyleIDToNameMap.insert(drawPag.attribute("w:styleId"), nam.attribute("w:val"));
+					CharStyle newStyle;
+					newStyle = defaultCharacterStyle;
+					if (m_prefixName)
+						newStyle.setName(m_item->itemName() + "_" + nam.attribute("w:val"));
+					else
+						newStyle.setName(nam.attribute("w:val"));
+					for (QDomElement spf = drawPag.firstChildElement(); !spf.isNull(); spf = spf.nextSiblingElement())
+					{
+						if (spf.tagName() == "w:basedOn")
+						{
+							QString parentN = spf.attribute("w:val");
+							if (charStyleIDToNameMap.contains(parentN))
+							{
+								parentN = charStyleIDToNameMap[parentN];
+								if (m_Doc->charStyles().contains(parentN))
+									newStyle.setParent(parentN);
+							}
+						}
+						else if (spf.tagName() == "w:rPr")
+							parseCharProps(spf, newStyle);
+					}
+					StyleSet<CharStyle>tmp;
+					tmp.create(newStyle);
+					m_Doc->redefineCharStyles(tmp, false);
 				}
 			}
 		}
@@ -337,13 +378,13 @@ void DocXIm::parseStyledText(PageItem *textItem)
 							if (!sty.isNull())
 							{
 								QString nam = sty.attribute("w:val");
-								if (map_ID_to_Name.contains(nam))
+								if (paraStyleIDToNameMap.contains(nam))
 								{
 									ParagraphStyle newStyle;
-									newStyle.setParent(map_ID_to_Name[nam]);
+									newStyle.setParent(paraStyleIDToNameMap[nam]);
 									currentParagraphStyle = newStyle;
 									hasStyle = true;
-									currStyleName = map_ID_to_Name[nam];
+									currStyleName = paraStyleIDToNameMap[nam];
 									currentParagraphStyle.charStyle() = newStyle.charStyle();
 								}
 							}
@@ -351,16 +392,14 @@ void DocXIm::parseStyledText(PageItem *textItem)
 						}
 						else if (spr.tagName() == "w:r")
 						{
-							if (hasStyle)
-								currentParagraphStyle.charStyle() = m_Doc->paragraphStyle(currStyleName).charStyle();
-							else
-								currentParagraphStyle.charStyle() = defaultParagraphStyle.charStyle();
+							CharStyle savedStyle = currentParagraphStyle.charStyle();
+
 							for (QDomElement spt = spr.firstChildElement(); !spt.isNull(); spt = spt.nextSiblingElement())
 							{
 								if (spt.tagName() == "w:t")
 								{
 									QString txt = spt.text();
-									if (txt.length() > 0)
+									if (!txt.isEmpty())
 									{
 										txt.replace(QChar(10), SpecialChars::LINEBREAK);
 										txt.replace(QChar(12), SpecialChars::FRAMEBREAK);
@@ -387,6 +426,8 @@ void DocXIm::parseStyledText(PageItem *textItem)
 								else if (spt.tagName() == "w:rPr")
 									parseCharProps(spt, currentParagraphStyle);
 							}
+
+							currentParagraphStyle.charStyle() = savedStyle;
 						}
 					}
 					textItem->itemText.insertChars(textItem->itemText.length(), SpecialChars::PARSEP);
@@ -408,7 +449,7 @@ void DocXIm::parseParaProps(QDomElement &props, ParagraphStyle &pStyle)
 		else if (spt.tagName() == "w:jc")
 		{
 			QString align = spt.attribute("w:val");
-			if (align == "start")
+			if (align == "start" || align == "left")
 				pStyle.setAlignment(ParagraphStyle::LeftAligned);
 			else if (align == "center")
 				pStyle.setAlignment(ParagraphStyle::Centered);
@@ -468,25 +509,118 @@ void DocXIm::parseParaProps(QDomElement &props, ParagraphStyle &pStyle)
 	}
 }
 
-void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
+void DocXIm::parseCharProps(QDomElement& props, ParagraphStyle& pStyle)
 {
+	ScFace currentFont = pStyle.charStyle().font();
+	if (currentFont.isNone() && !pStyle.charStyle().parent().isEmpty())
+	{
+		QString parentCStyleName = pStyle.charStyle().parent();
+		const auto* parentCStyle = dynamic_cast<const CharStyle*>(m_Doc->charStyles().resolve(parentCStyleName));
+		while (parentCStyle)
+		{
+			currentFont = parentCStyle->font();
+			if (!currentFont.isNone())
+				break;
+			parentCStyleName = parentCStyle->parent();
+			if (parentCStyleName.isEmpty())
+				break;
+			parentCStyle = dynamic_cast<const CharStyle*>(m_Doc->charStyles().resolve(parentCStyleName));
+		}
+	}
+	if (currentFont.isNone() && !pStyle.parent().isEmpty())
+	{
+		QString parentStyleName = pStyle.parent();
+		const auto* parentStyle = dynamic_cast<const ParagraphStyle*>(m_Doc->paragraphStyles().resolve(parentStyleName));
+		while (parentStyle)
+		{
+			currentFont = parentStyle->charStyle().font();
+			if (!currentFont.isNone())
+				break;
+			parentStyleName = parentStyle->parent();
+			if (parentStyleName.isEmpty())
+				break;
+			parentStyle = dynamic_cast<const ParagraphStyle*>(m_Doc->paragraphStyles().resolve(parentStyleName));
+		}
+	}
+	if (currentFont.isNone())
+		currentFont = defaultCharacterStyle.font();
+	parseCharProps(props, pStyle.charStyle(), currentFont);
+}
+
+void DocXIm::parseCharProps(QDomElement& props, CharStyle& cStyle, const ScFace& currFont)
+{
+	bool boldFont = false;
+	bool italicFont = false;
+
+	ScFace currentFace = cStyle.font();
+	if (currentFace.isNone())
+		currentFace = currFont;
+	boldFont = currentFace.style().contains("Bold");
+	italicFont = currentFace.style().contains("Italic");
+
 	for (QDomElement spc = props.firstChildElement(); !spc.isNull(); spc = spc.nextSiblingElement())
 	{
+		if (spc.tagName() == "w:rStyle")
+		{
+			QString nam = spc.attribute("w:val");
+			if (charStyleIDToNameMap.contains(nam))
+			{
+				ParagraphStyle newStyle;
+				cStyle.setParent(charStyleIDToNameMap[nam]);
+			}
+		}
+		if (spc.tagName() == "w:lang")
+		{
+			QString langAbbrev;
+			if (spc.hasAttribute("w:bidi"))
+				langAbbrev = spc.attribute("w:bidi");
+			if (langAbbrev.isEmpty() && spc.hasAttribute("eastAsian"))
+				langAbbrev = spc.attribute("w:eastAsian");
+			if (langAbbrev.isEmpty() && spc.hasAttribute("w:val"))
+				langAbbrev = spc.attribute("w:val");
+			langAbbrev.replace('-', '_');
+
+			QString fullLang = LanguageManager::instance()->getLangFromAbbrev(langAbbrev);
+			if (fullLang.isEmpty())
+			{
+				QString langCode;
+				QStringList decomposition = fullLang.split('_');
+				if (!decomposition.isEmpty())
+				{
+					langCode = decomposition.first();
+					fullLang = LanguageManager::instance()->getLangFromAbbrev(langCode);
+					if (!fullLang.isEmpty())
+						langAbbrev = langCode;
+				}
+			}
+			if (!langAbbrev.isEmpty())
+				cStyle.setLanguage(langAbbrev);
+		}
+		if (spc.tagName() == "w:b")
+		{
+			QString val = spc.attribute("w:val", "true");
+			boldFont = (val == "true");
+		}
+		if (spc.tagName() == "w:i")
+		{
+			QString val = spc.attribute("w:val", "true");
+			italicFont = (val == "true");
+		}
 		if (spc.tagName() == "w:u")
 		{
 			StyleFlag styleEffects;
 			styleEffects |= ScStyle_Underline;
-			pStyle.charStyle().setFeatures(styleEffects.featureList());
+			cStyle.setFeatures(styleEffects.featureList());
 		}
 		else if (spc.tagName() == "w:sz")
-			pStyle.charStyle().setFontSize(spc.attribute("w:val").toDouble() / 2.0 * 10.0);
+			cStyle.setFontSize(spc.attribute("w:val").toDouble() / 2.0 * 10.0);
 		else if (spc.tagName() == "w:rFonts")
 		{
 			QString font = spc.attribute("w:ascii");
 			if (!font.isEmpty())
 			{
 				font = getFontName(font);
-				pStyle.charStyle().setFont(PrefsManager::instance().appPrefs.fontPrefs.AvailFonts[font]);
+				cStyle.setFont(PrefsManager::instance().appPrefs.fontPrefs.AvailFonts[font]);
 			}
 			else
 			{
@@ -496,19 +630,19 @@ void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
 					if (fonta == "minorHAnsi")
 					{
 						fonta = getFontName(themeFont1);
-						pStyle.charStyle().setFont(PrefsManager::instance().appPrefs.fontPrefs.AvailFonts[fonta]);
+						cStyle.setFont(PrefsManager::instance().appPrefs.fontPrefs.AvailFonts[fonta]);
 					}
 					else if (fonta == "majorHAnsi")
 					{
 						fonta = getFontName(themeFont2);
-						pStyle.charStyle().setFont(PrefsManager::instance().appPrefs.fontPrefs.AvailFonts[fonta]);
+						cStyle.setFont(PrefsManager::instance().appPrefs.fontPrefs.AvailFonts[fonta]);
 					}
 				}
 			}
 		}
 		else if (spc.tagName() == "w:caps")
 		{
-			StyleFlag styleEffects = pStyle.charStyle().effects();
+			StyleFlag styleEffects = cStyle.effects();
 			if (spc.hasAttribute("w:val"))
 			{
 				if (spc.attribute("w:val") == "true")
@@ -518,11 +652,11 @@ void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
 			}
 			else
 				styleEffects |= ScStyle_AllCaps;
-			pStyle.charStyle().setFeatures(styleEffects.featureList());
+			cStyle.setFeatures(styleEffects.featureList());
 		}
 		else if (spc.tagName() == "w:smallCaps")
 		{
-			StyleFlag styleEffects = pStyle.charStyle().effects();
+			StyleFlag styleEffects = cStyle.effects();
 			if (spc.hasAttribute("w:val"))
 			{
 				if (spc.attribute("w:val") == "true")
@@ -532,11 +666,11 @@ void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
 			}
 			else
 				styleEffects |= ScStyle_SmallCaps;
-			pStyle.charStyle().setFeatures(styleEffects.featureList());
+			cStyle.setFeatures(styleEffects.featureList());
 		}
 		else if (spc.tagName() == "w:strike")
 		{
-			StyleFlag styleEffects = pStyle.charStyle().effects();
+			StyleFlag styleEffects = cStyle.effects();
 			if (spc.hasAttribute("w:val"))
 			{
 				if (spc.attribute("w:val") == "true")
@@ -546,11 +680,11 @@ void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
 			}
 			else
 				styleEffects |= ScStyle_Strikethrough;
-			pStyle.charStyle().setFeatures(styleEffects.featureList());
+			cStyle.setFeatures(styleEffects.featureList());
 		}
 		else if (spc.tagName() == "w:shadow")
 		{
-			StyleFlag styleEffects = pStyle.charStyle().effects();
+			StyleFlag styleEffects = cStyle.effects();
 			if (spc.hasAttribute("w:val"))
 			{
 				if (spc.attribute("w:val") == "true")
@@ -560,11 +694,11 @@ void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
 			}
 			else
 				styleEffects |= ScStyle_Shadowed;
-			pStyle.charStyle().setFeatures(styleEffects.featureList());
+			cStyle.setFeatures(styleEffects.featureList());
 		}
 		else if (spc.tagName() == "w:outline")
 		{
-			StyleFlag styleEffects = pStyle.charStyle().effects();
+			StyleFlag styleEffects = cStyle.effects();
 			if (spc.hasAttribute("w:val"))
 			{
 				if (spc.attribute("w:val") == "true")
@@ -574,7 +708,7 @@ void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
 			}
 			else
 				styleEffects |= ScStyle_Outline;
-			pStyle.charStyle().setFeatures(styleEffects.featureList());
+			cStyle.setFeatures(styleEffects.featureList());
 		}
 		else if (spc.tagName() == "w:color")
 		{
@@ -588,7 +722,7 @@ void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
 				tmp.setSpotColor(false);
 				tmp.setRegistrationColor(false);
 				QString fNam = m_Doc->PageColors.tryAddColor("FromDocX"+colour.name(), tmp);
-				pStyle.charStyle().setFillColor(fNam);
+				cStyle.setFillColor(fNam);
 			}
 		}
 		else if (spc.tagName() == "w:shd")
@@ -603,20 +737,41 @@ void DocXIm::parseCharProps(QDomElement &props, ParagraphStyle &pStyle)
 				tmp.setSpotColor(false);
 				tmp.setRegistrationColor(false);
 				QString fNam = m_Doc->PageColors.tryAddColor("FromDocX"+colour.name(), tmp);
-				pStyle.charStyle().setBackColor(fNam);
+				cStyle.setBackColor(fNam);
 			}
 		}
 		else if (spc.tagName() == "w:vertAlign")
 		{
-			StyleFlag styleEffects = pStyle.charStyle().effects();
+			StyleFlag styleEffects = cStyle.effects();
 			if (spc.hasAttribute("w:val"))
 			{
 				if (spc.attribute("w:val") == "superscript")
 					styleEffects |= ScStyle_Superscript;
 				else if (spc.attribute("w:val") == "subscript")
 					styleEffects |= ScStyle_Subscript;
-				pStyle.charStyle().setFeatures(styleEffects.featureList());
+				cStyle.setFeatures(styleEffects.featureList());
 			}
+		}
+	}
+
+	bool changedStyle = false;
+	QString currentStyle = currentFace.style();
+	if (boldFont && italicFont)
+		changedStyle = (currentStyle != "Bold Italic");
+	else if (boldFont)
+		changedStyle = (currentStyle != "Bold");
+	else if (italicFont)
+		changedStyle = (currentStyle != "Italic");
+	else
+		changedStyle = (!currentStyle.isEmpty() && currentStyle != "Regular" && currentStyle != "Medium");
+
+	if (changedStyle)
+	{
+		QString fontFamily = currentFace.family();
+		if (!fontFamily.isEmpty())
+		{
+			QString font = getFontName(fontFamily, boldFont, italicFont);
+			cStyle.setFont(PrefsManager::instance().appPrefs.fontPrefs.AvailFonts[font]);
 		}
 	}
 }
@@ -663,45 +818,52 @@ void DocXIm::parsePlainTextOnly(PageItem *textItem)
 	QDomElement docElem = designMapDom.documentElement();
 	for (QDomElement drawPag = docElem.firstChildElement(); !drawPag.isNull(); drawPag = drawPag.nextSiblingElement())
 	{
-		if (drawPag.tagName() == "w:body")
+		if (drawPag.tagName() != "w:body")
+			continue;
+
+		for (QDomElement spf = drawPag.firstChildElement(); !spf.isNull(); spf = spf.nextSiblingElement())
 		{
-			for (QDomElement spf = drawPag.firstChildElement(); !spf.isNull(); spf = spf.nextSiblingElement())
+			if (spf.tagName() != "w:p")
+				continue;
+
+			for (QDomElement spr = spf.firstChildElement(); !spr.isNull(); spr = spr.nextSiblingElement())
 			{
-				if (spf.tagName() == "w:p")
+				if (spr.tagName() != "w:r")
+					continue;
+
+				for (QDomElement spt = spr.firstChildElement(); !spt.isNull(); spt = spt.nextSiblingElement())
 				{
-					for (QDomElement spr = spf.firstChildElement(); !spr.isNull(); spr = spr.nextSiblingElement())
+					if (spt.tagName() == "w:t")
 					{
-						if (spr.tagName() == "w:r")
+						QString txt = spt.text();
+						if (!txt.isEmpty())
 						{
-							for (QDomElement spt = spr.firstChildElement(); !spt.isNull(); spt = spt.nextSiblingElement())
-							{
-								if (spt.tagName() == "w:t")
-								{
-									QString txt = spt.text();
-									if (txt.length() > 0)
-									{
-										txt.replace(QChar(10), SpecialChars::LINEBREAK);
-										txt.replace(QChar(12), SpecialChars::FRAMEBREAK);
-										txt.replace(QChar(30), SpecialChars::NBHYPHEN);
-										txt.replace(QChar(160), SpecialChars::NBSPACE);
-										textItem->itemText.insertChars(textItem->itemText.length(), txt);
-										textItem->itemText.applyStyle(textItem->itemText.length(), currentParagraphStyle);
-										textItem->itemText.applyCharStyle(textItem->itemText.length(), txt.length(), currentParagraphStyle.charStyle());
-									}
-								}
-								else if (spt.tagName() == "w:tab")
-								{
-									int posT = textItem->itemText.length();
-									textItem->itemText.insertChars(posT, SpecialChars::TAB);
-									textItem->itemText.applyStyle(posT, currentParagraphStyle);
-								}
-							}
+							txt.replace(QChar(10), SpecialChars::LINEBREAK);
+							txt.replace(QChar(12), SpecialChars::FRAMEBREAK);
+							txt.replace(QChar(30), SpecialChars::NBHYPHEN);
+							txt.replace(QChar(160), SpecialChars::NBSPACE);
+							textItem->itemText.insertChars(textItem->itemText.length(), txt);
+							textItem->itemText.applyStyle(textItem->itemText.length(), currentParagraphStyle);
+							textItem->itemText.applyCharStyle(textItem->itemText.length(), txt.length(), currentParagraphStyle.charStyle());
 						}
 					}
-					textItem->itemText.insertChars(textItem->itemText.length(), SpecialChars::PARSEP);
-					textItem->itemText.applyStyle(textItem->itemText.length(), currentParagraphStyle);
+					else if (spt.tagName() == "w:tab")
+					{
+						int posT = textItem->itemText.length();
+						textItem->itemText.insertChars(posT, SpecialChars::TAB);
+						textItem->itemText.applyStyle(posT, currentParagraphStyle);
+					}
+					else if (spt.tagName() == "w:br")
+					{
+						int posT = textItem->itemText.length();
+						textItem->itemText.insertChars(posT, SpecialChars::LINEBREAK);
+						textItem->itemText.applyStyle(posT, currentParagraphStyle);
+					}
 				}
 			}
+
+			textItem->itemText.insertChars(textItem->itemText.length(), SpecialChars::PARSEP);
+			textItem->itemText.applyStyle(textItem->itemText.length(), currentParagraphStyle);
 		}
 	}
 }
@@ -727,6 +889,60 @@ QString DocXIm::getFontName(const QString& name)
 					fontName = it.current().family() + " " + slist[reInd];
 				return fontName;
 			}
+		}
+	}
+
+	if (!PrefsManager::instance().appPrefs.fontPrefs.GFontSub.contains(fontName))
+	{
+		QApplication::changeOverrideCursor(QCursor(Qt::ArrowCursor));
+		MissingFont dia(nullptr, fontName, m_Doc);
+		static_cast<void>(dia.exec());
+		QApplication::changeOverrideCursor(QCursor(Qt::WaitCursor));
+		PrefsManager::instance().appPrefs.fontPrefs.GFontSub[fontName] = dia.getReplacementFont();
+		fontName = dia.getReplacementFont();
+	}
+	else
+		fontName = PrefsManager::instance().appPrefs.fontPrefs.GFontSub[fontName];
+
+	return fontName;
+}
+
+QString DocXIm::getFontName(const QString& family, bool bold, bool italic)
+{
+	QString fontFamily = family;
+
+	QString fontName = family;
+	if (bold)
+		fontName += " Bold";
+	if (italic)
+		fontName += " Italic";
+
+	QString fontStyle = "Regular";
+	if (bold && !italic)
+		fontStyle = "Bold";
+	else if (!bold && italic)
+		fontStyle = "Italic";
+	else if (bold && italic)
+		fontStyle = "Bold Italic";
+
+	SCFontsIterator it(PrefsManager::instance().appPrefs.fontPrefs.AvailFonts);
+	for (; it.hasNext(); it.next())
+	{
+		if (it.current().family().toLower() != fontFamily.toLower())
+			continue;
+		if (it.currentKey().toLower() == fontName.toLower()) // exact Match
+			return fontName;
+
+		QStringList slist = PrefsManager::instance().appPrefs.fontPrefs.AvailFonts.fontMap.value(it.current().family());
+		if (slist.isEmpty())
+			continue;
+
+		slist.sort();
+		int reInd = slist.indexOf(fontStyle);
+		if (reInd >= 0)
+		{
+			fontName = it.current().family() + " " + slist[reInd];
+			return fontName;
 		}
 	}
 

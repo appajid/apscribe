@@ -6,6 +6,7 @@ for which a new license (GPL+exception) is in place.
 */
 #include "pageselector.h"
 
+#include <QApplication>
 #include <QByteArray>
 #include <QComboBox>
 #include <QDebug>
@@ -13,6 +14,7 @@ for which a new license (GPL+exception) is in place.
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPalette>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSignalBlocker>
@@ -45,11 +47,6 @@ PageSelector::PageSelector( QWidget* parent, int maximumPage ) : QWidget( parent
 	backButton->setAutoDefault( false );
 	forwardButton->setAutoDefault( false );
 	lastButton->setAutoDefault( false );
-
-	startButton->setIcon(IconManager::instance().loadIcon("go-first"));
-	backButton->setIcon(IconManager::instance().loadIcon("go-previous"));
-	forwardButton->setIcon(IconManager::instance().loadIcon("go-next"));
-	lastButton->setIcon(IconManager::instance().loadIcon("go-last"));
 
 	startButton->setFocusPolicy(Qt::NoFocus);
 	backButton->setFocusPolicy(Qt::NoFocus);
@@ -204,6 +201,12 @@ void PageSelector::changeEvent(QEvent *e)
 
 void PageSelector::iconSetChange()
 {
+	IconManager& iconManager = IconManager::instance();
+	startButton->setIcon(iconManager.loadIcon("go-first"));
+	backButton->setIcon(iconManager.loadIcon("go-previous"));
+	forwardButton->setIcon(iconManager.loadIcon("go-next"));
+	lastButton->setIcon(iconManager.loadIcon("go-last"));
+
 	QByteArray stylesheet;
 	if (loadRawText(ScPaths::instance().libDir() + "scribus.css", stylesheet))
 	{
@@ -211,6 +214,14 @@ void PageSelector::iconSetChange()
 		QByteArray da;
 		da.append(downArrow.toUtf8());
 		stylesheet.replace("___downArrow___", da);
+
+		const QColor overlayColor = QApplication::palette().color(QPalette::WindowText);
+		const QByteArray overlayRgb = QString("%1, %2, %3")
+			.arg(overlayColor.red())
+			.arg(overlayColor.green())
+			.arg(overlayColor.blue())
+			.toUtf8();
+		stylesheet.replace("___overlayRgb___", overlayRgb);
 		setStyleSheet(QString(stylesheet));
 	}
 }
