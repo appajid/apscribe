@@ -17,7 +17,7 @@ Requirements (on the Windows build machine)
   * Visual Studio 2022 build of Scribus, Release|x64
       - produced as <sources>\Scribus-builds\Scribus-Release-x64-v143\
       - see ..\..\BUILDING_win32_msvc.txt
-  * Qt 6 (>= 6.2), matching the build, e.g. F:\Libraries\Qt\6.11.2\msvc2022_64
+  * Qt 6 (>= 6.5), matching the build, e.g. F:\Libraries\Qt\6.11.2\msvc2022_64
   * The scribus-libs kit, e.g. F:\Scribus Libs\scribus-1.7.x-libs-msvc
       - https://sourceforge.net/projects/scribus/files/scribus-libs/
   * NSIS 3.x  ->  https://nsis.sourceforge.io/Download

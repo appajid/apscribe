@@ -273,32 +273,47 @@ void ScribusProxyStyle::setApplicationTheme(ApplicationTheme theme)
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 8, 0))
 	blockRefresh = true;
 
+	auto& displayPrefs = PrefsManager::instance().appPrefs.displayPrefs;
+	const QColor windowColor = QApplication::palette().color(QPalette::Active, QPalette::Window);
+	const QColor baseWindowColor = baseStyle()->standardPalette().color(QPalette::Active, QPalette::Window);
+	const QColor lightWindowColor = createLightPalette().color(QPalette::Active, QPalette::Window);
+	const QColor darkWindowColor = createDarkPalette().color(QPalette::Active, QPalette::Window);
+	// Scratch space historically stores the palette Window color itself. Accept
+	// palette-derived defaults saved under another theme, while preserving custom colors.
+	const bool useDefaultScratchColor = (displayPrefs.scratchColor == windowColor ||
+	                                     displayPrefs.scratchColor == baseWindowColor ||
+	                                     displayPrefs.scratchColor == lightWindowColor ||
+	                                     displayPrefs.scratchColor == darkWindowColor);
+
 	// For Linux exception see bugreport: https://bugreports.qt.io/browse/QTBUG-132929
 
 	switch (theme)
 	{
 	case ApplicationTheme::System:
 	{
-		qApp->styleHints()->unsetColorScheme();
+		QApplication::styleHints()->unsetColorScheme();
 #if (defined Q_OS_LINUX)
 		qApp->setPalette(baseStyle()->standardPalette());
 #endif
 		break;
 	}
 	case ApplicationTheme::Light:
-		qApp->styleHints()->setColorScheme(Qt::ColorScheme::Light);
+		QApplication::styleHints()->setColorScheme(Qt::ColorScheme::Light);
 #if (defined Q_OS_LINUX)
 		qApp->setPalette(createLightPalette());
 #endif
 		break;
 
 	case ApplicationTheme::Dark:
-		qApp->styleHints()->setColorScheme(Qt::ColorScheme::Dark);
+		QApplication::styleHints()->setColorScheme(Qt::ColorScheme::Dark);
 #if (defined Q_OS_LINUX)
 		qApp->setPalette(createDarkPalette());
 #endif
 		break;
 	}
+
+	if (useDefaultScratchColor)
+		displayPrefs.scratchColor = QApplication::palette().color(QPalette::Active, QPalette::Window);
 
 	blockRefresh = false;
 #endif

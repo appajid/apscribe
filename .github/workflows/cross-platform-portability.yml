@@ -24,9 +24,7 @@ jobs:
           - name: Windows x64
             os: windows-2022
             qt-arch: win64_msvc2022_64
-            # The aqt Windows repository does not publish the 6.11.2 archive.
-            # The native package workflow uses its separately verified Qt SDK.
-            qt-version: 6.10.2
+            qt-version: 6.11.2
           - name: macOS ARM64
             os: macos-15
             qt-arch: clang_64
@@ -44,11 +42,32 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libtiff-dev
 
       - name: Install Qt
+        if: runner.os != 'Windows'
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ matrix.qt-version }}
           arch: ${{ matrix.qt-arch }}
           cache: true
+
+      - name: Restore verified Windows Qt SDK
+        if: runner.os == 'Windows'
+        id: qt-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\Qt\6.11.2\msvc2022_64
+          key: qt-6.11.2-msvc2022-x64-20260813-v1
+
+      - name: Install and verify Windows Qt SDK
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\win32\ci\install-qt.ps1 -InstallRoot 'C:\Qt\6.11.2\msvc2022_64'
+
+      - name: Save verified Windows Qt SDK
+        if: runner.os == 'Windows' && steps.qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\Qt\6.11.2\msvc2022_64
+          key: qt-6.11.2-msvc2022-x64-20260813-v1
 
       - name: Configure portable tests
         run: cmake -S ci/portable -B build/portable -DCMAKE_BUILD_TYPE=Release

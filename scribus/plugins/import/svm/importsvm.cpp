@@ -3235,6 +3235,17 @@ quint32 SvmPlug::handleEMPImage(QDataStream &ds, quint16 id, bool first, bool co
 	return retVal;
 }
 
+static quint32 svmReadableLength(QDataStream &ds, quint32 want)
+{
+	QIODevice* dev = ds.device();
+	if ((dev == nullptr) || dev->isSequential())
+		return want;
+	const qint64 avail = dev->size() - dev->pos();
+	if (avail <= 0)
+		return 0;
+	return (quint32) qMin<qint64>(want, avail);
+}
+
 quint32 SvmPlug::getImageData(QDataStream &ds, quint16 id, bool first, bool cont, quint32 dataSize, emfStyle &sty)
 {
 	quint32 retVal = 0;
@@ -3254,8 +3265,11 @@ quint32 SvmPlug::getImageData(QDataStream &ds, quint16 id, bool first, bool cont
 			sty.imageWidth = w;
 			sty.imageHeight = h;
 			sty.imagePixelFormat = pixelFormat;
-			sty.imageData.resize(dataSize - 28);
-			retVal = ds.readRawData(sty.imageData.data(), dataSize - 28);
+			if (dataSize < 28)
+				return retVal;
+			const quint32 bmpLen = svmReadableLength(ds, dataSize - 28);
+			sty.imageData.resize(bmpLen);
+			retVal = ds.readRawData(sty.imageData.data(), bmpLen);
 		}
 		else if (dataV == U_IDT_Metafile)
 		{
@@ -3263,21 +3277,27 @@ quint32 SvmPlug::getImageData(QDataStream &ds, quint16 id, bool first, bool cont
 			ds >> imgType >> imgSize;
 			if (imgType == U_MDT_WmfPlaceable)
 			{
+				if (dataSize < 40)
+					return retVal;
 				QByteArray hea;
 				hea.resize(22);
 				ds.readRawData(hea.data(), 22);
 				ds.skipRawData(2);
 				QByteArray dta;
-				dta.resize(dataSize - 40);
-				retVal = ds.readRawData(dta.data(), dataSize - 40);
+				const quint32 wmfLen = svmReadableLength(ds, dataSize - 40);
+				dta.resize(wmfLen);
+				retVal = ds.readRawData(dta.data(), wmfLen);
 				retVal += 24;
 				sty.imageData = hea;
 				sty.imageData += dta;
 			}
 			else
 			{
-				sty.imageData.resize(dataSize - 16);
-				retVal = ds.readRawData(sty.imageData.data(), dataSize - 16);
+				if (dataSize < 16)
+					return retVal;
+				const quint32 mtaLen = svmReadableLength(ds, dataSize - 16);
+				sty.imageData.resize(mtaLen);
+				retVal = ds.readRawData(sty.imageData.data(), mtaLen);
 			}
 			sty.imageType = imgType;
 			sty.MetaFile = true;
@@ -3288,8 +3308,9 @@ quint32 SvmPlug::getImageData(QDataStream &ds, quint16 id, bool first, bool cont
 		if (emfStyleMapEMP.contains(id))
 		{
 			QByteArray hea;
-			hea.resize(dataSize);
-			retVal = ds.readRawData(hea.data(), dataSize);
+			const quint32 contLen = svmReadableLength(ds, dataSize);
+			hea.resize(contLen);
+			retVal = ds.readRawData(hea.data(), contLen);
 			emfStyleMapEMP[id].imageData += hea;
 		}
 	}
@@ -4613,16 +4634,22 @@ QImage SvmPlug::getImageDataFromStyle(quint8 flagsH)
 		img.loadFromData(emfStyle.imageData);
 	else
 	{
-		int hWidth = qAbs(emfStyle.imageWidth);
-		int hHeight = qAbs(emfStyle.imageHeight);
+		const qint64 w64 = qAbs((qint64) emfStyle.imageWidth);
+		const qint64 h64 = qAbs((qint64) emfStyle.imageHeight);
+		int hWidth  = (w64 > 0x7FFFFFFF) ? 0 : (int) w64;
+		int hHeight = (h64 > 0x7FFFFFFF) ? 0 : (int) h64;
 		QDataStream dsB(emfStyle.imageData);
 		dsB.setByteOrder(QDataStream::LittleEndian);
 		img = QImage(hWidth, hHeight, QImage::Format_ARGB32);
+		if (img.isNull())
+			return img;
 		img.fill(0);
 		if (emfStyle.imagePixelFormat == U_PF_32bppARGB)
 		{
 			for (qint32 yy = 0; yy < hHeight; yy++)
 			{
+				if (dsB.atEnd())
+					break;
 				auto* dst = (QRgb*) img.scanLine(yy);
 				for (qint32 xx = 0; xx < hWidth; xx++)
 				{
@@ -4637,6 +4664,8 @@ QImage SvmPlug::getImageDataFromStyle(quint8 flagsH)
 		{
 			for (qint32 yy = 0; yy < hHeight; yy++)
 			{
+				if (dsB.atEnd())
+					break;
 				auto* dst = (QRgb*) img.scanLine(yy);
 				for (qint32 xx = 0; xx < hWidth; xx++)
 				{
@@ -4651,6 +4680,8 @@ QImage SvmPlug::getImageDataFromStyle(quint8 flagsH)
 		{
 			for (qint32 yy = 0; yy < hHeight; yy++)
 			{
+				if (dsB.atEnd())
+					break;
 				auto* dst = (QRgb*) img.scanLine(yy);
 				for (qint32 xx = 0; xx < hWidth; xx++)
 				{
@@ -4666,6 +4697,8 @@ QImage SvmPlug::getImageDataFromStyle(quint8 flagsH)
 		{
 			for (qint32 yy = 0; yy < hHeight; yy++)
 			{
+				if (dsB.atEnd())
+					break;
 				auto* dst = (QRgb*) img.scanLine(yy);
 				for (qint32 xx = 0; xx < hWidth; xx++)
 				{
@@ -4685,6 +4718,8 @@ QImage SvmPlug::getImageDataFromStyle(quint8 flagsH)
 		{
 			for (qint32 yy = 0; yy < hHeight; yy++)
 			{
+				if (dsB.atEnd())
+					break;
 				auto* dst = (QRgb*) img.scanLine(yy);
 				for (qint32 xx = 0; xx < hWidth; xx++)
 				{
@@ -4717,10 +4752,14 @@ QImage SvmPlug::getImageDataFromStyle(quint8 flagsH)
 					colorTbl.append(qRgba(b, g, r, 255));
 			}
 			img = QImage(hWidth, hHeight, QImage::Format_Indexed8);
+			if (img.isNull())
+				return img;
 			img.fill(0);
 			img.setColorTable(colorTbl);
 			for (qint32 yy = 0; yy < hHeight; yy++)
 			{
+				if (dsB.atEnd())
+					break;
 				auto* dst = (char*) img.scanLine(yy);
 				dsB.readRawData(dst, hWidth);
 				aligntoQuadWord(dsB);
@@ -4748,6 +4787,8 @@ QImage SvmPlug::getImageDataFromStyle(quint8 flagsH)
 			}
 			for (qint32 yy = 0; yy < hHeight; yy++)
 			{
+				if (dsB.atEnd())
+					break;
 				auto* dst = (QRgb*) img.scanLine(yy);
 				for (qint32 xx = 0; xx < hWidth; xx += 2)
 				{
@@ -4787,11 +4828,15 @@ QImage SvmPlug::getImageDataFromStyle(quint8 flagsH)
 					colorTbl.append(qRgba(b, g, r, 255));
 			}
 			img = QImage(hWidth, hHeight, QImage::Format_Mono);
+			if (img.isNull())
+				return img;
 			img.fill(0);
 			img.setColorTable(colorTbl);
 			int bpl = img.bytesPerLine();
 			for (qint32 yy = 0; yy < hHeight; yy++)
 			{
+				if (dsB.atEnd())
+					break;
 				auto* dst = (char*) img.scanLine(yy);
 				dsB.readRawData(dst, bpl);
 			}

@@ -19,4 +19,6 @@ See [what works and what remains](FORK_CHANGES.md) before relying on a feature f
 
 Build instructions are in [BUILDING](BUILDING), [README.MacOSX](README.MacOSX), and [BUILDING_win32_cmake.txt](BUILDING_win32_cmake.txt). Keep source files and license notices when distributing modified builds; see [COPYING](COPYING). The application executable is `Apscribe` on macOS, `Apscribe.exe` on Windows, and `apscribe` on Linux. The `.sla` format and some internal resource identifiers retain Scribus names for compatibility.
 
+Apscribe requires Qt 6.5 or newer. The macOS, Linux, and Windows reference checks use Qt 6.11.2; Ubuntu 24.04's Qt 6.4.2 packages are too old for this branch, so use a newer Qt SDK when building there. Package the Qt runtime and platform plugins from the same SDK used for the build.
+
 For issues about these fork changes, use this repository's [issue tracker](https://github.com/appajid/apscribe/issues). For upstream Scribus issues, use the [Scribus project](https://www.scribus.net/). This fork is independently developed and is not an official Scribus release.

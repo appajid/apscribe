@@ -20,6 +20,7 @@
 #include <QDomElement>
 #include <QFile>
 #include <QIcon>
+#include <QPixmap>
 #include <QTextStream>
 #include <QtSvg/QSvgRenderer>
 #include <QRegularExpression>
@@ -28,8 +29,6 @@
 #include "api/api_application.h"
 #include "iconmanager.h"
 #include "scpaths.h"
-
-IconManager* IconManager::m_instance = nullptr;
 
 IconManager::IconManager(QObject *parent)
 	: QObject(parent)
@@ -45,7 +44,6 @@ IconManager& IconManager::instance()
 
 bool IconManager::setup()
 {
-
 	m_devicePixelRatio = qApp->devicePixelRatio();
 
 	if (!initIconSets())
@@ -60,9 +58,7 @@ bool IconManager::setup()
 		return false;
 	}
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 	connect(QApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &IconManager::changeColorScheme);
-#endif
 
 	return true;
 }
@@ -131,13 +127,11 @@ QColor IconManager::baseColor() const
 
 bool IconManager::iconsForDarkMode() const
 {	
- #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 	const auto* pStyleHints = QApplication::styleHints();
  	if (pStyleHints->colorScheme() == Qt::ColorScheme::Light)
  		return false;
  	if (pStyleHints->colorScheme() == Qt::ColorScheme::Dark)
  		return true;
- #endif
 	return (baseColor().lightness() >= 128) ? true : false;
 }
 
@@ -157,48 +151,48 @@ void IconManager::rebuildCache()
 
 bool IconManager::createLookupTable()
 {
-		QString iconSubdir(m_iconSets.value(m_activeSetBasename).path);
-		QString iconSetPath(QString("%1%2%3").arg(ScPaths::instance().iconDir(), iconSubdir, ".xml"));
-		QDomDocument document;
+	QString iconSubdir(m_iconSets.value(m_activeSetBasename).path);
+	QString iconSetPath(QString("%1%2%3").arg(ScPaths::instance().iconDir(), iconSubdir, ".xml"));
+	QDomDocument document;
 
-		if (!readXMLFile(iconSetPath, document, "xml"))
-			return false;
+	if (!readXMLFile(iconSetPath, document, "xml"))
+		return false;
 
-		m_lookupTable.clear();
+	m_lookupTable.clear();
 
-		QDomElement documentElement = document.documentElement();
-		QDomNodeList elements = documentElement.elementsByTagName( tagIcon );
+	QDomElement documentElement = document.documentElement();
+	QDomNodeList elements = documentElement.elementsByTagName( tagIcon );
 
-		for (int i = 0; i < elements.length(); i++)
+	for (int i = 0; i < elements.length(); i++)
+	{
+		QDomElement icon = elements.at(i).toElement();
+
+		QString iconPath = QString("%1%2%3").arg(ScPaths::instance().iconDir(), iconSubdir, "/" + icon.attribute("file"));
+		QString iconName = icon.attribute("id");
+		QColor iconColor = baseColor();
+
+		if (m_lookupTable.contains(iconName))
+			continue;
+
+		// if defined, override icon base color with color from iconset
+		if (iconsForDarkMode() && icon.hasAttribute(colorOnDark))
 		{
-			QDomElement icon = elements.at(i).toElement();
-
-			QString iconPath = QString("%1%2%3").arg(ScPaths::instance().iconDir(), iconSubdir, "/" + icon.attribute("file"));
-			QString iconName = icon.attribute("id");
-			QColor iconColor = baseColor();
-
-			if (m_lookupTable.contains(iconName))
-				continue;
-
-			// if defined, override icon base color with color from iconset
-			if (iconsForDarkMode() && icon.hasAttribute(colorOnDark))
-			{
-				iconColor = parseColor(icon.attribute(colorOnDark));
-			}
-			else if (!iconsForDarkMode() && icon.hasAttribute(colorOnLight))
-			{
-				iconColor = parseColor(icon.attribute(colorOnLight));
-			}
-
-			Item item;
-			item.name = iconName;
-			item.filePath = iconPath;
-			item.color = iconColor;
-
-			m_lookupTable.insert(iconName, item);
+			iconColor = parseColor(icon.attribute(colorOnDark));
+		}
+		else if (!iconsForDarkMode() && icon.hasAttribute(colorOnLight))
+		{
+			iconColor = parseColor(icon.attribute(colorOnLight));
 		}
 
-		return true;
+		Item item;
+		item.name = iconName;
+		item.filePath = iconPath;
+		item.color = iconColor;
+
+		m_lookupTable.insert(iconName, item);
+	}
+
+	return true;
 }
 
 void IconManager::insertPathIconsToCache()
@@ -413,13 +407,11 @@ QColor IconManager::parseColor(const QString str)
 	return QColor();
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 void IconManager::changeColorScheme(Qt::ColorScheme colorScheme)
 {
 	Q_UNUSED(colorScheme);
 	rebuildCache();
 }
-#endif
 
 QPixmap IconManager::pixmapFromFile(const QString filePath, QColor color, QSize size)
 {

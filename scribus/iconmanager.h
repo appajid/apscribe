@@ -14,9 +14,10 @@
 #ifndef ICONMANAGER_H
 #define ICONMANAGER_H
 
-
+#include <QColor>
 #include <QMap>
 #include <QObject>
+#include <QPainterPath>
 #include <QString>
 #include <QStringView>
 
@@ -27,8 +28,8 @@
 class PrefsFile;
 class QDomDocument;
 class QDomElement;
+class QPixmap;
 class ScribusMainWindow;
-
 
 /**
   * @author Craig Bradney
@@ -84,8 +85,6 @@ private:
 	IconManager(QObject *parent = nullptr);
 	~IconManager() = default;
 
-	static IconManager* m_instance;
-
 	QMap<QString, ScIconSetData> m_iconSets;
 	QMap<QString, QPainterPath*> m_iconPaths;
 	QMap<QString, Item> m_lookupTable;
@@ -115,9 +114,7 @@ private:
 	QColor parseColor(const QString str);
 
 private slots:
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 	void changeColorScheme(Qt::ColorScheme colorScheme);
-#endif
 };
 
 #endif
