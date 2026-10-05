@@ -356,6 +356,8 @@ Result extractMixedSavedOrder(const QVector<Frame>& frames, const QVector<Image>
 				image.captionAlignment != EpubExport::TextAlignment::Right &&
 				image.captionAlignment != EpubExport::TextAlignment::Justify) ||
 			(image.caption.isEmpty() && image.captionAlignment != EpubExport::TextAlignment::Left) ||
+			(image.captionSizePercent != 0 && (image.captionSizePercent < 50 || image.captionSizePercent > 200)) ||
+			(image.caption.isEmpty() && image.captionSizePercent != 0) ||
 			(!image.caption.isEmpty() && !validImageAltText(image.caption)) ||
 			image.asset.data.isEmpty() ||
 			(image.asset.mediaType != QLatin1String("image/png") &&
@@ -413,6 +415,7 @@ Result extractMixedSavedOrder(const QVector<Frame>& frames, const QVector<Image>
 			block.decorative = unit.image->decorative;
 			block.imageWidthPercent = unit.image->widthPercent;
 			block.captionAlignment = unit.image->captionAlignment;
+			block.captionSizePercent = unit.image->captionSizePercent;
 			block.imageIndex = result.images.size();
 			result.images.append(unit.image->asset);
 			result.blocks.append(block);

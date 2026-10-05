@@ -75,6 +75,12 @@ const QString& imageCaptionAlignmentAttributeName()
 	return name;
 }
 
+const QString& imageCaptionSizeAttributeName()
+{
+	static const QString name = QStringLiteral("scribus:epub-image-caption-size-percent");
+	return name;
+}
+
 const QString& imageDecorativeAttributeName()
 {
 	static const QString name = QStringLiteral("scribus:epub-image-decorative");
@@ -284,6 +290,10 @@ ImageFrameResult extractLinkedImageFrameImpl(const PageItem* item, const QString
 	if (captionAlignment < 0 || (caption.isEmpty() && captionAlignment != 0))
 		return { EpubReadingOrder::Status::UnsupportedContent,
 			QStringLiteral("The image frame has invalid EPUB caption alignment."), {}, {} };
+	const int captionSizePercent = savedImageCaptionSizePercent(item);
+	if (captionSizePercent < 0 || (caption.isEmpty() && captionSizePercent != 0))
+		return { EpubReadingOrder::Status::UnsupportedContent,
+			QStringLiteral("The image frame has invalid EPUB caption size."), {}, {} };
 	const int widthPercent = savedImageWidthPercent(item);
 	const auto cropAttributes = item->getObjectAttributes(imageFrameCropAttributeName());
 	if (!cropAttributes.isEmpty() && !savedUseImageFrameCrop(item))
@@ -369,6 +379,7 @@ ImageFrameResult extractLinkedImageFrameImpl(const PageItem* item, const QString
 	block.imageIndex = 0; // Caller replaces this when appending to a Book.
 	block.caption = caption;
 	block.captionAlignment = static_cast<EpubExport::TextAlignment>(captionAlignment);
+	block.captionSizePercent = captionSizePercent;
 	block.decorative = decorative;
 	block.imageWidthPercent = widthPercent;
 	return { EpubReadingOrder::Status::Ready, {}, block, { outputBytes, mediaType }, useFrameCrop };
@@ -449,7 +460,8 @@ bool setSavedImageCaption(PageItem* item, const QString& caption)
 {
 	if (!setSavedImageText(item, caption, imageCaptionAttributeName()))
 		return false;
-	return !caption.isEmpty() || setSavedImageCaptionAlignment(item, 0);
+	return !caption.isEmpty() ||
+		(setSavedImageCaptionAlignment(item, 0) && setSavedImageCaptionSizePercent(item, 0));
 }
 
 int savedImageCaptionAlignment(const PageItem* item)
@@ -492,6 +504,53 @@ bool setSavedImageCaptionAlignment(PageItem* item, int alignment)
 		attribute.name = imageCaptionAlignmentAttributeName();
 		attribute.type = QStringLiteral("Integer");
 		attribute.value = QString::number(alignment);
+		attributes.append(attribute);
+	}
+	item->setObjectAttributes(&attributes);
+	item->doc()->changed();
+	return true;
+}
+
+int savedImageCaptionSizePercent(const PageItem* item)
+{
+	if (!item || !item->isImageFrame())
+		return -1;
+	const auto attributes = item->getObjectAttributes(imageCaptionSizeAttributeName());
+	if (attributes.isEmpty())
+		return 0;
+	if (attributes.size() != 1 || attributes.first().type != QLatin1String("Integer"))
+		return -1;
+	bool valid = false;
+	const int value = attributes.first().value.toInt(&valid);
+	return valid && value >= 50 && value <= 200 ? value : -1;
+}
+
+bool setSavedImageCaptionSizePercent(PageItem* item, int sizePercent)
+{
+	if (!item || !item->isImageFrame() || item->isMasterItem() ||
+		(sizePercent != 0 && (sizePercent < 50 || sizePercent > 200)) ||
+		(sizePercent != 0 && savedImageCaption(item).isEmpty()))
+		return false;
+	const auto previous = item->getObjectAttributes(imageCaptionSizeAttributeName());
+	if ((sizePercent == 0 && previous.isEmpty()) ||
+		(sizePercent != 0 && previous.size() == 1 &&
+			previous.first().type == QLatin1String("Integer") &&
+			previous.first().value == QString::number(sizePercent)))
+		return true;
+	ObjAttrVector attributes = *item->getObjectAttributes();
+	for (auto it = attributes.begin(); it != attributes.end();)
+	{
+		if (it->name == imageCaptionSizeAttributeName())
+			it = attributes.erase(it);
+		else
+			++it;
+	}
+	if (sizePercent != 0)
+	{
+		ObjectAttribute attribute;
+		attribute.name = imageCaptionSizeAttributeName();
+		attribute.type = QStringLiteral("Integer");
+		attribute.value = QString::number(sizePercent);
 		attributes.append(attribute);
 	}
 	item->setObjectAttributes(&attributes);
@@ -1001,7 +1060,8 @@ Result extractDocument(const ScribusDoc& document, EpubExport::Book metadata,
 			images.append({ index, savedOrder(item), inspected.block.text, inspected.asset,
 				EpubExport::TextDirection::Ltr, EpubExport::TextAlignment::Left,
 				inspected.block.caption, inspected.block.decorative,
-				inspected.block.imageWidthPercent, inspected.block.captionAlignment });
+				inspected.block.imageWidthPercent, inspected.block.captionAlignment,
+				inspected.block.captionSizePercent });
 		}
 	}
 	const auto extraction = includeImages
