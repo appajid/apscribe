@@ -364,6 +364,7 @@ PyMethodDef scribus_methods[] = {
 	{ "setEpubImageDecorative", scribus_setepubimagedecorative, METH_VARARGS, tr(scribus_setepubimagedecorative__doc__)},
 	{ "setEpubImageCaption", scribus_setepubimagecaption, METH_VARARGS, tr(scribus_setepubimagecaption__doc__)},
 	{ "setEpubImageCaptionAlignment", scribus_setepubimagecaptionalignment, METH_VARARGS, tr(scribus_setepubimagecaptionalignment__doc__)},
+	{ "setEpubImageCaptionSizePercent", scribus_setepubimagecaptionsizepercent, METH_VARARGS, tr(scribus_setepubimagecaptionsizepercent__doc__)},
 	{ "setEpubImageWidthPercent", scribus_setepubimagewidthpercent, METH_VARARGS, tr(scribus_setepubimagewidthpercent__doc__)},
 	{ "setEpubUseImageFrameCrop", scribus_setepubuseimageframecrop, METH_VARARGS, tr(scribus_setepubuseimageframecrop__doc__)},
 	{ "setEpubImageReadingOrder", scribus_setepubimagereadingorder, METH_VARARGS, tr(scribus_setepubimagereadingorder__doc__)},

@@ -60,6 +60,7 @@ struct Block
 	bool decorative { false }; // Explicitly decorative image; requires empty alt and no caption.
 	int imageWidthPercent { 0 }; // 0 = reader default; 1-100 = width of the reading area.
 	TextAlignment captionAlignment { TextAlignment::Left }; // Applies only to a visible image caption.
+	int captionSizePercent { 0 }; // 0 = reader default; 50-200 = relative caption text size.
 };
 
 struct ImageAsset

@@ -128,6 +128,9 @@ bool validBook(const Book& book)
 				block.captionAlignment != TextAlignment::Right &&
 				block.captionAlignment != TextAlignment::Justify) ||
 			(block.caption.isEmpty() && block.captionAlignment != TextAlignment::Left) ||
+			(block.captionSizePercent != 0 && (block.captionSizePercent < 50 || block.captionSizePercent > 200)) ||
+			(block.caption.isEmpty() && block.captionSizePercent != 0) ||
+			(block.kind != BlockKind::Image && block.captionSizePercent != 0) ||
 			(block.kind != BlockKind::Image && !block.caption.isEmpty()) ||
 			(!block.caption.isEmpty() && block.caption.trimmed().isEmpty()) ||
 			(block.startsList && block.kind != BlockKind::BulletItem && block.kind != BlockKind::OrderedItem) ||
@@ -479,6 +482,8 @@ QByteArray chapterXml(const Book& book, const Chapter& chapter)
 				xml.writeStartElement(QStringLiteral("figcaption"));
 				if (block.captionAlignment != TextAlignment::Left)
 					xml.writeAttribute(QStringLiteral("class"), alignmentClass(block.captionAlignment));
+				if (block.captionSizePercent != 0)
+					xml.writeAttribute(QStringLiteral("style"), QStringLiteral("font-size: %1%;").arg(block.captionSizePercent));
 				xml.writeCharacters(block.caption);
 				xml.writeEndElement();
 			}

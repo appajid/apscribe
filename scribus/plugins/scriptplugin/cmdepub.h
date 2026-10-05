@@ -50,7 +50,7 @@ QT_TR_NOOP("epubImageFramePreflight(frameName, [altText]) -> dict\n\
 Read and validate one linked PNG/JPEG image frame without changing the document.\n\
 Omitting altText uses the description saved on the frame. Returns status,\n\
 detail, mediaType, byteSize, readingOrder, decorative, widthPercent,\n\
-frameCropApplied, optional caption, and captionAlignment.\n\
+frameCropApplied, optional caption, captionAlignment, and captionSizePercent.\n\
 Alt text must be non-empty unless the frame is explicitly decorative. This does\n\
 not establish mixed text/image reading order, preserve general frame or colour\n\
 transforms, or export the image; an explicit exact PNG crop is supported.\n\
@@ -96,6 +96,16 @@ must already have a caption; clearing that caption also clears this override.\n\
 "));
 
 PyObject* scribus_setepubimagecaptionalignment(PyObject* self, PyObject* args);
+
+PyDoc_STRVAR(scribus_setepubimagecaptionsizepercent__doc__,
+QT_TR_NOOP("setEpubImageCaptionSizePercent(frameName, sizePercent) -> None\n\
+\n\
+Set a visible EPUB caption's size relative to reader text. Use 50-200 percent,\n\
+or 0 to restore the reader default. A saved caption is required. Clearing the\n\
+caption also clears this override; Scribus print typography is unchanged.\n\
+"));
+
+PyObject* scribus_setepubimagecaptionsizepercent(PyObject* self, PyObject* args);
 
 PyDoc_STRVAR(scribus_setepubimagewidthpercent__doc__,
 QT_TR_NOOP("setEpubImageWidthPercent(frameName, widthPercent) -> None\n\
