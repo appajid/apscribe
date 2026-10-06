@@ -43,6 +43,19 @@ for which a new license (GPL+exception) is in place.
 #include "util.h"
 #include "util_text.h"
 
+namespace
+{
+bool storyEditorRangeMatches(SEditor* editor, const StoryText& storyText, int start, int length)
+{
+	if (start < 0 || length <= 0 || start + length >= editor->document()->characterCount())
+		return false;
+	QTextCursor cursor(editor->document());
+	cursor.setPosition(start);
+	cursor.setPosition(start + length, QTextCursor::KeepAnchor);
+	return cursor.selectedText() == storyText.text(start, length);
+}
+}
+
 SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	: QDialog(parent)
 {
@@ -735,8 +748,6 @@ bool SearchReplace::isFormatMatching(const ParagraphStyle& parStyle, const CharS
 
 void SearchReplace::slotReplace()
 {
-	if (m_storyEditorMode && regexCheckBox->isChecked() && !searchTextValue->text().isEmpty())
-		return;
 	m_searching = true;
 	updateButtonState();
 
@@ -762,7 +773,33 @@ void SearchReplace::replaceInStoryEditor()
 	MatchRange match = getMatchRange(storyText, selectionStart, storyText.length(), options);
 
 	if (selectionStart == match.start && selectionEnd - 1 == match.end)
-		replaceSelectionInStoryEditor();
+	{
+		if (options.regularExpression)
+		{
+			QString replacement;
+			QString error;
+			if (!regexReplacementForMatch(storyText, selectionStart, selectionEnd - selectionStart,
+				options, &replacement, &error))
+			{
+				showMessage(error);
+				return;
+			}
+			if (!storyEditorRangeMatches(storyTextEdit, storyText, selectionStart, selectionEnd - selectionStart))
+			{
+				showMessage(tr("The Story Editor display does not match the story at this position."));
+				return;
+			}
+			QTextCursor cursor = storyTextEdit->textCursor();
+			storyTextEdit->beginRegexEdit();
+			cursor.beginEditBlock();
+			cursor.insertText(replacement);
+			cursor.endEditBlock();
+			storyTextEdit->endRegexEdit();
+			storyTextEdit->setTextCursor(cursor);
+		}
+		else
+			replaceSelectionInStoryEditor();
+	}
 
 	searchInStoryEditor();
 }
@@ -1007,11 +1044,12 @@ void SearchReplace::slotReplaceAll()
 {
 	if (regexCheckBox->isChecked() && !searchTextValue->text().isEmpty())
 	{
-		if (m_storyEditorMode)
-			return;
 		m_searching = true;
 		updateButtonState();
-		replaceAllOnCanvasRegex();
+		if (m_storyEditorMode)
+			replaceAllInStoryEditorRegex();
+		else
+			replaceAllOnCanvasRegex();
 		m_searching = false;
 		updateButtonState();
 		return;
@@ -1069,6 +1107,67 @@ void SearchReplace::replaceAllInStoryEditor()
 
 	if (!found)
 		showMessage(tr(messageNoMatch));
+}
+
+void SearchReplace::replaceAllInStoryEditorRegex()
+{
+	if (!m_doc || !m_doc->scMW()->CurrStED)
+		return;
+	SEditor* editor = m_doc->scMW()->CurrStED->Editor;
+	const StoryText& storyText = editor->StyledText;
+	const auto options = getSearchOptions();
+	struct PendingReplacement
+	{
+		int start;
+		int length;
+		QString text;
+	};
+	std::vector<PendingReplacement> pending;
+	int from = 0;
+	while (from < storyText.length())
+	{
+		const auto found = searchStory(storyText, from, storyText.length(), options);
+		if (found.first < 0)
+			break;
+		QString replacement;
+		QString error;
+		const int length = found.second + 1 - found.first;
+		if (!regexReplacementForMatch(storyText, found.first, length, options, &replacement, &error))
+		{
+			showMessage(tr("Regex Replace All made no changes: %1").arg(error));
+			return;
+		}
+		if (!storyEditorRangeMatches(editor, storyText, found.first, length))
+		{
+			showMessage(tr("Regex Replace All made no changes: the Story Editor display does not match the story at a match position."));
+			return;
+		}
+		pending.push_back({ found.first, length, replacement });
+		from = found.second + 1;
+	}
+	if (pending.empty())
+	{
+		showMessage(tr(messageNoMatch));
+		return;
+	}
+
+	// A single QTextDocument edit block makes the complete operation one Story
+	// Editor Undo action. The editor's contentsChange hook keeps StyledText in
+	// sync as each replacement is applied from the end of the story.
+	QTextCursor cursor = editor->textCursor();
+	editor->beginRegexEdit();
+	cursor.beginEditBlock();
+	for (auto it = pending.rbegin(); it != pending.rend(); ++it)
+	{
+		cursor.setPosition(it->start);
+		cursor.setPosition(it->start + it->length, QTextCursor::KeepAnchor);
+		cursor.insertText(it->text);
+	}
+	cursor.endEditBlock();
+	editor->endRegexEdit();
+	editor->setTextCursor(cursor);
+	m_matchesFound = static_cast<int>(pending.size());
+	showMessage(QString(tr(messageOccurrences)).arg(m_matchesFound));
 }
 
 void SearchReplace::replaceAllOnCanvas()
@@ -1568,8 +1667,8 @@ void SearchReplace::updateButtonState()
 		}
 	}
 
-	replaceAllButton->setEnabled(enabled && (!regexMode || !m_storyEditorMode));
-	replaceButton->setEnabled(enabled && (!regexMode || !m_storyEditorMode));
+	replaceAllButton->setEnabled(enabled);
+	replaceButton->setEnabled(enabled);
 	searchButton->setEnabled(enabled);
 	previousButton->setEnabled(enabled);
 }

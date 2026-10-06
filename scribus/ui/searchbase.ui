@@ -97,7 +97,7 @@
           <string>Regular expression</string>
          </property>
          <property name="toolTip">
-          <string>Find text using a regular expression. Replace is available in canvas text frames.</string>
+          <string>Find and replace text using a regular expression.</string>
          </property>
         </widget>
        </item>

@@ -109,6 +109,8 @@ public:
 
 	void insertChars(const QString& text);
 	void insertChars(const QString& styledText, const QString& editText);
+	void beginRegexEdit();
+	void endRegexEdit();
 
 	StoryText StyledText;
 
@@ -140,6 +142,9 @@ protected:
 	StoryEditor* parentStoryEditor { nullptr };
 	int  blockContentsChangeHook { 0 };
 	bool unicodeTextEditMode { false };
+	bool regexEditInProgress { false };
+	int regexUndoDepth { 0 };
+	int regexRedoDepth { 0 };
 	bool wasMod { false };
 	bool ready { false };
 	int unicodeInputCount { 0 };
@@ -584,5 +589,4 @@ protected:
 };
 
 #endif
-
 

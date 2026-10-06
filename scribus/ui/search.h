@@ -150,6 +150,7 @@ private:
 	void replaceSelectionInStoryEditor();
 	void replaceSelectionOnCanvas(const QString* replacementText = nullptr);
 	void replaceAllInStoryEditor();
+	void replaceAllInStoryEditorRegex();
 	void replaceAllOnCanvas();
 	void replaceAllOnCanvasRegex();
 	bool regexReplacementForMatch(const StoryText& storyText, int start, int length,
