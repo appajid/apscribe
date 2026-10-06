@@ -32,6 +32,12 @@ set_target_properties(${SCRIBUS_TESTS_LIB}
 
 set(TESTS_LIBRARIES Qt6::Test Qt6::Core)
 
+# Regular-expression matching used by Find; kept independent of document UI.
+add_executable(regexsearchtests regexsearchtests.cpp ../regexsearch.cpp)
+target_link_libraries(regexsearchtests Qt6::Test Qt6::Core)
+add_test(NAME regexsearchtests COMMAND regexsearchtests)
+set_tests_properties(regexsearchtests PROPERTIES LABELS "find;regex")
+
 # Phase 7 starts with an isolated reflowable EPUB package writer. Reading
 # order extraction and the application export command are separate slices.
 add_executable(epubexporttests epubexporttests.cpp ../epubexport.cpp)

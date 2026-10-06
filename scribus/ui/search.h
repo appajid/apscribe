@@ -10,6 +10,7 @@ for which a new license (GPL+exception) is in place.
 #include "ui_searchbase.h"
 
 #include "scribusapi.h"
+#include <QRegularExpression>
 
 class PrefsContext;
 class ParagraphStyle;
@@ -33,6 +34,7 @@ private:
 		bool fontSizeEnabled { false };
 		bool ignoreCase { false };
 		bool paragraphStyleEnabled { false };
+		bool regularExpression { false };
 		bool strokeColorEnabled { false };
 		bool strokeShadeEnabled { false };
 		bool textEnabled { false };
@@ -42,6 +44,7 @@ private:
 		QString font;
 		QString strokeColor;
 		QString text;
+		QRegularExpression compiledRegex;
 
 		int alignment { 0 };
 		int fillColorId { 0 };
@@ -137,7 +140,7 @@ private:
 	//! \brief Check if there is a match starting at position
 	//!
 	//! When textEnabled, the resulting start position might be different than position.
-	MatchRange getMatchRange(const StoryText& storyText, int position, const int length, const Options& options);
+	MatchRange getMatchRange(const StoryText& storyText, int position, const int length, const Options& options, const QString* plainText = nullptr);
 	//! If the current selection matches the search, replace the selection.
 	// Otherwise do a search.
 	void replaceInStoryEditor();

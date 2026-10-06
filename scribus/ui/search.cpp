@@ -26,6 +26,7 @@ for which a new license (GPL+exception) is in place.
 #include "prefscontext.h"
 #include "prefsfile.h"
 #include "prefsmanager.h"
+#include "regexsearch.h"
 #include "scpage.h"
 #include "scribus.h"
 #include "scribusview.h"
@@ -113,7 +114,8 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	connect(searchStrokeColorCheckBox, &QCheckBox::clicked, [this](){enableStrokeColorSearch(); updateButtonState();});
 	connect(searchStrokeShadeCheckBox, &QCheckBox::clicked, [this](){enableStrokeShadeSearch(); updateButtonState();});
 	connect(searchStyleCheckBox, &QCheckBox::clicked, [this](){enableStyleSearch(); updateButtonState();});
-	connect(searchTextValue, &QLineEdit::textChanged, [this]() {enableTextSearch(); updateButtonState();});
+	connect(searchTextValue, &QLineEdit::textChanged, [this]() {hideMessage(); enableTextSearch(); updateButtonState();});
+	connect(regexCheckBox, &QCheckBox::toggled, [this]() {hideMessage(); enableTextSearch(); updateButtonState();});
 
 	connect(replaceAlignmentCheckBox, &QCheckBox::clicked, this, &SearchReplace::enableAlignmentReplace);
 	connect(replaceFillColorCheckBox, &QCheckBox::clicked, this, &SearchReplace::enableFillColorReplace);
@@ -269,6 +271,22 @@ QPair<int, int> SearchReplace::searchStoryBackward(const StoryText& storyText, c
 	// then reuse getMatchRange() for wholeWords / format validation.
 	if (options.textEnabled)
 	{
+		if (options.regularExpression)
+		{
+			const QString text = storyText.plainText();
+			int before = beforePos;
+			while (before > 0)
+			{
+				const auto candidate = RegexSearch::findPrevious(text, options.compiledRegex, before, options.wholeWords);
+				if (candidate.start < 0)
+					break;
+				const auto match = getMatchRange(storyText, candidate.start, length, options, &text);
+				if (match.start == candidate.start)
+					return { match.start, match.end };
+				before = candidate.start;
+			}
+			return { -1, -1 };
+		}
 		const Qt::CaseSensitivity cs = options.ignoreCase ? Qt::CaseInsensitive : Qt::CaseSensitive;
 		int searchFrom = beforePos - 1;
 		while (searchFrom >= 0)
@@ -532,7 +550,7 @@ void SearchReplace::selectPageItem(PageItem* pageItem)
 	m_doc->view()->requestMode(modeNormal);
 }
 
-SearchReplace::MatchRange SearchReplace::getMatchRange(const StoryText& storyText, int position, const int length, const Options& options)
+SearchReplace::MatchRange SearchReplace::getMatchRange(const StoryText& storyText, int position, const int length, const Options& options, const QString* plainText)
 {
 	if (length == 0)
 		return { -1, 0, 1 };
@@ -544,9 +562,18 @@ SearchReplace::MatchRange SearchReplace::getMatchRange(const StoryText& storyTex
 	{
 		// match the text
 		int matchLength = 0;
-
-		Qt::CaseSensitivity cs = options.ignoreCase ? Qt::CaseInsensitive : Qt::CaseSensitive;
-		matchStart = storyText.indexOf(options.text, matchStart, cs, &matchLength);
+		if (options.regularExpression)
+		{
+			const QString fallback = plainText ? QString() : storyText.plainText();
+			const auto match = RegexSearch::findNext(plainText ? *plainText : fallback, options.compiledRegex, matchStart, options.wholeWords);
+			matchStart = match.start;
+			matchLength = match.length;
+		}
+		else
+		{
+			Qt::CaseSensitivity cs = options.ignoreCase ? Qt::CaseInsensitive : Qt::CaseSensitive;
+			matchStart = storyText.indexOf(options.text, matchStart, cs, &matchLength);
+		}
 
 		if (matchStart < 0)
 			// there is no match after position
@@ -556,7 +583,7 @@ SearchReplace::MatchRange SearchReplace::getMatchRange(const StoryText& storyTex
 		// if yes qMin(i + matchLength, length[ -1])
 		matchEnd = matchStart + matchLength - 1;
 
-		if (options.wholeWords)
+		if (options.wholeWords && !options.regularExpression)
 		{
 			if (matchStart > 0 && storyText.text(matchStart - 1).isLetterOrNumber())
 				return {-1, 0, matchEnd + 1};
@@ -611,6 +638,7 @@ QPair<int, int> SearchReplace::searchStory(const StoryText& storyText, const int
 {
 	if (length == 0)
 		return { -1, -1 };
+	const QString plainText = options.regularExpression ? storyText.plainText() : QString();
 
 	int matchStart = start;
 	int matchEnd = start;
@@ -622,7 +650,7 @@ QPair<int, int> SearchReplace::searchStory(const StoryText& storyText, const int
 		if (!m_searching)
 			break;
 
-		const auto match = getMatchRange(storyText, matchStart, length, options);
+		const auto match = getMatchRange(storyText, matchStart, length, options, options.regularExpression ? &plainText : nullptr);
 		if (match.start == -1)
 			matchStart = match.nextPosition;
 		else
@@ -706,6 +734,8 @@ bool SearchReplace::isFormatMatching(const ParagraphStyle& parStyle, const CharS
 
 void SearchReplace::slotReplace()
 {
+	if (regexCheckBox->isChecked() && !searchTextValue->text().isEmpty())
+		return;
 	m_searching = true;
 	updateButtonState();
 
@@ -918,6 +948,8 @@ void SearchReplace::replaceSelectionOnCanvas()
 
 void SearchReplace::slotReplaceAll()
 {
+	if (regexCheckBox->isChecked() && !searchTextValue->text().isEmpty())
+		return;
 	m_searching = true;
 	updateButtonState();
 	showMessage();
@@ -1075,6 +1107,9 @@ void SearchReplace::enableTextSearch()
 	bool enabled = !searchTextValue->text().isEmpty();
 	wholeWordsCheckBox->setEnabled(enabled);
 	ignoreCaseCheckBox->setEnabled(enabled);
+	regexCheckBox->setEnabled(enabled);
+	ignoreCaseCheckBox->setText(regexCheckBox->isChecked()
+		? tr("Ignore Case") : tr("Ignore Case, Diacritics and Kashida"));
 }
 
 void SearchReplace::enableStyleSearch()
@@ -1215,6 +1250,7 @@ void SearchReplace::clear()
 
 	ignoreCaseCheckBox->setChecked(false);
 	wholeWordsCheckBox->setChecked(false);
+	regexCheckBox->setChecked(false);
 	
 	replaceAlignmentComboBox->setEnabled(false);
 	replaceFillColorComboBox->setEnabled(false);
@@ -1282,13 +1318,18 @@ SearchReplace::Options SearchReplace::getSearchOptions()
 	options.fontSizeEnabled = searchFontSizeCheckBox->isChecked();
 	options.ignoreCase = ignoreCaseCheckBox->isChecked();
 	options.paragraphStyleEnabled = searchStyleCheckBox->isChecked();
+	options.regularExpression = regexCheckBox->isChecked() && !searchTextValue->text().isEmpty();
 	options.strokeColorEnabled = searchStrokeColorCheckBox->isChecked();
 	options.strokeShadeEnabled = searchStrokeShadeCheckBox->isChecked();
 	options.textEnabled = !searchTextValue->text().isEmpty();
 	options.wholeWords = wholeWordsCheckBox->isChecked();
 
 	if (options.textEnabled)
+	{
 		options.text = searchTextValue->text();
+		if (options.regularExpression)
+			options.compiledRegex = RegexSearch::compile(options.text, options.ignoreCase, options.wholeWords);
+	}
 	if (options.paragraphStyleEnabled)
 		options.paragraphStyle = searchStyleComboBox->currentIndex();
 	if (options.alignmentEnabled)
@@ -1369,9 +1410,19 @@ void SearchReplace::updateButtonState()
 	previousButton->setVisible(!m_searching);
 
 	bool enabled = anySearchChecked();
+	const bool regexMode = regexCheckBox->isChecked() && !searchTextValue->text().isEmpty();
+	if (regexMode)
+	{
+		const auto expression = RegexSearch::compile(searchTextValue->text(), ignoreCaseCheckBox->isChecked(), wholeWordsCheckBox->isChecked());
+		if (!expression.isValid())
+		{
+			showMessage(tr("Invalid regular expression: %1").arg(expression.errorString()));
+			enabled = false;
+		}
+	}
 
-	replaceAllButton->setEnabled(enabled);
-	replaceButton->setEnabled(enabled);
+	replaceAllButton->setEnabled(enabled && !regexMode);
+	replaceButton->setEnabled(enabled && !regexMode);
 	searchButton->setEnabled(enabled);
 	previousButton->setEnabled(enabled);
 }
@@ -1453,6 +1504,7 @@ void SearchReplace::readPrefs()
 
 	ignoreCaseCheckBox->setChecked(m_prefs->getBool("ignoreCase", false));
 	wholeWordsCheckBox->setChecked(m_prefs->getBool("wholeword", false));
+	regexCheckBox->setChecked(m_prefs->getBool("regularExpression", false));
 
 	enableAlignmentReplace();
 	enableAlignmentSearch();
@@ -1524,4 +1576,5 @@ void SearchReplace::writePrefs()
 	m_prefs->set("searchTextValue", searchTextValue->text());
 	m_prefs->set("ignoreCase", ignoreCaseCheckBox->isChecked());
 	m_prefs->set("wholeword", wholeWordsCheckBox->isChecked());
+	m_prefs->set("regularExpression", regexCheckBox->isChecked());
 }

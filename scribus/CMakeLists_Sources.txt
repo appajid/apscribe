@@ -183,6 +183,7 @@ set(SCRIBUS_SOURCES
 	pslib.cpp
 	qtiocompressor.cpp
 	rawimage.cpp
+	regexsearch.cpp
 	rc4.c
 	sampleitem.cpp
 	scclipboardprocessor.cpp
