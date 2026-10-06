@@ -2,6 +2,7 @@
 #define GLYPHRUN_H
 
 #include <QList>
+#include <QSharedPointer>
 
 #include "scribusapi.h"
 #include "sctextstruct.h"
@@ -10,6 +11,7 @@ class SCRIBUS_API GlyphCluster
 {
 public:
 	GlyphCluster(const CharStyle* style, LayoutFlags flags, int first, int last, const InlineFrame& o, int visualIdx, const QString& str);
+	GlyphCluster(const QSharedPointer<CharStyle>& style, LayoutFlags flags, int first, int last, const InlineFrame& o, int visualIdx, const QString& str);
 
 	void append(GlyphLayout&);
 
@@ -48,6 +50,7 @@ public:
 	double yoffset { 0.0 };
 
 private:
+	QSharedPointer<CharStyle> m_styleOwner;
 	const CharStyle* m_style;
 	LayoutFlags m_flags;
 	QList<GlyphLayout> m_glyphs;

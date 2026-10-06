@@ -9,6 +9,8 @@
 #include <QObject>
 #include <QDebug>
 
+#include <utility>
+
 #include "commonstrings.h"
 #include "sctextstruct.h"
 #include "scfonts.h"
@@ -137,6 +139,26 @@ void CharStyle::applyCharStyle(const CharStyle & other)
 		set##attr_NAME(other.m_##attr_NAME);
 #include "charstyle.attrdefs.cxx"
 #undef ATTRDEF
+	updateFeatures();
+}
+
+void CharStyle::applyStyleAttributes(const CharStyle& other)
+{
+	QList<const CharStyle*> ancestors;
+	const CharStyle* current = &other;
+	while (current && !current->isDefaultStyle() && !ancestors.contains(current))
+	{
+		ancestors.prepend(current);
+		current = dynamic_cast<const CharStyle*>(current->parentStyle());
+	}
+	for (const CharStyle* source : std::as_const(ancestors))
+	{
+#define ATTRDEF(attr_TYPE, attr_GETTER, attr_NAME, attr_DEFAULT, attr_BREAKSHAPING) \
+		if (!source->isInh##attr_NAME()) \
+			set##attr_NAME(source->attr_GETTER());
+#include "charstyle.attrdefs.cxx"
+#undef ATTRDEF
+	}
 	updateFeatures();
 }
 

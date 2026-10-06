@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include <QTextBoundaryFinder>
+
 #include <harfbuzz/hb.h>
 #include <harfbuzz/hb-ft.h>
 #include <harfbuzz/hb-icu.h>
@@ -12,6 +14,7 @@
 #include "scrptrun.h"
 
 #include "glyphcluster.h"
+#include "grepstylerules.h"
 #include "pageitem.h"
 #include "scribusdoc.h"
 #include "storytext.h"
@@ -117,6 +120,69 @@ TextShaper::TextShaper(ITextSource &story, int firstChar)
 	}
 }
 
+const CharStyle& TextShaper::effectiveStyle(int pos) const
+{
+	const auto it = m_grepStyles.constFind(pos);
+	return it != m_grepStyles.cend() ? *it.value() : m_story.charStyle(pos);
+}
+
+void TextShaper::buildGrepStyles(int fromPos, int toPos)
+{
+	m_grepStyles.clear();
+	if (!m_context || !m_context->getDoc())
+		return;
+	const ScribusDoc* doc = m_context->getDoc();
+	const int storyLength = m_story.length();
+	for (int paragraph = fromPos; paragraph < toPos && paragraph < storyLength;)
+	{
+		const QString rulesJson = m_story.paragraphStyle(paragraph).grepStyleRulesJson();
+		if (rulesJson.isEmpty())
+		{
+			paragraph = m_story.nextBlockStart(paragraph);
+			continue;
+		}
+		int start = paragraph;
+		while (start > 0 && m_story.text(start - 1) != SpecialChars::PARSEP)
+			--start;
+		int end = paragraph;
+		while (end < storyLength && m_story.text(end) != SpecialChars::PARSEP)
+			++end;
+		QList<GrepStyleRules::Rule> rules;
+		if (end > start && GrepStyleRules::parse(rulesJson, &rules) && !rules.isEmpty())
+		{
+			const QString paragraphText = m_story.text(start, end - start);
+			QTextBoundaryFinder graphemes(QTextBoundaryFinder::Grapheme, paragraphText);
+			for (const auto& match : GrepStyleRules::matchParagraph(paragraphText, rules))
+			{
+				if (!doc->charStyles().contains(match.characterStyle))
+					continue;
+				const CharStyle& namedStyle = doc->charStyle(match.characterStyle);
+				int matchStart = match.start;
+				int matchEnd = match.start + match.length;
+				// Never split a shaped grapheme, including Indic conjuncts and
+				// combining marks, merely because a regex matched part of it.
+				graphemes.setPosition(matchStart);
+				if (!graphemes.isAtBoundary())
+					matchStart = graphemes.toPreviousBoundary();
+				graphemes.setPosition(matchEnd);
+				if (!graphemes.isAtBoundary())
+					matchEnd = graphemes.toNextBoundary();
+				for (int pos = qMax(start + matchStart, fromPos);
+					 pos < qMin(start + matchEnd, toPos); ++pos)
+				{
+					if (m_story.hasObject(pos) || m_story.hasExpansionPoint(pos))
+						continue;
+					auto& style = m_grepStyles[pos];
+					if (!style)
+						style.reset(new CharStyle(m_story.charStyle(pos)));
+					style->applyStyleAttributes(namedStyle);
+				}
+			}
+		}
+		paragraph = end + 1;
+	}
+}
+
 QList<TextShaper::TextRun> TextShaper::itemizeBiDi(int fromPos) const
 {
 	QList<TextRun> textRuns;
@@ -193,10 +259,10 @@ QList<TextShaper::FeaturesRun> TextShaper::itemizeFeatures(const TextRun &run) c
 	while (start < run.start + run.len)
 	{
 		int end = start;
-		QStringList startFeatures = m_story.charStyle(m_textMap.value(start)).fontFeatures().split(",");
+		QStringList startFeatures = effectiveStyle(m_textMap.value(start)).fontFeatures().split(",");
 		while (end < run.start + run.len)
 		{
-			QStringList endFeatures = m_story.charStyle(m_textMap.value(end)).fontFeatures().split(",");
+			QStringList endFeatures = effectiveStyle(m_textMap.value(end)).fontFeatures().split(",");
 			if (startFeatures != endFeatures)
 				break;
 			end++;
@@ -221,11 +287,15 @@ QList<TextShaper::TextRun> TextShaper::itemizeStyles(const QList<TextRun> &runs)
 		while (start < run.start + run.len)
 		{
 			int end = start;
-			const CharStyle &startStyle = m_story.charStyle(m_textMap.value(start));
+			const int startPos = m_textMap.value(start);
+			const CharStyle &startStyle = effectiveStyle(startPos);
 			while (end < run.start + run.len)
 			{
-				const CharStyle &endStyle = m_story.charStyle(m_textMap.value(end));
-				if (!startStyle.equivForShaping(endStyle))
+				const int endPos = m_textMap.value(end);
+				const CharStyle &endStyle = effectiveStyle(endPos);
+				if (!startStyle.equivForShaping(endStyle)
+					|| (m_grepStyles.contains(startPos) != m_grepStyles.contains(endPos))
+					|| (m_grepStyles.contains(startPos) && !startStyle.equiv(endStyle)))
 					break;
 				end++;
 			}
@@ -312,7 +382,7 @@ void TextShaper::buildText(int fromPos, int toPos, QVector<int>& smallCaps)
 			}
 		}
 
-		const CharStyle &style = m_story.charStyle(i);
+		const CharStyle &style = effectiveStyle(i);
 		int effects = style.effects() & ScStyle_UserStyles;
 		bool hasSmallCap = false;
 		if ((effects & ScStyle_AllCaps) || (effects & ScStyle_SmallCaps))
@@ -342,6 +412,9 @@ void TextShaper::buildText(int fromPos, int toPos, QVector<int>& smallCaps)
 ShapedText TextShaper::shape(int fromPos, int toPos)
 {
 	m_contextNeeded = false;
+	if (toPos < 0 || toPos > m_story.length())
+		toPos = m_story.length();
+	buildGrepStyles(fromPos, toPos);
 	
 	ShapedText result(&m_story, fromPos, toPos, m_context);
 	
@@ -424,7 +497,7 @@ ShapedText TextShaper::shape(int fromPos, int toPos)
 
 	for (const TextRun& textRun : std::as_const(textRuns))
 	{
-		const CharStyle &style = m_story.charStyle(m_textMap.value(textRun.start));
+		const CharStyle &style = effectiveStyle(m_textMap.value(textRun.start));
 
 		const ScFace &scFace = style.font();
 		hb_font_t *hbFont = reinterpret_cast<hb_font_t*>(scFace.hbFont());
@@ -524,7 +597,7 @@ ShapedText TextShaper::shape(int fromPos, int toPos)
 			
 			QChar ch = m_story.text(firstChar);
 			LayoutFlags flags = m_story.flags(firstChar);
-			const CharStyle& charStyle(m_story.charStyle(firstChar));
+			const CharStyle& charStyle(effectiveStyle(firstChar));
 			const StyleFlag& effects = charStyle.effects();
 			if (firstChar < latinParagraphStart || firstChar >= latinParagraphEnd)
 			{
@@ -544,7 +617,10 @@ ShapedText TextShaper::shape(int fromPos, int toPos)
 			}
 
 			QString str = m_text.mid(firstChar - fromPos, lastChar - firstChar + 1);
-			GlyphCluster run(&charStyle, flags, firstChar, lastChar, m_story.object(firstChar), result.glyphs().length(), str);
+			const auto ownedStyle = m_grepStyles.value(firstChar);
+			GlyphCluster run = ownedStyle
+				? GlyphCluster(ownedStyle, flags, firstChar, lastChar, m_story.object(firstChar), result.glyphs().length(), str)
+				: GlyphCluster(&charStyle, flags, firstChar, lastChar, m_story.object(firstChar), result.glyphs().length(), str);
 
 			run.clearFlag(ScLayout_HyphenationPossible);
 			if (m_story.hasFlag(lastChar, ScLayout_HyphenationPossible))

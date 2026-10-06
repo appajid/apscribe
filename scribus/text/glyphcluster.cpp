@@ -10,6 +10,17 @@ GlyphCluster::GlyphCluster(const CharStyle* style, LayoutFlags flags, int first,
 	, m_str(str)
 {}
 
+GlyphCluster::GlyphCluster(const QSharedPointer<CharStyle>& style, LayoutFlags flags, int first, int last, const InlineFrame& o, int i, const QString& str)
+	: m_styleOwner(style)
+	, m_style(m_styleOwner.data())
+	, m_flags(flags)
+	, m_object(o)
+	, m_firstChar(first)
+	, m_lastChar(last)
+	, m_visualIndex(i)
+	, m_str(str)
+{}
+
 void GlyphCluster::append(GlyphLayout& gl)
 {
 	gl.scaleH = m_scaleH;
