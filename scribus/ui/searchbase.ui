@@ -94,10 +94,10 @@
        <item row="3" column="1">
         <widget class="QCheckBox" name="regexCheckBox">
          <property name="text">
-          <string>Regular expression (Find only)</string>
+          <string>Regular expression</string>
          </property>
          <property name="toolTip">
-          <string>Find text using a regular expression. Replacement is not yet supported in this mode.</string>
+          <string>Find text using a regular expression. Replace is available in canvas text frames.</string>
          </property>
         </widget>
        </item>

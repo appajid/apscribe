@@ -58,3 +58,65 @@ RegexSearch::Match RegexSearch::findPrevious(const QString& text, const QRegular
 	}
 	return result;
 }
+
+bool RegexSearch::expandReplacement(const QString& replacement, const QRegularExpressionMatch& match, QString* result, QString* error)
+{
+	if (!result || !match.hasMatch())
+		return false;
+
+	QString expanded;
+	for (int i = 0; i < replacement.length(); ++i)
+	{
+		if (replacement.at(i) != QLatin1Char('$') || i + 1 >= replacement.length())
+		{
+			expanded += replacement.at(i);
+			continue;
+		}
+
+		const QChar next = replacement.at(i + 1);
+		if (next == QLatin1Char('$'))
+		{
+			expanded += QLatin1Char('$');
+			++i;
+		}
+		else if (next == QLatin1Char('{'))
+		{
+			const int close = replacement.indexOf(QLatin1Char('}'), i + 2);
+			if (close < 0)
+			{
+				if (error)
+					*error = QStringLiteral("Unclosed named capture reference");
+				return false;
+			}
+			const QString name = replacement.mid(i + 2, close - i - 2);
+			if (name.isEmpty() || !match.regularExpression().namedCaptureGroups().contains(name))
+			{
+				if (error)
+					*error = QStringLiteral("Unknown named capture: %1").arg(name);
+				return false;
+			}
+			expanded += match.captured(name);
+			i = close;
+		}
+		else if (next.isDigit())
+		{
+			int end = i + 1;
+			while (end < replacement.length() && replacement.at(end).isDigit())
+				++end;
+			bool validNumber = false;
+			const int group = replacement.mid(i + 1, end - i - 1).toInt(&validNumber);
+			if (!validNumber || group > match.regularExpression().captureCount())
+			{
+				if (error)
+					*error = QStringLiteral("Unknown capture group: %1").arg(replacement.mid(i + 1, end - i - 1));
+				return false;
+			}
+			expanded += match.captured(group);
+			i = end - 1;
+		}
+		else
+			expanded += replacement.at(i);
+	}
+	*result = expanded;
+	return true;
+}

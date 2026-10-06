@@ -31,6 +31,7 @@ for which a new license (GPL+exception) is in place.
 #include "scribus.h"
 #include "scribusview.h"
 #include "scrspinbox.h"
+#include "text/specialchars.h"
 #include "selection.h"
 #include "shadebutton.h"
 #include "styles/charstyle.h"
@@ -734,7 +735,7 @@ bool SearchReplace::isFormatMatching(const ParagraphStyle& parStyle, const CharS
 
 void SearchReplace::slotReplace()
 {
-	if (regexCheckBox->isChecked() && !searchTextValue->text().isEmpty())
+	if (m_storyEditorMode && regexCheckBox->isChecked() && !searchTextValue->text().isEmpty())
 		return;
 	m_searching = true;
 	updateButtonState();
@@ -789,7 +790,20 @@ void SearchReplace::replaceOnCanvas()
 
 	if (selectionStart == match.start && selectionEnd - 1 == match.end)
 	{
-		replaceSelectionOnCanvas();
+		if (options.regularExpression)
+		{
+			QString replacement;
+			QString error;
+			if (!regexReplacementForMatch(storyText, selectionStart, selectionEnd - selectionStart,
+				options, &replacement, &error))
+			{
+				showMessage(error);
+				return;
+			}
+			replaceSelectionOnCanvas(&replacement);
+		}
+		else
+			replaceSelectionOnCanvas();
 		updatePageItemSelection(pageItem);
 	}
 
@@ -850,9 +864,14 @@ void SearchReplace::replaceSelectionInStoryEditor()
 	se->Editor->setTextCursor(textCursor);
 }
 
-void SearchReplace::replaceSelectionOnCanvas()
+void SearchReplace::replaceSelectionOnCanvas(const QString* replacementText)
 {
 	auto options = getReplaceOptions();
+	if (replacementText)
+	{
+		options.textEnabled = true;
+		options.text = *replacementText;
+	}
 	auto pageItem = currentPageItem();
 	UndoTransaction transaction;
 	if (UndoManager::undoEnabled())
@@ -946,10 +965,57 @@ void SearchReplace::replaceSelectionOnCanvas()
 		transaction.commit();
 }
 
+bool SearchReplace::regexReplacementForMatch(const StoryText& storyText, int start, int length,
+	const Options& searchOptions, QString* replacement, QString* error) const
+{
+	if (anyReplaceChecked())
+	{
+		*error = tr("Regex Replace currently supports text replacement only; clear the Replace Formatting options.");
+		return false;
+	}
+	if (length <= 0 || start < 0 || start + length > storyText.length())
+	{
+		*error = tr("The selected text is no longer a regular-expression match.");
+		return false;
+	}
+
+	// The existing canvas undo stores one character style for deleted text.
+	// Restrict this first slice to a uniform, ordinary text run so Undo can
+	// restore its formatting and cannot delete an anchored object or mark.
+	const CharStyle& firstStyle = storyText.charStyle(start);
+	for (int i = start; i < start + length; ++i)
+	{
+		if (storyText.text(i) == SpecialChars::OBJECT || storyText.text(i) == SpecialChars::PARSEP
+			|| !storyText.charStyle(i).equiv(firstStyle))
+		{
+			*error = tr("Regex Replace currently requires one text style within a single paragraph, with no inline objects.");
+			return false;
+		}
+	}
+
+	const auto match = searchOptions.compiledRegex.match(storyText.plainText(), start,
+		QRegularExpression::NormalMatch, QRegularExpression::AnchorAtOffsetMatchOption);
+	if (!match.hasMatch() || match.capturedStart() != start || match.capturedLength() != length)
+	{
+		*error = tr("The selected text is no longer a regular-expression match.");
+		return false;
+	}
+	return RegexSearch::expandReplacement(replaceTextValue->text(), match, replacement, error);
+}
+
 void SearchReplace::slotReplaceAll()
 {
 	if (regexCheckBox->isChecked() && !searchTextValue->text().isEmpty())
+	{
+		if (m_storyEditorMode)
+			return;
+		m_searching = true;
+		updateButtonState();
+		replaceAllOnCanvasRegex();
+		m_searching = false;
+		updateButtonState();
 		return;
+	}
 	m_searching = true;
 	updateButtonState();
 	showMessage();
@@ -1068,6 +1134,87 @@ void SearchReplace::replaceAllOnCanvas()
 	for (auto pageItem: m_pageItems)
 		pageItem->asTextFrame()->invalidateLayout(true);
 	m_doc->regionsChanged()->update(QRectF());
+}
+
+void SearchReplace::replaceAllOnCanvasRegex()
+{
+	if (!initCanvasSelection())
+		return;
+
+	struct PendingReplacement
+	{
+		size_t pageItemIndex;
+		int start;
+		int length;
+		QString text;
+	};
+	std::vector<PendingReplacement> pending;
+	const auto options = getSearchOptions();
+	for (size_t index = 0; index < m_pageItems.size(); ++index)
+	{
+		const StoryText& storyText = m_pageItems.at(index)->itemText;
+		int from = 0;
+		while (from < storyText.length())
+		{
+			const auto found = searchStory(storyText, from, storyText.length(), options);
+			if (found.first < 0)
+				break;
+			QString replacement;
+			QString error;
+			if (!regexReplacementForMatch(storyText, found.first, found.second + 1 - found.first,
+				options, &replacement, &error))
+			{
+				showMessage(tr("Regex Replace All made no changes: %1").arg(error));
+				return;
+			}
+			pending.push_back({ index, found.first, found.second + 1 - found.first, replacement });
+			from = found.second + 1;
+		}
+	}
+
+	if (pending.empty())
+	{
+		showMessage(tr(messageNoMatch));
+		return;
+	}
+
+	// Enter text-edit mode before starting the grouped undo action. The mode
+	// transition can change undo availability, which would otherwise leave
+	// each replacement as a separate history entry.
+	m_currentPageItem = pending.back().pageItemIndex;
+	selectPageItem(m_pageItems.at(m_currentPageItem));
+	m_doc->view()->requestMode(modeEdit);
+
+	UndoTransaction allTransaction;
+	if (UndoManager::undoEnabled())
+		allTransaction = UndoManager::instance()->beginTransaction(
+			Um::Selection, Um::ITextFrame, tr("Regex Replace All"));
+	{
+		QScopedValueRollback<bool> drawingGuard(m_doc->DoDrawing, false);
+		size_t selectedIndex = m_currentPageItem;
+		for (auto it = pending.rbegin(); it != pending.rend(); ++it)
+		{
+			m_currentPageItem = it->pageItemIndex;
+			PageItem* pageItem = m_pageItems.at(it->pageItemIndex);
+			if (selectedIndex != it->pageItemIndex)
+			{
+				selectPageItem(pageItem);
+				m_doc->view()->requestMode(modeEdit);
+				selectedIndex = it->pageItemIndex;
+			}
+			pageItem->itemText.select(it->start, it->length);
+			pageItem->itemText.setCursorPosition(it->start + it->length);
+			replaceSelectionOnCanvas(&it->text);
+		}
+	}
+	if (allTransaction)
+		allTransaction.commit();
+	m_doc->view()->requestMode(modeNormal);
+	m_matchesFound = static_cast<int>(pending.size());
+	for (auto pageItem : m_pageItems)
+		pageItem->asTextFrame()->invalidateLayout(true);
+	m_doc->regionsChanged()->update(QRectF());
+	showMessage(QString(tr(messageOccurrences)).arg(m_matchesFound));
 }
 
 void SearchReplace::slotSearchPrevious()
@@ -1292,7 +1439,7 @@ bool SearchReplace::anySearchChecked()
 		searchStyleCheckBox->isChecked();
 }
 
-bool SearchReplace::anyReplaceChecked()
+bool SearchReplace::anyReplaceChecked() const
 {
 	return
 		replaceAlignmentCheckBox->isChecked() ||
@@ -1421,8 +1568,8 @@ void SearchReplace::updateButtonState()
 		}
 	}
 
-	replaceAllButton->setEnabled(enabled && !regexMode);
-	replaceButton->setEnabled(enabled && !regexMode);
+	replaceAllButton->setEnabled(enabled && (!regexMode || !m_storyEditorMode));
+	replaceButton->setEnabled(enabled && (!regexMode || !m_storyEditorMode));
 	searchButton->setEnabled(enabled);
 	previousButton->setEnabled(enabled);
 }

@@ -19,6 +19,9 @@ struct Match
 QRegularExpression compile(const QString& pattern, bool ignoreCase, bool wholeWords = false);
 Match findNext(const QString& text, const QRegularExpression& expression, int from, bool wholeWords);
 Match findPrevious(const QString& text, const QRegularExpression& expression, int before, bool wholeWords);
+// Replacement syntax: $0 for the full match, $1... for numbered groups,
+// ${name} for named groups, and $$ for a literal dollar sign.
+bool expandReplacement(const QString& replacement, const QRegularExpressionMatch& match, QString* result, QString* error);
 }
 
 #endif

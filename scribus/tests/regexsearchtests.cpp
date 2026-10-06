@@ -16,6 +16,8 @@ private slots:
 	void skipsZeroLengthMatches();
 	void triesLongerWholeWordAlternative();
 	void rejectsInvalidExpression();
+	void expandsCaptures();
+	void rejectsUnknownCapture();
 };
 
 void RegexSearchTests::findsForwardAndBackward()
@@ -63,6 +65,26 @@ void RegexSearchTests::rejectsInvalidExpression()
 	const auto expression = RegexSearch::compile(QStringLiteral("["), false);
 	QVERIFY(!expression.isValid());
 	QCOMPARE(RegexSearch::findNext(QStringLiteral("text"), expression, 0, false).start, -1);
+}
+
+void RegexSearchTests::expandsCaptures()
+{
+	const auto expression = RegexSearch::compile(QStringLiteral("(?<chapter>Chapter) (\\d+)"), false);
+	const auto match = expression.match(QStringLiteral("Chapter 12"));
+	QString result;
+	QString error;
+	QVERIFY(RegexSearch::expandReplacement(QStringLiteral("${chapter} $2 / $0 / $$"), match, &result, &error));
+	QCOMPARE(result, QStringLiteral("Chapter 12 / Chapter 12 / $"));
+}
+
+void RegexSearchTests::rejectsUnknownCapture()
+{
+	const auto match = RegexSearch::compile(QStringLiteral("(abc)"), false).match(QStringLiteral("abc"));
+	QString result;
+	QString error;
+	QVERIFY(!RegexSearch::expandReplacement(QStringLiteral("$2"), match, &result, &error));
+	QVERIFY(error.contains(QStringLiteral("$2")) || error.contains(QLatin1Char('2')));
+	QVERIFY(!RegexSearch::expandReplacement(QStringLiteral("${missing}"), match, &result, &error));
 }
 
 QTEST_APPLESS_MAIN(RegexSearchTests)

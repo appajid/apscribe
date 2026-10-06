@@ -68,7 +68,7 @@ public:
 	SearchReplace( QWidget* parent, ScribusDoc *doc);
 	~SearchReplace() {};
 
-	void setStoryEditorMode(bool mode = true) { m_storyEditorMode = mode; }
+	void setStoryEditorMode(bool mode = true) { m_storyEditorMode = mode; updateButtonState(); }
 	QPair<int, int> cursorPosition();
 	//! \brief fill the text field with the current selection, if the selection does not contain a newline.
 	void processCurrentSelection(QString selection);
@@ -148,9 +148,12 @@ private:
 	//! \brief if the current selection matches the search, replace the selection.
 	// otherwise do a search.
 	void replaceSelectionInStoryEditor();
-	void replaceSelectionOnCanvas();
+	void replaceSelectionOnCanvas(const QString* replacementText = nullptr);
 	void replaceAllInStoryEditor();
 	void replaceAllOnCanvas();
+	void replaceAllOnCanvasRegex();
+	bool regexReplacementForMatch(const StoryText& storyText, int start, int length,
+		const Options& searchOptions, QString* replacement, QString* error) const;
 
 	//! \brief Initialize pageItems based on the current selection
 	bool initCanvasSelection();
@@ -176,7 +179,7 @@ private:
 	// \brief is any search checkbox checked?
 	bool anySearchChecked();
 	// \brief is any replace checkbox checked?
-	bool anyReplaceChecked();
+	bool anyReplaceChecked() const;
 	Options getSearchOptions();
 	Options getReplaceOptions();
 	// \brief Check for all search options but the text
