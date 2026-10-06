@@ -45,6 +45,13 @@ target_link_libraries(grepstylerulestests Qt6::Test Qt6::Core)
 add_test(NAME grepstylerulestests COMMAND grepstylerulestests)
 set_tests_properties(grepstylerulestests PROPERTIES LABELS "find;regex;grep-styles")
 
+add_executable(grepstyleeditortests grepstyleeditortests.cpp ../ui/grepstyleeditor.cpp ../grepstylerules.cpp ../regexsearch.cpp)
+target_link_libraries(grepstyleeditortests Qt6::Test Qt6::Widgets)
+add_test(NAME grepstyleeditortests COMMAND grepstyleeditortests)
+set_tests_properties(grepstyleeditortests PROPERTIES
+	LABELS "grep-styles;ui"
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # Phase 7 starts with an isolated reflowable EPUB package writer. Reading
 # order extraction and the application export command are separate slices.
 add_executable(epubexporttests epubexporttests.cpp ../epubexport.cpp)

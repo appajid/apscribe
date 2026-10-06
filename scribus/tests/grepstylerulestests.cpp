@@ -36,7 +36,8 @@ void GrepStyleRulesTests::rejectsMalformedRulesAtomically()
 	QVERIFY(!GrepStyleRules::parse(QStringLiteral("[{}]"), &rules, &error));
 	QVERIFY(!error.isEmpty());
 	QCOMPARE(rules.size(), 1);
-	QVERIFY(!GrepStyleRules::parse(QStringLiteral("[{\"pattern\":\"(\",\"characterStyle\":\"Bad\"}]"), &rules));
+	QVERIFY(!GrepStyleRules::parse(QStringLiteral("[{\"pattern\":\"(\",\"characterStyle\":\"Bad\"}]"), &rules, &error));
+	QVERIFY(error.contains(QStringLiteral("Invalid regular expression")));
 	QCOMPARE(rules.size(), 1);
 	QVERIFY(!GrepStyleRules::parse(QStringLiteral("{\"pattern\":\"x\"}"), &rules));
 	QCOMPARE(rules.size(), 1);

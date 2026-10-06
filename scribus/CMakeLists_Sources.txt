@@ -376,6 +376,7 @@ set(SCRIBUS_SOURCES
 	ui/fontembeddingmodel.cpp
 	ui/fontlistview.cpp
 	ui/fontreplacedialog.cpp
+	ui/grepstyleeditor.cpp
 	ui/gradientaddedit.cpp
 	ui/gradienteditor.cpp
 	ui/gradientpreview.cpp

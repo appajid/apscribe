@@ -48,11 +48,18 @@ bool GrepStyleRules::parse(const QString& json, QList<Rule>* rules, QString* err
 		Rule rule { object.value(QStringLiteral("pattern")).toString(),
 			object.value(QStringLiteral("characterStyle")).toString(),
 			object.value(QStringLiteral("ignoreCase")).toBool(false) };
-		if (rule.pattern.isEmpty() || rule.characterStyle.isEmpty()
-			|| !RegexSearch::compile(rule.pattern, rule.ignoreCase).isValid())
+		if (rule.pattern.isEmpty() || rule.characterStyle.isEmpty())
 		{
 			if (error)
-				*error = QStringLiteral("A GREP style rule has an empty or invalid pattern or character style");
+				*error = QStringLiteral("A GREP style rule needs a nonempty pattern and character style");
+			return false;
+		}
+		const auto expression = RegexSearch::compile(rule.pattern, rule.ignoreCase);
+		if (!expression.isValid())
+		{
+			if (error)
+				*error = QStringLiteral("Invalid regular expression at position %1: %2")
+					.arg(expression.patternErrorOffset()).arg(expression.errorString());
 			return false;
 		}
 		parsed.append(rule);

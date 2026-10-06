@@ -9,10 +9,14 @@ for which a new license (GPL+exception) is in place.
 #include <QMessageBox>
 #include <QTabWidget>
 
+#include <algorithm>
+
 #include "alignselect.h"
 #include "colorcombo.h"
 #include "commonstrings.h"
 #include "fontcombo.h"
+#include "grepstylerules.h"
+#include "grepstyleeditor.h"
 #include "langmgr.h"
 #include "ui/scmwmenumanager.h"
 #include "prefsmanager.h"
@@ -483,6 +487,7 @@ void SMParagraphStyle::setupConnections()
 {
 	if (!m_pwidget)
 		return;
+	connect(m_pwidget->m_grepEditor, &GrepStyleEditor::rulesEdited, this, &SMParagraphStyle::slotGrepRulesEdited);
 
 	// paragraph attributes
 	connect(m_pwidget->lineSpacingMode, SIGNAL(activated(int)), this, SLOT(slotLineSpacingMode(int)));
@@ -579,6 +584,7 @@ void SMParagraphStyle::removeConnections()
 {
 	if (!m_pwidget)
 		return;
+	disconnect(m_pwidget->m_grepEditor, &GrepStyleEditor::rulesEdited, this, &SMParagraphStyle::slotGrepRulesEdited);
 
 	disconnect(m_pwidget->lineSpacingMode, SIGNAL(activated(int)), this, SLOT(slotLineSpacingMode(int)));
 	disconnect(m_pwidget->lineSpacing, SIGNAL(valueChanged(double)), this, SLOT(slotLineSpacing()));
@@ -1067,6 +1073,18 @@ void SMParagraphStyle::slotSelectionDirty()
 		return;
 	m_selectionIsDirty = true;
 	emit selectionDirty();
+}
+
+void SMParagraphStyle::slotGrepRulesEdited(const QString& json, bool inherit)
+{
+	for (ParagraphStyle* style : m_selection)
+	{
+		if (inherit)
+			style->resetGrepStyleRulesJson();
+		else
+			style->setGrepStyleRulesJson(json);
+	}
+	slotSelectionDirty();
 }
 
 void SMParagraphStyle::slotNumFormat(int)
@@ -1843,6 +1861,36 @@ void SMParagraphStyle::slotCharStylesDeleted(const QList<RemoveItem> &removeList
 					parStyle.setPeCharStyleName(replacementName);
 					break;
 				}
+			}
+		}
+		if (!parStyle.isInhGrepStyleRulesJson())
+		{
+			QList<GrepStyleRules::Rule> rules;
+			if (GrepStyleRules::parse(parStyle.grepStyleRulesJson(), &rules))
+			{
+				bool changed = false;
+				for (auto it = rules.begin(); it != rules.end();)
+				{
+					const auto replacement = std::find_if(removeList.cbegin(), removeList.cend(),
+						[&it](const RemoveItem& item) { return item.first == it->characterStyle; });
+					if (replacement == removeList.cend())
+					{
+						++it;
+						continue;
+					}
+					changed = true;
+					if (replacement->second.isEmpty()
+						|| replacement->second == CommonStrings::trDefaultCharacterStyle
+						|| replacement->second == CommonStrings::DefaultCharacterStyle)
+						it = rules.erase(it);
+					else
+					{
+						it->characterStyle = replacement->second;
+						++it;
+					}
+				}
+				if (changed)
+					parStyle.setGrepStyleRulesJson(GrepStyleRules::serialize(rules));
 			}
 		}
 	}
@@ -2745,4 +2793,3 @@ SMCharacterStyle::~SMCharacterStyle()
 	m_page = nullptr;
 	m_widget = nullptr;
 }
-
