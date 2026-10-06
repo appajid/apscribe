@@ -85,6 +85,10 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	}
 	searchStyleComboBox->setCurrentIndex(findParagraphStyle(doc, doc->currentStyle));
 	replaceStyleComboBox->setCurrentIndex(findParagraphStyle(doc, doc->currentStyle));
+	for (int i = 0; i < doc->charStyles().count(); ++i)
+		regexStyleComboBox->addItem(doc->charStyles()[i].name());
+	regexStyleComboBox->setAccessibleName(tr("Character style for regular-expression matches"));
+	applyRegexStyleButton->setToolTip(tr("Apply the selected character style to all matching canvas text without changing the text"));
 
 	QStringList alignment{tr("Left"), tr("Center"), tr("Right"), tr("Block"), tr("Forced")};
 	searchAlignmentComboBox->addItems(alignment);
@@ -114,6 +118,7 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	connect(clearButton, &QPushButton::clicked, this, &SearchReplace::clear);
 	connect(closeButton, &QPushButton::clicked, this, &SearchReplace::accept);
 	connect(replaceAllButton, &QPushButton::clicked, this, &SearchReplace::slotReplaceAll);
+	connect(applyRegexStyleButton, &QPushButton::clicked, this, &SearchReplace::applyRegexCharacterStyle);
 	connect(replaceButton, &QPushButton::clicked, this, &SearchReplace::slotReplace);
 	connect(searchButton, &QPushButton::clicked, this, &SearchReplace::slotSearch);
 	connect(previousButton, &QPushButton::clicked, this, &SearchReplace::slotSearchPrevious);
@@ -451,11 +456,13 @@ bool SearchReplace::initCanvasSelection()
 	{
 		// TODO: search the whole document or the whole page?
 		readAllPageItems();
+		if (m_pageItems.empty())
+			return false;
 		selectPageItem(m_pageItems.at(0));
 	}
 	else
 		readSelectedPageItems();
-	return true;
+	return !m_pageItems.empty();
 }
 
 void SearchReplace::readAllPageItems()
@@ -1316,6 +1323,85 @@ void SearchReplace::replaceAllOnCanvasRegex()
 	showMessage(QString(tr(messageOccurrences)).arg(m_matchesFound));
 }
 
+void SearchReplace::applyRegexCharacterStyle()
+{
+	if (m_storyEditorMode || !regexCheckBox->isChecked() || searchTextValue->text().isEmpty()
+		|| regexStyleComboBox->currentText().isEmpty())
+		return;
+
+	const QString styleName = regexStyleComboBox->currentText();
+	if (m_doc->charStyles().find(styleName) < 0 || !initCanvasSelection())
+		return;
+
+	struct Match
+	{
+		size_t pageItemIndex;
+		int start;
+		int length;
+	};
+	std::vector<Match> matches;
+	const auto options = getSearchOptions();
+	if (!options.compiledRegex.isValid())
+		return;
+	QScopedValueRollback<bool> searchingGuard(m_searching, true);
+	for (size_t index = 0; index < m_pageItems.size(); ++index)
+	{
+		const StoryText& storyText = m_pageItems.at(index)->itemText;
+		int from = 0;
+		while (from < storyText.length())
+		{
+			const auto found = searchStory(storyText, from, storyText.length(), options);
+			if (found.first < 0)
+				break;
+			const int length = found.second + 1 - found.first;
+			for (int i = found.first; i <= found.second; ++i)
+			{
+				if (storyText.text(i) == SpecialChars::OBJECT || storyText.text(i) == SpecialChars::PARSEP)
+				{
+					showMessage(tr("No styles applied: matches cannot include an inline object or cross a paragraph boundary."));
+					return;
+				}
+			}
+			matches.push_back({ index, found.first, length });
+			from = found.second + 1;
+		}
+	}
+	if (matches.empty())
+	{
+		showMessage(tr(messageNoMatch));
+		return;
+	}
+
+	// Enter edit mode before the outer transaction; switching modes otherwise
+	// can split a multi-match style change into separate Undo actions.
+	m_currentPageItem = matches.back().pageItemIndex;
+	selectPageItem(m_pageItems.at(m_currentPageItem));
+	m_doc->view()->requestMode(modeEdit);
+	UndoTransaction allTransaction;
+	if (UndoManager::undoEnabled())
+		allTransaction = UndoManager::instance()->beginTransaction(
+			Um::Selection, Um::ITextFrame, tr("Apply Character Style to Regex Matches"));
+	size_t selectedIndex = m_currentPageItem;
+	for (auto it = matches.rbegin(); it != matches.rend(); ++it)
+	{
+		PageItem* pageItem = m_pageItems.at(it->pageItemIndex);
+		if (selectedIndex != it->pageItemIndex)
+		{
+			selectPageItem(pageItem);
+			m_doc->view()->requestMode(modeEdit);
+			selectedIndex = it->pageItemIndex;
+		}
+		pageItem->itemText.select(it->start, it->length);
+		pageItem->itemText.setCursorPosition(it->start + it->length);
+		m_doc->itemSelection_SetNamedCharStyle(styleName);
+	}
+	if (allTransaction)
+		allTransaction.commit();
+	m_doc->view()->requestMode(modeNormal);
+	m_matchesFound = static_cast<int>(matches.size());
+	showMessage(tr("%1 matches styled").arg(m_matchesFound));
+}
+
 void SearchReplace::slotSearchPrevious()
 {
 	m_searching = true;
@@ -1657,6 +1743,10 @@ void SearchReplace::updateButtonState()
 
 	bool enabled = anySearchChecked();
 	const bool regexMode = regexCheckBox->isChecked() && !searchTextValue->text().isEmpty();
+	const bool showRegexStyle = regexCheckBox->isChecked() && !m_storyEditorMode;
+	regexStyleLabel->setVisible(showRegexStyle);
+	regexStyleComboBox->setVisible(showRegexStyle);
+	applyRegexStyleButton->setVisible(showRegexStyle && !m_searching);
 	if (regexMode)
 	{
 		const auto expression = RegexSearch::compile(searchTextValue->text(), ignoreCaseCheckBox->isChecked(), wholeWordsCheckBox->isChecked());
@@ -1671,6 +1761,7 @@ void SearchReplace::updateButtonState()
 	replaceButton->setEnabled(enabled);
 	searchButton->setEnabled(enabled);
 	previousButton->setEnabled(enabled);
+	applyRegexStyleButton->setEnabled(enabled && regexMode && regexStyleComboBox->count() > 0);
 }
 
 void SearchReplace::hideMessage()

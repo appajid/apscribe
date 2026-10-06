@@ -104,6 +104,34 @@
       </layout>
      </item>
      <item>
+      <layout class="QHBoxLayout" name="regexStyleLayout">
+       <item>
+        <widget class="QLabel" name="regexStyleLabel">
+         <property name="text">
+          <string>Character Style:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="regexStyleComboBox">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="applyRegexStyleButton">
+         <property name="text">
+          <string>Apply to Matches</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
       <layout class="QGridLayout" name="gridLayout_4">
        <item row="0" column="0">
         <widget class="QLabel" name="replaceTextLabel">
@@ -606,6 +634,8 @@
   <tabstop>wholeWordsCheckBox</tabstop>
   <tabstop>ignoreCaseCheckBox</tabstop>
   <tabstop>regexCheckBox</tabstop>
+  <tabstop>regexStyleComboBox</tabstop>
+  <tabstop>applyRegexStyleButton</tabstop>
   <tabstop>collapseButton</tabstop>
   <tabstop>searchStyleCheckBox</tabstop>
   <tabstop>searchStyleComboBox</tabstop>

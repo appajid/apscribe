@@ -78,6 +78,7 @@ public slots:
 	void slotSearch();
 	void slotReplace();
 	void slotReplaceAll();
+	void applyRegexCharacterStyle();
 	void slotSearchPrevious();
 	void slotStop();
 	void clear();
