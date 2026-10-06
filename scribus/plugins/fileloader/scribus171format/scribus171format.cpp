@@ -3665,6 +3665,8 @@ void Scribus171Format::readParagraphStyle(ScribusDoc *doc, ScXmlStreamReader& re
 	static const QString ParagraphEffectCharStyle("ParagraphEffectCharStyle");
 	if (attrs.hasAttribute(ParagraphEffectCharStyle))
 		newStyle.setPeCharStyleName(attrs.valueAsString(ParagraphEffectCharStyle));
+	if (attrs.hasAttribute("GrepStyleRules"))
+		newStyle.setGrepStyleRulesJson(attrs.valueAsString("GrepStyleRules"));
 
 	static const QString ParagraphEffectOffset("ParagraphEffectOffset");
 	if (attrs.hasAttribute(ParagraphEffectOffset))

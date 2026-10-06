@@ -842,6 +842,8 @@ void Scribus170Format::putPStyle(ScXmlStreamWriter & docu, const ParagraphStyle 
 		docu.writeAttribute("NACH", style.gapAfter());
 	if (!style.isInhPeCharStyleName())
 		docu.writeAttribute("ParagraphEffectCharStyle", style.peCharStyleName());
+	if (!style.isInhGrepStyleRulesJson())
+		docu.writeAttribute("GrepStyleRules", style.grepStyleRulesJson());
 	if (!style.isInhParEffectOffset())
 		docu.writeAttribute("ParagraphEffectOffset", style.parEffectOffset());
 	if (!style.isInhParEffectIndent())

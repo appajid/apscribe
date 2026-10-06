@@ -184,6 +184,7 @@ set(SCRIBUS_SOURCES
 	qtiocompressor.cpp
 	rawimage.cpp
 	regexsearch.cpp
+	grepstylerules.cpp
 	rc4.c
 	sampleitem.cpp
 	scclipboardprocessor.cpp

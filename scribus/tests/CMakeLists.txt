@@ -38,6 +38,13 @@ target_link_libraries(regexsearchtests Qt6::Test Qt6::Core)
 add_test(NAME regexsearchtests COMMAND regexsearchtests)
 set_tests_properties(regexsearchtests PROPERTIES LABELS "find;regex")
 
+# Ordered, inheritable GREP rules are stored on paragraph styles. Rendering
+# applies them in a later slice; these tests cover the data and match model.
+add_executable(grepstylerulestests grepstylerulestests.cpp ../grepstylerules.cpp ../regexsearch.cpp)
+target_link_libraries(grepstylerulestests Qt6::Test Qt6::Core)
+add_test(NAME grepstylerulestests COMMAND grepstylerulestests)
+set_tests_properties(grepstylerulestests PROPERTIES LABELS "find;regex;grep-styles")
+
 # Phase 7 starts with an isolated reflowable EPUB package writer. Reading
 # order extraction and the application export command are separate slices.
 add_executable(epubexporttests epubexporttests.cpp ../epubexport.cpp)
@@ -176,6 +183,24 @@ add_test(NAME runningheader_test_install
 set_tests_properties(runningheader_test_install PROPERTIES
 	FIXTURES_SETUP runningheader_test_app
 	LABELS "integration;running-headers"
+	TIMEOUT 180)
+
+set(grep_style_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-grep_style_persistence")
+set(grep_style_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-grep_style_persistence")
+file(MAKE_DIRECTORY "${grep_style_prefs_dir}")
+file(MAKE_DIRECTORY "${grep_style_output_dir}")
+add_test(NAME grep_style_persistence
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${grep_style_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_grep_style_persistence.py")
+set_tests_properties(grep_style_persistence PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${grep_style_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;grep-styles"
+	PASS_REGULAR_EXPRESSION "GREP_STYLE_PERSISTENCE_PASSED"
+	RUN_SERIAL TRUE
 	TIMEOUT 180)
 
 set(epub_order_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-epub_order")

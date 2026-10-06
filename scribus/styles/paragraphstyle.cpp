@@ -15,6 +15,7 @@
 #include <QDebug>
 
 #include "commonstrings.h"
+#include "grepstylerules.h"
 #include "styles/style.h"
 #include "paragraphstyle.h"
 #include "resourcecollection.h"
@@ -231,6 +232,12 @@ void ParagraphStyle::getNamedResources(ResourceCollection& lists) const
 			peCharStyle->getNamedResources(lists);
 		lists.collectCharStyle(parEffectStyle);
 	}
+	QList<GrepStyleRules::Rule> rules;
+	if (GrepStyleRules::parse(grepStyleRulesJson(), &rules))
+	{
+		for (const auto& rule : rules)
+			lists.collectCharStyle(rule.characterStyle);
+	}
 }
 
 
@@ -252,6 +259,25 @@ void ParagraphStyle::replaceNamedResources(ResourceCollection& newNames)
 
 	if ((it = (newNames.charStyles().find(peCharStyleName()))) != newNames.charStyles().end())
 		setPeCharStyleName(it.value());
+	if (!isInhGrepStyleRulesJson())
+	{
+		QList<GrepStyleRules::Rule> rules;
+		if (GrepStyleRules::parse(grepStyleRulesJson(), &rules))
+		{
+			bool changed = false;
+			for (auto& rule : rules)
+			{
+				it = newNames.charStyles().find(rule.characterStyle);
+				if (it != newNames.charStyles().end())
+				{
+					rule.characterStyle = it.value();
+					changed = true;
+				}
+			}
+			if (changed)
+				setGrepStyleRulesJson(GrepStyleRules::serialize(rules));
+		}
+	}
 	m_cstyle.replaceNamedResources(newNames);
 }
 
