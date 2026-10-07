@@ -45,6 +45,7 @@ void RecoveryFilesTests::findsBothRecoveryTypesOnceWithoutScanningSubdirectories
 	                                                QString(), root.filePath(QStringLiteral("missing")) });
 	QCOMPARE(QSet<QString>(files.begin(), files.end()), QSet<QString>({ emergency, autosave }));
 	QCOMPARE(files.count(), 2);
+	QCOMPARE(files, QStringList({ autosave, emergency }));
 
 	const QString shortcut = root.filePath(QStringLiteral("link_autosave_999.sla"));
 	if (QFile::link(autosave, shortcut))

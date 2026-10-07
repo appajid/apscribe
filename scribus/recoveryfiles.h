@@ -12,6 +12,7 @@ to the COPYING file provided with the program.
 #include <QStringList>
 #include <QThread>
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -42,7 +43,12 @@ inline QStringList find(const QStringList& directories)
 			foundFiles.insert(it.fileInfo().absoluteFilePath());
 		}
 	}
-	return foundFiles.values();
+	QStringList files = foundFiles.values();
+	std::sort(files.begin(), files.end(), [](const QString& left, const QString& right) {
+		const int comparison = QString::compare(left, right, Qt::CaseInsensitive);
+		return comparison < 0 || (comparison == 0 && left < right);
+	});
+	return files;
 }
 
 inline void findAsync(QStringList directories, QObject* receiver,
