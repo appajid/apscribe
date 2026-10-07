@@ -2290,6 +2290,9 @@ void SMCharacterStyle::reloadTmpStyles()
 
 	m_selection.clear();
 	m_tmpStyles.clear();
+	// Reset/reload discards the whole draft, including queued rename/deletion
+	// mappings. Otherwise a later Apply can replay a canceled rename.
+	m_deleted.clear();
 	m_tmpStyles.redefine(m_doc->charStyles(), true);
 }
 

@@ -1940,25 +1940,35 @@ void ScribusDoc::replaceNamedResources(ResourceCollection& newNames)
 		else
 			m_docCellStyles[i].replaceNamedResources(newNames);
 	}
-	// Replace in ToC
-	for (int i = 0; i < tocSetups().count(); ++i)
+	// Settings are named resources too, including configurations whose output
+	// frames have not yet been generated. Use only the paragraph namespace;
+	// a character style may have the same name without referring to these fields.
+	const auto replaceParagraphReference = [&newNames](QString& name)
 	{
-		// Replace ToC style of included style
-		for (int j = 0; j < tocSetups()[i].entryData.count(); ++j)
+		const auto replacement = newNames.styles().constFind(name);
+		if (replacement != newNames.styles().constEnd())
+			name = replacement.value(); // Empty means an explicit "No Style" replacement.
+	};
+	for (ToCSetup& toc : tocSetups())
+	{
+		replaceParagraphReference(toc.textStyle);
+		for (QString& name : toc.styleListToFind)
+			replaceParagraphReference(name);
+		for (QString& name : toc.styleListForTOC)
+			replaceParagraphReference(name);
+		for (ToCSetupEntryStyleData& entry : toc.entryData)
 		{
-			QString styleToFind = tocSetups()[i].entryData[j].styleToFind;
-			if (newNames.styles().contains(styleToFind))
-				tocSetups()[i].entryData[j].styleToFind = newNames.styles().value(styleToFind);
-
-			QString styleForText = tocSetups()[i].entryData[j].styleForText;
-
-			if (styleForText.isEmpty())
-				continue;
-
-			if (newNames.styles().contains(styleForText))
-				tocSetups()[i].entryData[j].styleForText = newNames.styles().value(styleForText);
-
+			replaceParagraphReference(entry.styleToFind);
+			replaceParagraphReference(entry.styleForText);
 		}
+	}
+	for (IndexSetup& index : indexSetups())
+	{
+		replaceParagraphReference(index.headingStyle);
+		replaceParagraphReference(index.separatorStyle);
+		replaceParagraphReference(index.level1Style);
+		replaceParagraphReference(index.level2Style);
+		replaceParagraphReference(index.level3Style);
 	}
 
 	QHash<QString,ScPattern>::Iterator it = docPatterns.begin();

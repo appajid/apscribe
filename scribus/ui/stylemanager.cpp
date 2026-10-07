@@ -1699,16 +1699,8 @@ void StyleManager::slotNameChanged(const QString& name)
 		// must unlock Done just as a corrected duplicate does.
 		okButton->setEnabled(true);
 		QString oldName(styleView->currentItem()->text(NAME_COL));
-		ToCSetupVector &tocSetups = m_doc->tocSetups();
-		for (auto tocSetupIt = tocSetups.begin(); tocSetupIt != tocSetups.end(); ++tocSetupIt)
-		{
-			if (tocSetupIt->tocSource == "Attribute")
-				continue;
-			int i = tocSetupIt->styleListToFind.indexOf(oldName);
-			if (i >= 0)
-				tocSetupIt->styleListToFind[i]=name;
-		}
-
+		// Settings are live document data, not editor drafts. Update their
+		// references through replaceNamedResources only when styles are applied.
 		m_item->nameChanged(name);
 		updateActionName(oldName, name);
 		styleView->currentItem()->setText(NAME_COL, name);

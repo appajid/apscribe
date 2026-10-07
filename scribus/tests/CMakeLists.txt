@@ -13,6 +13,7 @@ testStoryText.cpp
 testTableParagraphStyle.cpp
 testDocumentZoom.cpp
 testStyleCleanup.cpp
+testStyleSettings.cpp
 )
 
 set(SCRIBUS_TESTS_LIB "scribus_tests_lib")
@@ -410,6 +411,18 @@ set_tests_properties(style_cleanup_dependencies PROPERTIES
 	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 	FIXTURES_REQUIRED runningheader_test_app
 	LABELS "integration;styles;persistence;grep-styles"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(style_settings_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-style_settings")
+file(MAKE_DIRECTORY "${style_settings_prefs_dir}")
+add_test(NAME style_settings_references
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${style_settings_prefs_dir}" --document-tests --suite=style-settings)
+set_tests_properties(style_settings_references PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;styles;persistence;ui"
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
 
