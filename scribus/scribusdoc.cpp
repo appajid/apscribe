@@ -10681,10 +10681,47 @@ void ScribusDoc::itemSelection_EraseParagraphStyle(Selection* customSelection)
 	changedPagePreview();
 }
 
+namespace
+{
+// A selected cell range is a selection of whole stories, unlike a text cursor
+// in the active cell. Keep the GUI's table selection intact and deduplicate
+// merged cells through PageItem_Table's existing cell-selection set.
+void paragraphStyleTargets(ScribusDoc* doc, Selection* source, Selection& targets,
+	QSet<PageItem*>& wholeCells)
+{
+	for (int i = 0; i < source->count(); ++i)
+	{
+		PageItem* item = source->itemAt(i);
+		if (item->isTable() && doc->appMode == modeEditTable)
+		{
+			PageItem_Table* table = item->asTable();
+			const QSet<TableCell>& cells = table->selectedCells();
+			if (cells.isEmpty())
+				targets.addItem(table->activeCell().textFrame());
+			else
+			{
+				for (const TableCell& cell : cells)
+				{
+					PageItem* frame = cell.textFrame();
+					targets.addItem(frame);
+					wholeCells.insert(frame);
+				}
+			}
+		}
+		else
+			targets.addItem(item);
+	}
+}
+}
+
 void ScribusDoc::itemSelection_ClearBulNumStrings(Selection* customSelection)
 {
 	Selection* itemSelection = (customSelection != nullptr) ? customSelection : m_Selection;
 	assert(itemSelection != nullptr);
+	Selection targets(this, false);
+	QSet<PageItem*> wholeCells;
+	paragraphStyleTargets(this, itemSelection, targets, wholeCells);
+	itemSelection = &targets;
 	int selectedItemCount = itemSelection->count();
 	if (selectedItemCount == 0)
 		return;
@@ -10694,7 +10731,7 @@ void ScribusDoc::itemSelection_ClearBulNumStrings(Selection* customSelection)
 		if (currItem->itemText.length() == 0)
 			continue;
 		int currItemTextCount = currItem->itemText.length();
-		if ((appMode != modeEdit) && (appMode != modeEditTable))
+		if (((appMode != modeEdit) && (appMode != modeEditTable)) || wholeCells.contains(currItem))
 		{
 			for (int pos = 0; pos < currItemTextCount; ++pos)
 			{
@@ -10754,6 +10791,11 @@ void ScribusDoc::itemSelection_ApplyParagraphStyle(const ParagraphStyle & newSty
 {
 	Selection* itemSelection = (customSelection != nullptr) ? customSelection : m_Selection;
 	assert(itemSelection != nullptr);
+	Selection* sourceSelection = itemSelection;
+	Selection targets(this, false);
+	QSet<PageItem*> wholeCells;
+	paragraphStyleTargets(this, itemSelection, targets, wholeCells);
+	itemSelection = &targets;
 	int selectedItemCount = itemSelection->count();
 	if (selectedItemCount == 0)
 		return;
@@ -10765,14 +10807,14 @@ void ScribusDoc::itemSelection_ApplyParagraphStyle(const ParagraphStyle & newSty
 		QPixmap* targetPixmap = (selectedItemCount > 1) ? Um::IGroup : currItem->getUPixmap();
 		activeTransaction = m_undoManager->beginTransaction(targetName, targetPixmap, Um::ApplyTextStyle, newStyle.displayName(), Um::IFont);
 	}
-	itemSelection_ClearBulNumStrings(itemSelection);
+	// Keep generated list text and all selected stories in the same undo step.
+	itemSelection_ClearBulNumStrings(sourceSelection);
 	for (int i = 0; i < selectedItemCount; ++i)
 	{
 		PageItem *currItem = itemSelection->itemAt(i);
-		if (currItem->isTable() && appMode == modeEditTable)
-			currItem = currItem->asTable()->activeCell().textFrame();
+		const bool editingText = (appMode == modeEdit || appMode == modeEditTable) && !wholeCells.contains(currItem);
 		int currItemTextCount = currItem->itemText.length();
-		if ((currItemTextCount == 0) || ((appMode != modeEdit) && (appMode != modeEditTable)))
+		if ((currItemTextCount == 0) || !editingText)
 		{
 			ParagraphStyle dstyle(currItem->itemText.defaultStyle());
 			dstyle.applyStyle(newStyle);
@@ -10793,7 +10835,7 @@ void ScribusDoc::itemSelection_ApplyParagraphStyle(const ParagraphStyle & newSty
 		{
 			int start = currItem->asPathText() ? currItem->firstInFrame() : 0;
 			int stop  = currItem->asPathText() ? currItem->lastInFrame() + 1 :  currItemTextCount;
-			if ((appMode == modeEdit) || (appMode == modeEditTable))
+			if (editingText)
 			{
 				start = currItem->itemText.startOfSelection();
 				stop = currItem->itemText.endOfSelection();

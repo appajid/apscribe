@@ -4,6 +4,13 @@
 //#include "testIndex.h"
 #include "testStoryText.h"
 #include "runtests.h"
+#include "testTableParagraphStyle.h"
+
+int RunTests::runDocumentTests(const QStringList& arguments)
+{
+	TestTableParagraphStyle tests;
+	return QTest::qExec(&tests, arguments);
+}
 
 int RunTests::runTests(const QStringList& arguments)
 { 

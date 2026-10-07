@@ -10,11 +10,18 @@ set(SCRIBUS_TEST_SOURCES
 runtests.cpp
 #testIndex.cpp
 testStoryText.cpp
+testTableParagraphStyle.cpp
 )
 
 set(SCRIBUS_TESTS_LIB "scribus_tests_lib")
 add_library(${SCRIBUS_TESTS_LIB} STATIC ${SCRIBUS_TEST_SOURCES})
-target_link_libraries(${SCRIBUS_TESTS_LIB} PRIVATE Qt6::Test)
+target_link_libraries(${SCRIBUS_TESTS_LIB} PRIVATE Qt6::Test Qt6::Widgets)
+# Propagate to the linked app, including MSVC's hand-maintained config path.
+target_compile_definitions(${SCRIBUS_TESTS_LIB} PUBLIC WITH_TESTS=1)
+target_include_directories(${SCRIBUS_TESTS_LIB} PRIVATE
+	"${CMAKE_CURRENT_BINARY_DIR}/../third_party/Qt-Advanced-Docking-System/src")
+set_target_properties(${SCRIBUS_TESTS_LIB} PROPERTIES
+	AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../ui")
 
 
 # This is a convenience library that for linkage purposes is part of Scribus's
@@ -365,6 +372,18 @@ set_tests_properties(hyphenation_ignore_list PROPERTIES
 	FIXTURES_REQUIRED runningheader_test_app
 	LABELS "integration;persistence;hyphenation"
 	PASS_REGULAR_EXPRESSION "HYPHENATION_IGNORE_LIST_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(table_paragraph_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-table_paragraph_style")
+file(MAKE_DIRECTORY "${table_paragraph_prefs_dir}")
+add_test(NAME table_paragraph_style_selection
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${table_paragraph_prefs_dir}" --document-tests)
+set_tests_properties(table_paragraph_style_selection PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;tables;styles;undo-redo;persistence;ui"
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
 

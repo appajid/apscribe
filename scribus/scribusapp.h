@@ -108,6 +108,8 @@ class SCRIBUS_API ScribusQApp : public QApplication
 		bool m_showFontInfo {false};
 		bool m_showProfileInfo {false};
 		bool m_commandLineScriptFailed {false};
+		// Stable app/plugin class layout; the option itself is test-build-only.
+		QStringList m_documentTestArguments;
 		//! \brief If is there user given prefs file...
 		QString m_prefsUserDir;
 		QList<QString> m_filesToLoad;

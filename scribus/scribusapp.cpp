@@ -197,6 +197,14 @@ void ScribusQApp::parseCommandLine()
 			usage = true;
 		}
 #ifdef WITH_TESTS
+		else if (arg == "--document-tests")
+		{
+			useGUI = false;
+			m_showSplash = false;
+			m_documentTestArguments = args.mid(argi);
+			argi = argsc;
+			break;
+		}
 		else if (arg == ARG_TESTS || arg == ARG_TESTS_SHORT)
 		{
 			header = true;
@@ -359,6 +367,12 @@ int ScribusQApp::init()
 	connect(ScCore, &ScribusCore::guiStartupFinished, this,
 	        [this]() { emit appStarted(); }, Qt::SingleShotConnection);
 	int retVal = ScCore->startGUI(m_showSplash, m_showFontInfo, m_showProfileInfo, m_lang);
+#ifdef WITH_TESTS
+	// Document/inspector tests need fonts, plugins, and the real main window.
+	// Keep them separate from the lightweight pre-startup unit tests.
+	if (retVal == EXIT_SUCCESS && !m_documentTestArguments.isEmpty())
+		return RunTests::runDocumentTests(m_documentTestArguments) == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+#endif
 	// A hook for plugins and scripts to trigger on. Some plugins and scripts
 	// require the app to be fully set up (in particular, the main window to be
 	// built and shown) before running their setup. Wait for recovery and the
