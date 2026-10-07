@@ -1527,12 +1527,65 @@ void StyleManager::slotClean()
 	if (m_isEditMode)
 	{
 		StyleItem *tmp = m_item;
+		// Applying an ordinary style property must not destroy the selected tree
+		// item. Cocoa accessibility may still be reading that item when the style
+		// manager refreshes, and repeatedly clearing the tree can crash Qt.
+		for (StyleItem* item : std::as_const(m_items))
+			item->reload();
 
-		for (int i = 0; i < m_items.count(); ++i)
+		QMap<QString, QMap<QString, QString>> expectedStyles;
+		for (StyleItem* item : std::as_const(m_items))
 		{
-			m_item = m_items.at(i);
-			reloadStyleView();
+			for (const StyleName& style : item->styles(false))
+				expectedStyles[item->typeName()].insert(style.first, style.second);
 		}
+
+		// Entering edit mode still needs a full tree refresh so the new editor
+		// state is exposed to assistive technology. A dirty Apply/Reset can keep
+		// its existing tree when only style properties changed.
+		bool rebuild = !applyButton->isEnabled();
+		int styleCount = 0;
+		int rootCount = 0;
+		QTreeWidgetItemIterator treeIt(styleView);
+		while (*treeIt && !rebuild)
+		{
+			StyleViewItem* viewItem = dynamic_cast<StyleViewItem*>(*treeIt);
+			if (!viewItem)
+			{
+				rebuild = true;
+				break;
+			}
+			if (viewItem->isRoot())
+			{
+				++rootCount;
+				rebuild = !expectedStyles.contains(viewItem->text(NAME_COL));
+			}
+			else
+			{
+				++styleCount;
+				const auto& styles = expectedStyles.value(viewItem->rootName());
+				const QString name = viewItem->text(NAME_COL);
+				if (!styles.contains(name))
+					rebuild = true;
+				else
+				{
+					QString expectedParent = styles.value(name);
+					if (!styles.contains(expectedParent))
+						expectedParent.clear();
+					StyleViewItem* parent = dynamic_cast<StyleViewItem*>(viewItem->parent());
+					const QString actualParent = parent && !parent->isRoot() ? parent->text(NAME_COL) : QString();
+					rebuild = (actualParent != expectedParent);
+				}
+			}
+			++treeIt;
+		}
+		int expectedCount = 0;
+		for (const auto& styles : std::as_const(expectedStyles))
+			expectedCount += styles.count();
+		if (rootCount != m_items.count() || styleCount != expectedCount)
+			rebuild = true;
+		if (rebuild)
+			reloadStyleView(false);
 		slotSetupWidget();
 		m_item = tmp;
 	}
