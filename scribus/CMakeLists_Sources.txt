@@ -185,6 +185,7 @@ set(SCRIBUS_SOURCES
 	rawimage.cpp
 	regexsearch.cpp
 	searchquerypresets.cpp
+	wheelzoomaccumulator.cpp
 	grepstylerules.cpp
 	rc4.c
 	sampleitem.cpp

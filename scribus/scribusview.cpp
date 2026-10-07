@@ -3247,11 +3247,22 @@ void ScribusView::wheelEvent(QWheelEvent *w)
 	QPoint angleDelta = w->angleDelta();
 	if (w->modifiers() == Qt::ControlModifier)
 	{
-		FPoint mp = m_canvas->globalToCanvas(w->globalPosition());
-		angleDelta.y() > 0 ? slotZoomIn(mp.x(), mp.y(), true) : slotZoomOut(mp.x(), mp.y(), true);
+		const int steps = m_wheelZoom.consume(angleDelta.y(), w->phase());
+		if (steps != 0)
+		{
+			FPoint mp = m_canvas->globalToCanvas(w->globalPosition());
+			for (int i = 0; i < qAbs(steps); ++i)
+			{
+				if (steps > 0)
+					slotZoomIn(mp.x(), mp.y(), true);
+				else
+					slotZoomOut(mp.x(), mp.y(), true);
+			}
+		}
 	}
 	else
 	{
+		m_wheelZoom.reset();
 		int dX = 0;
 		int dY = 0;
 		QPoint pixelDelta = w->pixelDelta();

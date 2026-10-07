@@ -60,6 +60,7 @@ class QMimeData;
 #include "selectionrubberband.h"
 #include "ui/clockwidget.h"
 #include "undotransaction.h"
+#include "wheelzoomaccumulator.h"
 
 class Canvas;
 class CanvasMode;
@@ -297,6 +298,7 @@ private:
 	bool linkAfterDraw { false };
 	bool ImageAfterDraw { false };
 	QStack<ViewState> m_viewStates;
+	WheelZoomAccumulator m_wheelZoom;
 
 private slots:
 	void setZoom();

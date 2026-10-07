@@ -43,6 +43,11 @@ target_link_libraries(searchquerypresetstests Qt6::Test Qt6::Core)
 add_test(NAME searchquerypresetstests COMMAND searchquerypresetstests)
 set_tests_properties(searchquerypresetstests PROPERTIES LABELS "find;regex;presets")
 
+add_executable(wheelzoomaccumulatortests wheelzoomaccumulatortests.cpp ../wheelzoomaccumulator.cpp)
+target_link_libraries(wheelzoomaccumulatortests Qt6::Test Qt6::Core)
+add_test(NAME wheelzoomaccumulatortests COMMAND wheelzoomaccumulatortests)
+set_tests_properties(wheelzoomaccumulatortests PROPERTIES LABELS "ui;zoom;input")
+
 # Ordered, inheritable GREP rules are stored on paragraph styles. Rendering
 # applies them in a later slice; these tests cover the data and match model.
 add_executable(grepstylerulestests grepstylerulestests.cpp ../grepstylerules.cpp ../regexsearch.cpp)
