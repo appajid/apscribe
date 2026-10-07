@@ -5,11 +5,20 @@
 #include "testStoryText.h"
 #include "runtests.h"
 #include "testTableParagraphStyle.h"
+#include "testDocumentZoom.h"
 
 int RunTests::runDocumentTests(const QStringList& arguments)
 {
+	// Leave QtTest's function/output options intact; select the initialized
+	// document suite separately from those options.
+	QStringList testArguments = arguments;
+	if (testArguments.removeAll("--suite=zoom") > 0)
+	{
+		TestDocumentZoom tests;
+		return QTest::qExec(&tests, testArguments);
+	}
 	TestTableParagraphStyle tests;
-	return QTest::qExec(&tests, arguments);
+	return QTest::qExec(&tests, testArguments);
 }
 
 int RunTests::runTests(const QStringList& arguments)

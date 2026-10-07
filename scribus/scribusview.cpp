@@ -3353,6 +3353,17 @@ void ScribusView::setScale(double newScale)
 	if (canvasScale > v3)
 		canvasScale = v3;
 
+	// QScrollArea uses a real QWidget for the canvas. Qt silently clamps
+	// widgets at QWIDGETSIZE_MAX, which otherwise truncates the scroll range
+	// and jumps backwards in long documents at high magnification. Reserve
+	// space for zoom() to extend the pasteboard around the viewport anchor.
+	const QSize viewportSize = maximumViewportSize();
+	const double width = qMax(1.0, m_doc->maxCanvasCoordinate.x() - m_doc->minCanvasCoordinate.x());
+	const double height = qMax(1.0, m_doc->maxCanvasCoordinate.y() - m_doc->minCanvasCoordinate.y());
+	const double maxWidth = qMax(1, QWIDGETSIZE_MAX - 2 * viewportSize.width());
+	const double maxHeight = qMax(1, QWIDGETSIZE_MAX - 2 * viewportSize.height());
+	canvasScale = qMin(canvasScale, qMin(maxWidth / width, maxHeight / height));
+
 	m_canvas->setScale(canvasScale);
 
 	bool sigBlocked = m_ScMW->zoomSpinBox->blockSignals(true);
@@ -3614,6 +3625,8 @@ void ScribusView::zoom(double canvasX, double canvasY, double scale, bool preser
 	undoManager->setUndoEnabled(false);
 	updatesOn(false);
 	setScale(newScale);
+	// setScale() can also clamp to the document-dependent canvas size limit.
+	newScale = m_canvas->scale();
 
 	FPoint minPos = m_doc->minCanvasCoordinate;
 	FPoint maxPos = m_doc->maxCanvasCoordinate;
