@@ -2,6 +2,16 @@
 
 Snapshot: 7 October 2026. Source: [Scribus open issues](https://github.com/scribusproject/scribus/issues) (59 issues) and [open pull requests](https://github.com/scribusproject/scribus/pulls) (13 PRs). This is a triage list for Apscribe, not a claim that every upstream report reproduces here. Recheck current state and license before each integration. Do not bulk-merge upstream or third-party code.
 
+## Review and implementation rule
+
+Each entry is handled individually: inspect the actual source/issue or PR diff; compare it with the current Apscribe implementation; reproduce any reported bug or demonstrate a missing workflow; verify code and asset licenses; choose a direct import, attributed adaptation, native implementation, or documented rejection; add a regression test; build and run the relevant suite; then commit the narrow slice. A priority is not a claim of reproduction or completion. Upstream Scribus PRs are GPL-family contributions to review, not MIT plugins.
+
+## Verified Apscribe issue work
+
+| Upstream issue | Apscribe evidence | Decision/status |
+| --- | --- | --- |
+| [#220 IDML font fallback](https://github.com/scribusproject/scribus/issues/220) | A generated IDML fixture with an inherited Bold paragraph and a different family whose `FontStyle` is omitted failed before the change. | Fixed locally: missing or empty face defaults to Regular when an explicit family is supplied. Character ranges and named character/paragraph styles are covered by the fixture. All 50 local tests pass. |
+
 ## Integration completed in this slice
 
 The native Find & Replace dialog now offers named, persistent *text-query* presets (find text, replacement text, regex, case, whole-word). This adapts the user-facing saved-query idea from Richard Sitányi's [GREPS](https://github.com/richard-cdbox/greps) (MIT; copyright 2025 richard-cdbox). No GREPS source code or Tkinter UI was copied. Matching and replacement remain in Apscribe's existing engine, to avoid the GREPS bulk-change path that calls Scripter `setText` and can discard text formatting (also related to [Scribus #110](https://github.com/scribusproject/scribus/issues/110)). The preset JSON is stored in user preferences, not in an SLA document; loading a preset never changes document content. Formatting criteria are not yet saved.
@@ -11,10 +21,10 @@ The native Find & Replace dialog now offers named, persistent *text-query* prese
 | Project | License checked | Apscribe decision |
 | --- | --- | --- |
 | [GREPS](https://github.com/richard-cdbox/greps) | MIT in repository LICENSE | Saved-query workflow adapted natively in this slice; do not bundle its Tkinter bulk replacement unmodified. Review special-character menus later. |
-| [ScribusGenerator](https://github.com/berteh/ScribusGenerator) | GitHub repository reports MIT; verify file-level notices before copying | Apscribe already has native CSV/JSON Data Merge. Compare catalogue/imposition output and combined PDFs before deciding what is missing; no wholesale integration. See upstream [#61](https://github.com/scribusproject/scribus/issues/61). |
-| [Apply Style](https://github.com/aoloe/scribus-plugin-applyStyle) | GitHub repository reports MIT | Apscribe has native Quick Apply Styles and tests; evaluate specific UX gaps rather than duplicate its plugin. |
-| [Canons of Page Construction](https://github.com/richard-cdbox/canons_of_page_construction) | GitHub repository reports MIT | Useful book-layout idea, but the current script uses Tkinter and creates/modifies a document. Needs API and cross-platform review before bundling. |
-| [Scribus Tiling/Ganging Script](https://github.com/TikanoEG/scribus_tiling_ganging_script) | GitHub repository reports MIT | Potential imposition value. Current script assumes its own new document, uses manual dimensions, and needs input/rotation checks. Do not ship it as a native feature without tests. |
+| [ScribusGenerator](https://github.com/berteh/ScribusGenerator) | GitHub repository reports MIT; verify file-level notices before copying | **Partial gap confirmed.** Apscribe already has native CSV/JSON Data Merge and per-record PDFs, but not one combined merged file. ScribusGenerator also supports dynamic image paths, colours/attributes, and multiple records on a page. Prioritize these behaviors as native Data Merge slices; its SLA text substitution is not a safe drop-in replacement. See upstream [#61](https://github.com/scribusproject/scribus/issues/61). |
+| [Apply Style](https://github.com/aoloe/scribus-plugin-applyStyle) | GitHub repository reports MIT | **Function substantially present.** Apscribe's native Quick Apply Styles includes searchable paragraph/character styles, favorites, recent styles, and tests. The old plugin explicitly lists missing dirty-state/render refresh; do not duplicate it. Review only cursor-position popover placement as a possible UX improvement. |
+| [Canons of Page Construction](https://github.com/richard-cdbox/canons_of_page_construction) | GitHub repository reports MIT | **Useful new feature, design needed.** It calculates eight book-page canons and mirrored margins. Its Tkinter UI and documented manual Left-master correction are not suitable for direct bundling; adapt the geometry to Apscribe's native facing-master UI, with no unexpected document replacement. |
+| [Scribus Tiling/Ganging Script](https://github.com/TikanoEG/scribus_tiling_ganging_script) | GitHub repository reports MIT | **Useful print workflow, direct script unsuitable.** The code creates a new document, trusts entered dimensions, and represents its advertised cut paths as fill/stroke-free rectangles rather than a clearly exportable cutter layer. Design a tested native step-and-repeat/imposition workflow before import. |
 
 For any future source-code import: retain its actual copyright and full MIT notice alongside the imported files, record the upstream revision, and test on macOS, Windows, and Linux. Repository license metadata alone is not enough for assets, fonts, or bundled data.
 
@@ -31,7 +41,7 @@ For any future source-code import: retain its actual copyright and full MIT noti
 | PR | Initial Apscribe disposition |
 | --- | --- |
 | [#213 selection handles](https://github.com/scribusproject/scribus/pull/213) | Worth testing with Apscribe's current handles; the diff is largely formatting, so extract the behavior rather than cherry-pick. |
-| [#184 trackpad zoom](https://github.com/scribusproject/scribus/pull/184) | P1: compare with current zoom implementation and #182/#183; add gesture tests. |
+| [#184 trackpad zoom](https://github.com/scribusproject/scribus/pull/184) | **Applicable gap confirmed:** Apscribe's Qt 6 `ScribusView::wheelEvent` currently zooms once for every Ctrl-wheel event, even a tiny trackpad delta. The old PR accumulates Qt 5 `delta()` to 120, but discards remainder and does not cover zero-angle events. Implement a Qt 6-aware accumulator and gesture tests in a separate slice; do not cherry-pick the old patch. Related: #182/#183. |
 | [#152 Brewfile](https://github.com/scribusproject/scribus/pull/152) | Build convenience only; adapt to Apscribe dependencies if useful. |
 | [#138 Linux metadata](https://github.com/scribusproject/scribus/pull/138) | Check current Apscribe desktop/AppImage metadata first. |
 | [#135 PDF text recognition](https://github.com/scribusproject/scribus/pull/135) | Large, old import change; security and fidelity review required. |
