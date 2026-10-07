@@ -317,6 +317,23 @@ set_tests_properties(settext_preserves_styles PROPERTIES
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
 
+set(html_list_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-html_list")
+set(html_list_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-html_list")
+file(MAKE_DIRECTORY "${html_list_prefs_dir}" "${html_list_output_dir}")
+add_test(NAME html_ordered_list_start
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${html_list_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_html_ordered_list_start.py")
+set_tests_properties(html_ordered_list_start PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${html_list_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;scripter;html-import"
+	PASS_REGULAR_EXPRESSION "HTML_ORDERED_LIST_START_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
 set(data_merge_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-data_merge")
 set(data_merge_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-data_merge")
 file(MAKE_DIRECTORY "${data_merge_prefs_dir}" "${data_merge_output_dir}")

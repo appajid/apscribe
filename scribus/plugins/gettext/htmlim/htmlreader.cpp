@@ -175,6 +175,9 @@ bool HTMLReader::startElement(const QString &name, const HTMLAttributesMap &attr
 		++listLevel;
 		if (static_cast<int>(listStyles.size()) < (listLevel + 1))
 			createListStyle();
+		bool validStart = false;
+		const int start = attrs.value("start").toInt(&validStart);
+		nextItemNumbers[listLevel] = validStart ? start : 1;
 		inOL = true;
 		if (inUL)
 		{
