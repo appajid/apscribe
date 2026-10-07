@@ -351,6 +351,23 @@ set_tests_properties(list_marker_formatting PROPERTIES
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
 
+set(hyphenation_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-hyphenation_ignore")
+set(hyphenation_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-hyphenation_ignore")
+file(MAKE_DIRECTORY "${hyphenation_prefs_dir}" "${hyphenation_output_dir}")
+add_test(NAME hyphenation_ignore_list
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${hyphenation_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_hyphenation_ignore_list.py")
+set_tests_properties(hyphenation_ignore_list PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${hyphenation_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;persistence;hyphenation"
+	PASS_REGULAR_EXPRESSION "HYPHENATION_IGNORE_LIST_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
 set(data_merge_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-data_merge")
 set(data_merge_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-data_merge")
 file(MAKE_DIRECTORY "${data_merge_prefs_dir}" "${data_merge_output_dir}")
