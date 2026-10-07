@@ -5945,6 +5945,15 @@ bool Scribus171Format::readStoryText(ScribusDoc *doc, ScXmlStreamReader& reader,
 			readItemText(story, tAtt, lastStyle);
 		else if (tName == QLatin1String("Content"))
 			readItemText(story, tAtt, lastStyle);
+		else if (tName == QLatin1String("ListMarker"))
+		{
+			CharStyle newStyle;
+			readCharacterStyleAttrs(doc, tAtt, newStyle);
+			story.insertMark(new BulNumMark(), story.length());
+			story.setCharStyle(story.length() - 1, 1, newStyle);
+			lastStyle->StyleStart = story.length() - 1;
+			lastStyle->Style = newStyle;
+		}
 		else if (tName == QLatin1String("para"))
 		{
 			story.insertChars(story.length(), SpecialChars::PARSEP);

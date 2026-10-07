@@ -334,6 +334,23 @@ set_tests_properties(html_ordered_list_start PROPERTIES
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
 
+set(list_marker_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-list_markers")
+set(list_marker_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-list_markers")
+file(MAKE_DIRECTORY "${list_marker_prefs_dir}" "${list_marker_output_dir}")
+add_test(NAME list_marker_formatting
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${list_marker_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_list_marker_formatting.py")
+set_tests_properties(list_marker_formatting PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${list_marker_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;persistence;lists;text-formatting"
+	PASS_REGULAR_EXPRESSION "LIST_MARKER_FORMATTING_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
 set(data_merge_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-data_merge")
 set(data_merge_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-data_merge")
 file(MAKE_DIRECTORY "${data_merge_prefs_dir}" "${data_merge_output_dir}")

@@ -2005,9 +2005,15 @@ void Scribus171Format::writeITEXTs(ScribusDoc *doc, ScXmlStreamWriter &docu, Sto
 		else if (ch == SpecialChars::OBJECT && story.hasMark(k))
 		{
 			const Mark* mark = story.mark(k);
-			if (!mark->isType(MARKBullNumType))
+			if (mark->isType(MARKBullNumType))
 			{
-				//dont save marks for bullets and numbering
+				// Persist the character formatting, while letting layout regenerate
+				// the bullet or number from the paragraph style on load.
+				docu.writeEmptyElement("ListMarker");
+				putCStyle(docu, lastStyle);
+			}
+			else
+			{
 				docu.writeEmptyElement("MARK");
 				docu.writeAttribute("label", mark->label);
 				docu.writeAttribute("type", mark->getType());
