@@ -263,8 +263,9 @@ void SMCStyleWidget::show(const CharStyle *cstyle, const QList<CharStyle> &cstyl
 	effects_->UnderlineVal->LWidth->setValue(cstyle->underlineWidth() / 10.0);
 	slotColorChange();
 
-	parentCombo->clear();
-	parentCombo->addItem( cstyle->isDefaultStyle()? tr("A default style cannot be assigned a parent style") : "");
+	QStringList parentChoices;
+	parentChoices.append(cstyle->isDefaultStyle()
+	                     ? tr("A default style cannot be assigned a parent style") : QString());
 	if (!cstyle->isDefaultStyle())
 	{
 		QStringList styleNames;
@@ -274,7 +275,20 @@ void SMCStyleWidget::show(const CharStyle *cstyle, const QList<CharStyle> &cstyl
 				styleNames.append(cstyles[i].name());
 		}
 		styleNames.sort(Qt::CaseSensitive);
-		parentCombo->addItems(styleNames);
+		parentChoices.append(styleNames);
+	}
+	if (parentCombo->count() == parentChoices.count())
+	{
+		for (int i = 0; i < parentChoices.count(); ++i)
+		{
+			if (parentCombo->itemText(i) != parentChoices[i])
+				parentCombo->setItemText(i, parentChoices[i]);
+		}
+	}
+	else
+	{
+		parentCombo->clear();
+		parentCombo->addItems(parentChoices);
 	}
 
 	if (cstyle->isDefaultStyle() || !hasParent)
