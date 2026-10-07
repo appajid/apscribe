@@ -24,30 +24,12 @@ for which a new license (GPL+exception) is in place.
 #include "commonstrings.h"
 #include "scribusdoc.h"
 #include "stylecombos.h"
+#include "stylecomboitems.h"
 
 #include <QListView>
 
 #include "scpage.h"
 #include "util.h"
-
-namespace {
-void updateComboItems(QComboBox* combo, const QStringList& items)
-{
-	// Updating an existing row also preserves its accessibility interface.
-	// Clearing an unchanged model needlessly destroys every accessible row.
-	if (combo->count() == items.count())
-	{
-		for (int i = 0; i < items.count(); ++i)
-		{
-			if (combo->itemText(i) != items[i])
-				combo->setItemText(i, items[i]);
-		}
-		return;
-	}
-	combo->clear();
-	combo->addItems(items);
-}
-}
 
 ParaStyleComboBox::ParaStyleComboBox(QWidget* parent) : QComboBox(parent)
 {
@@ -154,7 +136,7 @@ void ParaStyleComboBox::updateStyleList()
 		st.sort();
 		choices.append(st);
 	}
-	updateComboItems(this, choices);
+	StyleComboItems::update(this, choices);
 
 	if (m_doc != nullptr)
 	{
@@ -294,7 +276,7 @@ void CharStyleComboBox::updateStyleList()
 		st.sort();
 		choices.append(st);
 	}
-	updateComboItems(this, choices);
+	StyleComboItems::update(this, choices);
 
 	if (m_doc != nullptr)
 	{
@@ -434,7 +416,7 @@ void CellStyleComboBox::updateStyleList()
 		st.sort();
 		choices.append(st);
 	}
-	updateComboItems(this, choices);
+	StyleComboItems::update(this, choices);
 
 	if (m_doc != nullptr)
 	{
@@ -575,7 +557,7 @@ void TableStyleComboBox::updateStyleList()
 		st.sort();
 		choices.append(st);
 	}
-	updateComboItems(this, choices);
+	StyleComboItems::update(this, choices);
 
 	if (m_doc != nullptr)
 	{

@@ -52,6 +52,13 @@ set_tests_properties(grepstyleeditortests PROPERTIES
 	LABELS "grep-styles;ui"
 	ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+add_executable(stylecomboitemstests stylecomboitemstests.cpp)
+target_link_libraries(stylecomboitemstests Qt6::Test Qt6::Widgets)
+add_test(NAME stylecomboitemstests COMMAND stylecomboitemstests)
+set_tests_properties(stylecomboitemstests PROPERTIES
+	LABELS "styles;ui;accessibility"
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # Phase 7 starts with an isolated reflowable EPUB package writer. Reading
 # order extraction and the application export command are separate slices.
 add_executable(epubexporttests epubexporttests.cpp ../epubexport.cpp)

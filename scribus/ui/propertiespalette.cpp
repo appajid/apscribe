@@ -384,10 +384,10 @@ void PropertiesPalette::updateObjectStyleControls()
 		}
 	}
 
-	// Keep the combo's rows alive when the visible choices have not changed.
-	// Repeated clear() calls can invalidate Qt accessibility's cached rows.
-	if (m_objectStyleCombo->count() != choices.count())
-		m_objectStyleCombo->clear();
+	// Retain existing rows when styles are added or removed, too. A full
+	// clear invalidates every accessibility child even for a one-row change.
+	while (m_objectStyleCombo->count() > choices.count())
+		m_objectStyleCombo->removeItem(m_objectStyleCombo->count() - 1);
 	for (int i = 0; i < choices.count(); ++i)
 	{
 		if (i >= m_objectStyleCombo->count())

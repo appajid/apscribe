@@ -14,6 +14,7 @@ for which a new license (GPL+exception) is in place.
 #include "scribus.h"
 #include "scribusapp.h"
 #include "smcstylewidget.h"
+#include "stylecomboitems.h"
 #include "util.h"
 #include "units.h"
 
@@ -277,19 +278,7 @@ void SMCStyleWidget::show(const CharStyle *cstyle, const QList<CharStyle> &cstyl
 		styleNames.sort(Qt::CaseSensitive);
 		parentChoices.append(styleNames);
 	}
-	if (parentCombo->count() == parentChoices.count())
-	{
-		for (int i = 0; i < parentChoices.count(); ++i)
-		{
-			if (parentCombo->itemText(i) != parentChoices[i])
-				parentCombo->setItemText(i, parentChoices[i]);
-		}
-	}
-	else
-	{
-		parentCombo->clear();
-		parentCombo->addItems(parentChoices);
-	}
+	StyleComboItems::update(parentCombo, parentChoices);
 
 	if (cstyle->isDefaultStyle() || !hasParent)
 		parentCombo->setCurrentIndex(0);
