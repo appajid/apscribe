@@ -356,11 +356,15 @@ int ScribusQApp::init()
 	 * and delete if (true)
 	 */
 	// if (useGUI)
+	connect(ScCore, &ScribusCore::guiStartupFinished, this,
+	        [this]() { emit appStarted(); }, Qt::SingleShotConnection);
 	int retVal = ScCore->startGUI(m_showSplash, m_showFontInfo, m_showProfileInfo, m_lang);
 	// A hook for plugins and scripts to trigger on. Some plugins and scripts
 	// require the app to be fully set up (in particular, the main window to be
-	// built and shown) before running their setup.
-	emit appStarted();
+	// built and shown) before running their setup. Wait for recovery and the
+	// startup dialog when recovery discovery runs asynchronously.
+	if (!ScCore->startupCompletionDeferred())
+		emit appStarted();
 	if (!useGUI && m_commandLineScriptFailed)
 		return EXIT_FAILURE;
 

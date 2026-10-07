@@ -7,8 +7,14 @@ to the COPYING file provided with the program.
 
 #include <QDir>
 #include <QDirIterator>
+#include <QObject>
 #include <QSet>
 #include <QStringList>
+#include <QThread>
+
+#include <functional>
+#include <memory>
+#include <utility>
 
 namespace RecoveryFiles
 {
@@ -37,6 +43,19 @@ inline QStringList find(const QStringList& directories)
 		}
 	}
 	return foundFiles.values();
+}
+
+inline void findAsync(QStringList directories, QObject* receiver,
+                      std::function<void(QStringList)> onFinished)
+{
+	auto result = std::make_shared<QStringList>();
+	auto* thread = QThread::create([directories = std::move(directories), result]() {
+		*result = find(directories);
+	});
+	QObject::connect(thread, &QThread::finished, receiver,
+	                 [result, onFinished = std::move(onFinished)]() { onFinished(*result); });
+	QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+	thread->start();
 }
 }
 

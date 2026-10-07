@@ -29,8 +29,10 @@ for which a new license (GPL+exception) is in place.
 
 #include <QByteArray>
 #include <QDebug>
+#include <QDir>
 #include <QGlobalStatic>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QScreen>
 #include <QStyleFactory>
 #include <QStyleHints>
@@ -45,6 +47,7 @@ for which a new license (GPL+exception) is in place.
 #include "localemgr.h"
 #include "pluginmanager.h"
 #include "prefsmanager.h"
+#include "recoveryfiles.h"
 #include "scimagecachemanager.h"
 #include "scpaths.h"
 #include "scribus.h"
@@ -103,6 +106,7 @@ int ScribusCore::init(bool useGUI, const QList<QString>& filesToUse)
 
 int ScribusCore::startGUI(bool showSplash, bool showFontInfo, bool showProfileInfo, const QString& newGuiLanguage)
 {
+	m_startupCompletionDeferred = false;
 	auto* scribus = new ScribusMainWindow();
 	Q_CHECK_PTR(scribus);
 	if (!scribus)
@@ -162,7 +166,6 @@ int ScribusCore::startGUI(bool showSplash, bool showFontInfo, bool showProfileIn
 	scribus->show();
 	scribus->setupMainWindow();
 
-	QStringList recoverFiles = scribus->findRecoverableFile();
 	int subsRet = scribus->ShowSubs();
 	if (subsRet == 0)
 	{
@@ -171,20 +174,36 @@ int ScribusCore::startGUI(bool showSplash, bool showFontInfo, bool showProfileIn
 			for (int i = 0; i < m_Files.size(); ++i)
 				scribus->loadDoc(m_Files.at(i));
 		}
-		else if ((recoverFiles.count() > 0) && usingGUI())
+		else if (usingGUI())
 		{
-			if (!scribus->recoverFile(recoverFiles))
-			{
-				if (PrefsManager::instance().appPrefs.uiPrefs.showStartupDialog)
-					scribus->startUpDialog();
-			}
+			m_startupCompletionDeferred = true;
+			// Directory enumeration can block on slow or cloud-backed storage.
+			// Keep the UI event loop running, but retain the recovery-first flow.
+			auto* progress = new QProgressDialog(tr("Checking for recoverable documents..."),
+			                                     QString(), 0, 0, scribus);
+			progress->setWindowTitle(tr("Recovery Check"));
+			progress->setCancelButton(nullptr);
+			progress->setWindowModality(Qt::WindowModal);
+			progress->setMinimumDuration(0);
+			progress->show();
+			const QStringList directories { m_prefsManager.appPrefs.docSetupPrefs.AutoSaveDir,
+			                                m_prefsManager.documentDir(), QDir::homePath() };
+			RecoveryFiles::findAsync(directories, scribus, [this, scribus, progress](QStringList recoverFiles) {
+				progress->close();
+				progress->deleteLater();
+				if (recoverFiles.isEmpty() || !scribus->recoverFile(recoverFiles))
+				{
+					if (PrefsManager::instance().appPrefs.uiPrefs.showStartupDialog)
+						scribus->startUpDialog();
+					else
+						scribus->setFocus();
+				}
+				emit guiStartupFinished();
+			});
 		}
 		else
 		{
-			if (PrefsManager::instance().appPrefs.uiPrefs.showStartupDialog && usingGUI())
-				scribus->startUpDialog();
-			else
-				scribus->setFocus();
+			scribus->setFocus();
 		}
 	}
 	else if (subsRet == QMessageBox::Help)

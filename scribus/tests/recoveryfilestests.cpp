@@ -5,9 +5,12 @@ to the COPYING file provided with the program.
 #include <QtTest>
 
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QSet>
 #include <QTemporaryDir>
+#include <QThread>
+#include <QTimer>
 
 #include "recoveryfiles.h"
 
@@ -17,6 +20,7 @@ class RecoveryFilesTests : public QObject
 
 private slots:
 	void findsBothRecoveryTypesOnceWithoutScanningSubdirectories();
+	void reportsAsyncResultsOnTheUiThread();
 };
 
 void RecoveryFilesTests::findsBothRecoveryTypesOnceWithoutScanningSubdirectories()
@@ -48,6 +52,31 @@ void RecoveryFilesTests::findsBothRecoveryTypesOnceWithoutScanningSubdirectories
 		const QStringList withoutLinks = RecoveryFiles::find({ directory.path() });
 		QVERIFY(!withoutLinks.contains(shortcut));
 	}
+}
+
+void RecoveryFilesTests::reportsAsyncResultsOnTheUiThread()
+{
+	QTemporaryDir directory;
+	QVERIFY(directory.isValid());
+	const QString path = QDir(directory.path()).filePath(QStringLiteral("book_autosave_123.sla"));
+	QFile file(path);
+	QVERIFY(file.open(QIODevice::WriteOnly));
+	file.close();
+
+	QObject receiver;
+	QEventLoop loop;
+	QStringList files;
+	bool called = false;
+	RecoveryFiles::findAsync({ directory.path() }, &receiver, [&](QStringList found) {
+		called = true;
+		files = std::move(found);
+		QCOMPARE(QThread::currentThread(), QCoreApplication::instance()->thread());
+		loop.quit();
+	});
+	QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+	loop.exec();
+	QVERIFY(called);
+	QCOMPARE(files, QStringList({ path }));
 }
 
 QTEST_GUILESS_MAIN(RecoveryFilesTests)
