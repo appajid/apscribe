@@ -9,8 +9,6 @@ for which a new license (GPL+exception) is in place.
 #include <QMessageBox>
 #include <QTabWidget>
 
-#include <algorithm>
-
 #include "alignselect.h"
 #include "colorcombo.h"
 #include "commonstrings.h"
@@ -49,6 +47,8 @@ SMParagraphStyle::SMParagraphStyle(SMCharacterStyle* cstyleItem):
 	m_cstyles = &m_cstyleItem->tmpStyles();
 	m_pwidget = new SMPStyleWidget(m_doc, m_cstyles);
 	Q_CHECK_PTR(m_pwidget);
+	// Keep references valid even when the user edits Character Styles first.
+	connect(m_cstyleItem, &SMCharacterStyle::charStylesDeleted, this, &SMParagraphStyle::slotCharStylesDeleted);
 }
 
 QTabWidget* SMParagraphStyle::widget()
@@ -576,8 +576,6 @@ void SMParagraphStyle::setupConnections()
 	connect(m_pwidget->cpage->hyphenCharLineEdit, SIGNAL(textChanged(QString)), this, SLOT(slotHyphenChar()));
 	connect(m_pwidget->cpage->smallestWordSpinBox, SIGNAL(valueChanged(int)), this, SLOT(slotWordMin()));
 
-	// Referenced character style changes
-	connect(m_cstyleItem, SIGNAL(charStylesDeleted(QList<RemoveItem>)), this, SLOT(slotCharStylesDeleted(QList<RemoveItem>)));
 }
 
 void SMParagraphStyle::removeConnections()
@@ -669,7 +667,6 @@ void SMParagraphStyle::removeConnections()
 	disconnect(m_pwidget->cpage->fontfeaturesSetting, SIGNAL(changed()), this, SLOT(slotFontFeatures()));
 	disconnect(m_pwidget->cpage->hyphenCharLineEdit, SIGNAL(textChanged(QString)), this, SLOT(slotHyphenChar()));
 	disconnect(m_pwidget->cpage->smallestWordSpinBox, SIGNAL(valueChanged(int)), this, SLOT(slotWordMin()));
-	disconnect(m_cstyleItem, SIGNAL(charStylesDeleted(const QList<RemoveItem>&)), this, SLOT(slotCharStylesDeleted(const QList<RemoveItem>&)));
 }
 
 void SMParagraphStyle::slotLineSpacingMode(int mode)
@@ -1826,6 +1823,16 @@ void SMParagraphStyle::slotFontFeatures()
 
 void SMParagraphStyle::slotCharStylesDeleted(const QList<RemoveItem> &removeList)
 {
+	if (!m_doc)
+		return;
+	QList<QPair<QString, QString>> grepReplacements;
+	for (const RemoveItem& replacement : removeList)
+	{
+		const bool removeRule = replacement.second.isEmpty()
+			|| replacement.second == CommonStrings::trDefaultCharacterStyle
+			|| replacement.second == CommonStrings::DefaultCharacterStyle;
+		grepReplacements.append({ replacement.first, removeRule ? QString() : replacement.second });
+	}
 	for (int i = 0; i < m_tmpStyles.count(); ++i)
 	{
 		ParagraphStyle& parStyle = m_tmpStyles[i];
@@ -1868,28 +1875,7 @@ void SMParagraphStyle::slotCharStylesDeleted(const QList<RemoveItem> &removeList
 			QList<GrepStyleRules::Rule> rules;
 			if (GrepStyleRules::parse(parStyle.grepStyleRulesJson(), &rules))
 			{
-				bool changed = false;
-				for (auto it = rules.begin(); it != rules.end();)
-				{
-					const auto replacement = std::find_if(removeList.cbegin(), removeList.cend(),
-						[&it](const RemoveItem& item) { return item.first == it->characterStyle; });
-					if (replacement == removeList.cend())
-					{
-						++it;
-						continue;
-					}
-					changed = true;
-					if (replacement->second.isEmpty()
-						|| replacement->second == CommonStrings::trDefaultCharacterStyle
-						|| replacement->second == CommonStrings::DefaultCharacterStyle)
-						it = rules.erase(it);
-					else
-					{
-						it->characterStyle = replacement->second;
-						++it;
-					}
-				}
-				if (changed)
+				if (GrepStyleRules::remapCharacterStyles(&rules, grepReplacements))
 					parStyle.setGrepStyleRulesJson(GrepStyleRules::serialize(rules));
 			}
 		}

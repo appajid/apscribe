@@ -15,6 +15,7 @@ private slots:
 	void rejectsMalformedRulesAtomically();
 	void recalculatesMatchesAfterTextChanges();
 	void skipsZeroWidthMatches();
+	void remapsRenamedAndDeletedCharacterStyles();
 };
 
 void GrepStyleRulesTests::roundTripsUnicodeRules()
@@ -61,6 +62,24 @@ void GrepStyleRulesTests::skipsZeroWidthMatches()
 		{ QStringLiteral("(?=a)"), QStringLiteral("No Visible Range"), false }
 	};
 	QVERIFY(GrepStyleRules::matchParagraph(QStringLiteral("a a"), rules).isEmpty());
+}
+
+void GrepStyleRulesTests::remapsRenamedAndDeletedCharacterStyles()
+{
+	QList<GrepStyleRules::Rule> rules {
+		{ QStringLiteral("first"), QStringLiteral("Old"), false },
+		{ QStringLiteral("second"), QStringLiteral("Keep"), false },
+		{ QStringLiteral("third"), QStringLiteral("Gone"), true }
+	};
+	const QList<QPair<QString, QString>> replacements {
+		{ QStringLiteral("Old"), QStringLiteral("Renamed") },
+		{ QStringLiteral("Gone"), QString() }
+	};
+	QVERIFY(GrepStyleRules::remapCharacterStyles(&rules, replacements));
+	QCOMPARE(rules.size(), 2);
+	QCOMPARE(rules.at(0).characterStyle, QStringLiteral("Renamed"));
+	QCOMPARE(rules.at(1).characterStyle, QStringLiteral("Keep"));
+	QVERIFY(!GrepStyleRules::remapCharacterStyles(&rules, replacements));
 }
 
 QTEST_GUILESS_MAIN(GrepStyleRulesTests)

@@ -4,6 +4,8 @@ to the COPYING file provided with the program.
 */
 #include "grepstylerules.h"
 
+#include <algorithm>
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -82,6 +84,32 @@ QString GrepStyleRules::serialize(const QList<Rule>& rules)
 		array.append(object);
 	}
 	return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
+}
+
+bool GrepStyleRules::remapCharacterStyles(QList<Rule>* rules, const QList<QPair<QString, QString>>& replacements)
+{
+	if (!rules || replacements.isEmpty())
+		return false;
+	bool changed = false;
+	for (auto it = rules->begin(); it != rules->end();)
+	{
+		const auto replacement = std::find_if(replacements.cbegin(), replacements.cend(),
+			[&it](const auto& item) { return item.first == it->characterStyle; });
+		if (replacement == replacements.cend())
+		{
+			++it;
+			continue;
+		}
+		changed = true;
+		if (replacement->second.isEmpty())
+			it = rules->erase(it);
+		else
+		{
+			it->characterStyle = replacement->second;
+			++it;
+		}
+	}
+	return changed;
 }
 
 QList<GrepStyleRules::Match> GrepStyleRules::matchParagraph(const QString& text, const QList<Rule>& rules)

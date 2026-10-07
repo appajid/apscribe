@@ -6,6 +6,7 @@ to the COPYING file provided with the program.
 #define GREPSTYLERULES_H
 
 #include <QList>
+#include <QPair>
 #include <QString>
 
 namespace GrepStyleRules
@@ -38,6 +39,10 @@ struct Match
 // malformed document cannot leave a partially active set of style rules.
 bool parse(const QString& json, QList<Rule>* rules, QString* error = nullptr);
 QString serialize(const QList<Rule>& rules);
+
+// Update references when Character Styles are renamed or replaced. An empty
+// replacement removes the rule because a GREP rule needs a named style.
+bool remapCharacterStyles(QList<Rule>* rules, const QList<QPair<QString, QString>>& replacements);
 
 // Match offsets are UTF-16 positions relative to one paragraph. Later rules
 // have precedence where matches overlap; applying the styles is a later slice.

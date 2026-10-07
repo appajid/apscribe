@@ -158,7 +158,7 @@ void GrepStyleEditor::setRules(const QString& json, bool inherited, bool canInhe
 void GrepStyleEditor::refreshList()
 {
 	const int row = m_list->currentRow();
-	const auto labelForRule = [this](const GrepStyleRules::Rule& rule) {
+	const auto labelForRule = [](const GrepStyleRules::Rule& rule) {
 		return tr("%1  →  %2%3")
 			.arg(rule.pattern.isEmpty() ? tr("(enter a pattern)") : rule.pattern,
 				rule.characterStyle.isEmpty() ? tr("(choose a style)") : rule.characterStyle,
