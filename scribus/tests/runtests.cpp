@@ -6,6 +6,7 @@
 #include "runtests.h"
 #include "testTableParagraphStyle.h"
 #include "testDocumentZoom.h"
+#include "testStyleCleanup.h"
 
 int RunTests::runDocumentTests(const QStringList& arguments)
 {
@@ -15,6 +16,11 @@ int RunTests::runDocumentTests(const QStringList& arguments)
 	if (testArguments.removeAll("--suite=zoom") > 0)
 	{
 		TestDocumentZoom tests;
+		return QTest::qExec(&tests, testArguments);
+	}
+	if (testArguments.removeAll("--suite=style-cleanup") > 0)
+	{
+		TestStyleCleanup tests;
 		return QTest::qExec(&tests, testArguments);
 	}
 	TestTableParagraphStyle tests;

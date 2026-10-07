@@ -1401,21 +1401,88 @@ void ScribusDoc::getUsedStylesFromItems(ResourceCollection& lists) const
 		m_docParagraphStyles[styleIndex].getNamedResources(lists);
 	}
 
-	// An applied object style keeps every style it is based on. Expanding the
-	// references here prevents Remove Unused Styles from deleting a parent that
-	// supplies inherited appearance to an in-use child.
-	const QStringList usedObjectStyles = lists.objectStyleNames();
-	for (const QString& styleName : usedObjectStyles)
+	// Generator settings are live references even before generated text or
+	// destination frames exist. Cleanup must not discard a prepared template.
+	for (const ToCSetup& toc : m_docPrefsData.tocPrefs.defaultToCSetups)
 	{
-		const int styleIndex = m_docObjectStyles.find(styleName);
-		if (styleIndex >= 0)
-			m_docObjectStyles[styleIndex].getNamedResources(lists);
+		if (!toc.textStyle.isEmpty())
+			lists.collectStyle(toc.textStyle);
+		for (const ToCSetupEntryStyleData& entry : toc.entryData)
+		{
+			if (!entry.styleToFind.isEmpty())
+				lists.collectStyle(entry.styleToFind);
+			if (!entry.styleForText.isEmpty())
+				lists.collectStyle(entry.styleForText);
+		}
+	}
+	for (const IndexSetup& index : m_docPrefsData.indexPrefs.defaultIndexSetup)
+	{
+		for (const QString& name : {index.headingStyle, index.separatorStyle,
+			index.level1Style, index.level2Style, index.level3Style})
+		{
+			if (!name.isEmpty())
+				lists.collectStyle(name);
+		}
+	}
+	for (const NotesStyle* notes : m_docNotesStylesList)
+	{
+		if (!notes)
+			continue;
+		if (!notes->notesParStyle().isEmpty())
+			lists.collectStyle(notes->notesParStyle());
+		if (!notes->marksChStyle().isEmpty())
+			lists.collectCharStyle(notes->marksChStyle());
 	}
 
 	// Protect default styles
 	lists.collectStyle(CommonStrings::DefaultParagraphStyle);
 	lists.collectCharStyle(CommonStrings::DefaultCharacterStyle);
 	lists.collectObjectStyle(CommonStrings::DefaultObjectStyle);
+	lists.collectTableStyle(CommonStrings::DefaultTableStyle);
+	lists.collectCellStyle(CommonStrings::DefaultCellStyle);
+	lists.collectLineStyle(CommonStrings::DefaultLineStyle);
+	// A retained default may itself reference other styles in an empty document.
+	const auto collectDefaultDependencies = [&lists](const auto& styles) {
+		for (int i = 0; i < styles.count(); ++i)
+		{
+			if (styles[i].isDefaultStyle())
+				styles[i].getNamedResources(lists);
+		}
+	};
+	collectDefaultDependencies(m_docParagraphStyles);
+	collectDefaultDependencies(m_docCharStyles);
+	collectDefaultDependencies(m_docObjectStyles);
+	collectDefaultDependencies(m_docTableStyles);
+	collectDefaultDependencies(m_docCellStyles);
+
+	// Resolve the complete dependency closure, not just effective formatting on
+	// items. A retained paragraph ancestor can have its own (overridden) GREP
+	// rules, and a rule's character style can inherit from another named style.
+	// Visit each referenced definition once, without marking orphaned styles used.
+	QSet<QString> paragraphs, characters, objects, tables, cells;
+	const auto collectDependencies = [&lists](const auto& styles, const QStringList& names, QSet<QString>& visited) {
+		bool expanded = false;
+		for (const QString& name : names)
+		{
+			if (visited.contains(name))
+				continue;
+			visited.insert(name);
+			expanded = true;
+			const int index = styles.find(name);
+			if (index >= 0)
+				styles[index].getNamedResources(lists);
+		}
+		return expanded;
+	};
+	bool expanded;
+	do
+	{
+		expanded = collectDependencies(m_docParagraphStyles, lists.styleNames(), paragraphs);
+		expanded = collectDependencies(m_docCharStyles, lists.charStyleNames(), characters) || expanded;
+		expanded = collectDependencies(m_docObjectStyles, lists.objectStyleNames(), objects) || expanded;
+		expanded = collectDependencies(m_docTableStyles, lists.tableStyleNames(), tables) || expanded;
+		expanded = collectDependencies(m_docCellStyles, lists.cellStyleNames(), cells) || expanded;
+	} while (expanded);
 }
 
 void ScribusDoc::getNamedResources(ResourceCollection& lists) const

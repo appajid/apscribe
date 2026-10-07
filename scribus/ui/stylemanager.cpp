@@ -134,7 +134,7 @@ void StyleManager::languageChange()
 	importButton->setToolTip( tr("Import styles from another document"));
 	cloneButton->setToolTip(  tr("Clone selected style"));
 	deleteButton->setToolTip( tr("Delete selected styles"));
-	deleteUnusedButton->setToolTip( tr("Find and remove all styles not used by any object in the document"));
+	deleteUnusedButton->setToolTip( tr("Find and remove styles not referenced by document content, defaults, or document settings"));
 
 /***********************************/
 /*      End Tooltips               */

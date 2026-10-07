@@ -12,6 +12,7 @@ runtests.cpp
 testStoryText.cpp
 testTableParagraphStyle.cpp
 testDocumentZoom.cpp
+testStyleCleanup.cpp
 )
 
 set(SCRIBUS_TESTS_LIB "scribus_tests_lib")
@@ -397,6 +398,18 @@ set_tests_properties(document_zoom_position PROPERTIES
 	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 	FIXTURES_REQUIRED runningheader_test_app
 	LABELS "integration;ui;zoom;input"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(style_cleanup_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-style_cleanup")
+file(MAKE_DIRECTORY "${style_cleanup_prefs_dir}")
+add_test(NAME style_cleanup_dependencies
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${style_cleanup_prefs_dir}" --document-tests --suite=style-cleanup)
+set_tests_properties(style_cleanup_dependencies PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;styles;persistence;grep-styles"
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
 
