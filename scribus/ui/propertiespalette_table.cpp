@@ -627,7 +627,7 @@ void PropertiesPalette_Table::applyToInnerVertical(const QSet<TableCell>& cells,
 
 void PropertiesPalette_Table::on_borderLineList_currentRowChanged(int row)
 {
-	if (row == -1)
+	if (row < 0 || row >= m_currentBorder.borderLines().size())
 	{
 		// No list item selected, so disable editing widgets.
 		borderLineWidth->setEnabled(false);
@@ -656,6 +656,10 @@ void PropertiesPalette_Table::on_borderLineList_currentRowChanged(int row)
 		borderLineShadeLabel->setEnabled(true);
 
 		// Fill in values.
+		// showValue()/setValue() can emit valueChanged. Those signals must not
+		// write back to the table while the list is changing its current row.
+		QSignalBlocker widthBlocker(borderLineWidth);
+		QSignalBlocker shadeBlocker(borderLineShade);
 		borderLineWidth->showValue(line.width());
 		setCurrentComboItem(borderLineColor, line.color());
 		borderLineStyle->setCurrentIndex(static_cast<int>(line.style()) - 1);
@@ -677,6 +681,8 @@ void PropertiesPalette_Table::on_addBorderLineButton_clicked()
 void PropertiesPalette_Table::on_removeBorderLineButton_clicked()
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	borderLineList->removeItemWidget(borderLineList->currentItem());
 	m_currentBorder.removeBorderLine(index);
 	
@@ -687,6 +693,8 @@ void PropertiesPalette_Table::on_removeBorderLineButton_clicked()
 void PropertiesPalette_Table::on_borderLineWidth_valueChanged(double width)
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	TableBorderLine borderLine = m_currentBorder.borderLines().at(index);
 	borderLine.setWidth(width);
 	m_currentBorder.replaceBorderLine(index, borderLine);
@@ -698,6 +706,8 @@ void PropertiesPalette_Table::on_borderLineWidth_valueChanged(double width)
 void PropertiesPalette_Table::on_borderLineShade_valueChanged(double shade)
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	TableBorderLine borderLine = m_currentBorder.borderLines().at(index);
 	borderLine.setShade(shade);
 	m_currentBorder.replaceBorderLine(index, borderLine);
@@ -709,6 +719,8 @@ void PropertiesPalette_Table::on_borderLineShade_valueChanged(double shade)
 void PropertiesPalette_Table::on_borderLineColor_textActivated(const QString& colorName)
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	TableBorderLine borderLine = m_currentBorder.borderLines().at(index);
 	QString color = colorName;
 	if (colorName == CommonStrings::tr_NoneColor)
@@ -723,6 +735,8 @@ void PropertiesPalette_Table::on_borderLineColor_textActivated(const QString& co
 void PropertiesPalette_Table::on_borderLineStyle_activated(int style)
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	TableBorderLine borderLine = m_currentBorder.borderLines().at(index);
 	borderLine.setStyle(static_cast<Qt::PenStyle>(style + 1));
 	m_currentBorder.replaceBorderLine(index, borderLine);
