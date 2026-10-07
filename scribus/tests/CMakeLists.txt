@@ -300,6 +300,23 @@ set_tests_properties(dynamic_variables PROPERTIES
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
 
+set(settext_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-settext_styles")
+set(settext_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-settext_styles")
+file(MAKE_DIRECTORY "${settext_prefs_dir}" "${settext_output_dir}")
+add_test(NAME settext_preserves_styles
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${settext_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_settext_preserves_styles.py")
+set_tests_properties(settext_preserves_styles PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${settext_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;scripter;text-formatting"
+	PASS_REGULAR_EXPRESSION "SETTEXT_STYLES_QA_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
 set(data_merge_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-data_merge")
 set(data_merge_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-data_merge")
 file(MAKE_DIRECTORY "${data_merge_prefs_dir}" "${data_merge_output_dir}")

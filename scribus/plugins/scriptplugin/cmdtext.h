@@ -309,6 +309,10 @@ PyDoc_STRVAR(scribus_settext__doc__,
 QT_TR_NOOP("setText(\"text\", [\"name\"])\n\
 \n\
 Sets the text of the text frame \"name\" to the text of the string \"text\".\n\
+Existing character formatting is retained by position where possible; new\n\
+characters beyond the old length inherit nearby formatting.\n\
+Paragraph formatting is retained where the replacement has corresponding\n\
+paragraphs.\n\
 Text must be UTF8 encoded - use e.g. unicode(text, 'iso-8859-2'). See the FAQ\n\
 for more details. If \"name\" is not given the currently selected item is\n\
 used.\n\
