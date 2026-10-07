@@ -19,9 +19,34 @@ class GrepStyleEditorTests : public QObject
 	Q_OBJECT
 
 private slots:
+	void explainsWhyRulesCannotBeAddedWithoutCharacterStyles();
 	void editsOrderedRulesAndRejectsInvalidPatterns();
 	void preservesInheritanceAndDisablesMultiSelection();
 };
+
+void GrepStyleEditorTests::explainsWhyRulesCannotBeAddedWithoutCharacterStyles()
+{
+	GrepStyleEditor editor;
+	editor.setRules(QString(), false, false, true);
+	auto* add = editor.findChild<QPushButton*>(QStringLiteral("grepAddRule"));
+	auto* emptyState = editor.findChild<QLabel*>(QStringLiteral("grepEmptyState"));
+	QVERIFY(add && emptyState);
+	QVERIFY(!add->isEnabled());
+	QVERIFY(!emptyState->isHidden());
+	QVERIFY(emptyState->text().contains(QStringLiteral("Character Style")));
+	const QString screenshot = qEnvironmentVariable("APSCRIBE_GREP_EMPTY_SCREENSHOT");
+	if (!screenshot.isEmpty())
+	{
+		editor.resize(560, 420);
+		editor.show();
+		QCoreApplication::processEvents();
+		QVERIFY(editor.grab().save(screenshot));
+	}
+
+	editor.setCharacterStyles({ QStringLiteral("Accent") });
+	QVERIFY(add->isEnabled());
+	QVERIFY(emptyState->isHidden());
+}
 
 void GrepStyleEditorTests::editsOrderedRulesAndRejectsInvalidPatterns()
 {

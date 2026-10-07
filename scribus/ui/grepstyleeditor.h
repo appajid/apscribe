@@ -44,6 +44,7 @@ private:
 	QComboBox* m_characterStyle { nullptr };
 	QCheckBox* m_ignoreCase { nullptr };
 	QCheckBox* m_inherit { nullptr };
+	QLabel* m_emptyState { nullptr };
 	QLabel* m_message { nullptr };
 	QPushButton* m_add { nullptr };
 	QPushButton* m_remove { nullptr };

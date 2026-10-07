@@ -25,6 +25,10 @@ GrepStyleEditor::GrepStyleEditor(QWidget* parent) : QWidget(parent)
 	m_inherit = new QCheckBox(tr("Use parent paragraph style's GREP rules"), this);
 	m_inherit->setObjectName(QStringLiteral("grepInheritRules"));
 	layout->addWidget(m_inherit);
+	m_emptyState = new QLabel(tr("Create a Character Style in Style Manager before adding a GREP rule."), this);
+	m_emptyState->setObjectName(QStringLiteral("grepEmptyState"));
+	m_emptyState->setWordWrap(true);
+	layout->addWidget(m_emptyState);
 
 	m_list = new QListWidget(this);
 	m_list->setObjectName(QStringLiteral("grepRuleList"));
@@ -181,6 +185,7 @@ void GrepStyleEditor::refreshSelection()
 	const bool selected = active && row >= 0 && row < m_rules.size();
 	m_list->setEnabled(active);
 	m_add->setEnabled(active && !m_styleNames.isEmpty());
+	m_emptyState->setVisible(active && m_styleNames.isEmpty());
 	m_remove->setEnabled(selected);
 	m_up->setEnabled(selected && row > 0);
 	m_down->setEnabled(selected && row < m_rules.size() - 1);
