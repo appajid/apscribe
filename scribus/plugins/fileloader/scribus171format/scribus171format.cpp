@@ -4534,6 +4534,7 @@ bool Scribus171Format::readTableOfContents(ScribusDoc* doc, ScXmlStreamReader& r
 			tocsetup.itemAttrName = attrs.valueAsString("ItemAttributeName");
 			tocsetup.frameName = attrs.valueAsString("FrameName");
 			tocsetup.textStyle = attrs.valueAsString("Style");
+			tocsetup.autoRightAlignPageNumbers = attrs.valueAsBool("AutoRightAlignPageNumbers", false);
 			if (attrs.hasAttribute("ListNonPrinting"))
 				tocsetup.listNonPrintingFrames = QVariant(attrs.valueAsString("ListNonPrinting")).toBool();
 			else

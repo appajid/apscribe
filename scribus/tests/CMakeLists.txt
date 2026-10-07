@@ -14,6 +14,7 @@ testTableParagraphStyle.cpp
 testDocumentZoom.cpp
 testStyleCleanup.cpp
 testStyleSettings.cpp
+testTOCAlignment.cpp
 )
 
 set(SCRIBUS_TESTS_LIB "scribus_tests_lib")
@@ -24,7 +25,7 @@ target_compile_definitions(${SCRIBUS_TESTS_LIB} PUBLIC WITH_TESTS=1)
 target_include_directories(${SCRIBUS_TESTS_LIB} PRIVATE
 	"${CMAKE_CURRENT_BINARY_DIR}/../third_party/Qt-Advanced-Docking-System/src")
 set_target_properties(${SCRIBUS_TESTS_LIB} PROPERTIES
-	AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../ui")
+	AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../ui;${CMAKE_CURRENT_SOURCE_DIR}/../ui/preferences")
 
 
 # This is a convenience library that for linkage purposes is part of Scribus's
@@ -423,6 +424,18 @@ set_tests_properties(style_settings_references PROPERTIES
 	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 	FIXTURES_REQUIRED runningheader_test_app
 	LABELS "integration;styles;persistence;ui"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(toc_alignment_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-toc_alignment")
+file(MAKE_DIRECTORY "${toc_alignment_prefs_dir}")
+add_test(NAME toc_default_alignment
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${toc_alignment_prefs_dir}" --document-tests --suite=toc-alignment)
+set_tests_properties(toc_default_alignment PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;toc;styles;persistence;ui"
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
 

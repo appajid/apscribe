@@ -156,6 +156,13 @@
                </property>
               </widget>
              </item>
+             <item row="3" column="0" colspan="2">
+              <widget class="QCheckBox" name="autoRightAlignCheckBox">
+               <property name="text">
+                <string>Align Page Numbers at Right Edge</string>
+               </property>
+              </widget>
+             </item>
             </layout>
            </item>
            <item>

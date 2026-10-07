@@ -69,6 +69,28 @@ for which a new license (GPL+exception) is in place.
 
 extern bool emergencyActivated;
 
+namespace
+{
+QString tocPageLocationName(TOCPageLocation location)
+{
+	if (location == Beginning)
+		return QStringLiteral("Beginning");
+	if (location == NotShown)
+		return QStringLiteral("NotShown");
+	return QStringLiteral("End");
+}
+
+TOCPageLocation tocPageLocationFromPref(const QString& value)
+{
+	// Older application preferences wrote the enum as an integer.
+	if (value == QLatin1String("Beginning") || value == QLatin1String("0"))
+		return Beginning;
+	if (value == QLatin1String("NotShown") || value == QLatin1String("2"))
+		return NotShown;
+	return End;
+}
+}
+
 PrefsManager::PrefsManager(QObject *parent) : QObject(parent)
 {
 }
@@ -1938,11 +1960,22 @@ bool PrefsManager::writePref(const QString& filePath)
 	{
 		QDomElement tocsetup = docu.createElement("TableOfContents");
 		tocsetup.setAttribute("Name", tocSetup.name);
+		tocsetup.setAttribute("ToCSource", tocSetup.tocSource);
 		tocsetup.setAttribute("ItemAttributeName", tocSetup.itemAttrName);
 		tocsetup.setAttribute("FrameName", tocSetup.frameName);
 		tocsetup.setAttribute("ListNonPrinting", tocSetup.listNonPrintingFrames);
+		tocsetup.setAttribute("AutoRightAlignPageNumbers", tocSetup.autoRightAlignPageNumbers);
 		tocsetup.setAttribute("Style", tocSetup.textStyle);
-		tocsetup.setAttribute("NumberPlacement", tocSetup.pageLocation);
+		tocsetup.setAttribute("NumberPlacement", tocPageLocationName(tocSetup.pageLocation));
+		for (const auto& entry : tocSetup.entryData)
+		{
+			QDomElement style = docu.createElement("StyleInTOC");
+			style.setAttribute("StyleName", entry.styleToFind);
+			style.setAttribute("TOCStyle", entry.styleForText);
+			style.setAttribute("RemoveLineBreaks", entry.removeLineBreaks);
+			style.setAttribute("NumberPlacement", tocPageLocationName(entry.pageLocation));
+			tocsetup.appendChild(style);
+		}
 		tocElem.appendChild(tocsetup);
 	}
 	elem.appendChild(tocElem);
@@ -2805,14 +2838,19 @@ bool PrefsManager::readPref(const QString& filePath)
 					tocsetup.itemAttrName = tocElem.attribute("ItemAttributeName");
 					tocsetup.frameName = tocElem.attribute("FrameName");
 					tocsetup.listNonPrintingFrames = static_cast<bool>(tocElem.attribute("ListNonPrinting").toInt());
+					tocsetup.autoRightAlignPageNumbers = tocElem.attribute("AutoRightAlignPageNumbers", "0").toInt() != 0;
 					tocsetup.textStyle = tocElem.attribute("Style");
-					QString numberPlacement = tocElem.attribute("NumberPlacement");
-					if (numberPlacement == "Beginning")
-						tocsetup.pageLocation = Beginning;
-					if (numberPlacement == "End")
-						tocsetup.pageLocation = End;
-					if (numberPlacement == "NotShown")
-						tocsetup.pageLocation = NotShown;
+					tocsetup.pageLocation = tocPageLocationFromPref(tocElem.attribute("NumberPlacement"));
+					for (QDomElement style = tocElem.firstChildElement("StyleInTOC"); !style.isNull();
+						style = style.nextSiblingElement("StyleInTOC"))
+					{
+						ToCSetupEntryStyleData entry {};
+						entry.styleToFind = style.attribute("StyleName");
+						entry.styleForText = style.attribute("TOCStyle");
+						entry.removeLineBreaks = style.attribute("RemoveLineBreaks", "0").toInt() != 0;
+						entry.pageLocation = tocPageLocationFromPref(style.attribute("NumberPlacement"));
+						tocsetup.entryData.append(entry);
+					}
 					appPrefs.tocPrefs.defaultToCSetups.append(tocsetup);
 				}
 				tocNode = tocNode.nextSibling();

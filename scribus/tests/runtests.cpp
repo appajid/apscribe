@@ -8,6 +8,7 @@
 #include "testDocumentZoom.h"
 #include "testStyleCleanup.h"
 #include "testStyleSettings.h"
+#include "testTOCAlignment.h"
 
 int RunTests::runDocumentTests(const QStringList& arguments)
 {
@@ -28,6 +29,11 @@ int RunTests::runDocumentTests(const QStringList& arguments)
 	{
 		TestStyleSettings tests;
 		return QTest::qExec(&tests, testArguments);
+	}
+	if (testArguments.removeAll("--suite=toc-alignment") > 0)
+	{
+		TestTOCAlignment tocTests;
+		return QTest::qExec(&tocTests, testArguments);
 	}
 	TestTableParagraphStyle tests;
 	return QTest::qExec(&tests, testArguments);

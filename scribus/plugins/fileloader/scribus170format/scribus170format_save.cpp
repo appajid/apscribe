@@ -1387,6 +1387,7 @@ void Scribus170Format::writeTOC(ScXmlStreamWriter & docu) const
 		docu.writeAttribute("ItemAttributeName", tocSetup.itemAttrName);
 		docu.writeAttribute("FrameName", tocSetup.frameName);
 		docu.writeAttribute("ListNonPrinting", tocSetup.listNonPrintingFrames);
+		docu.writeAttribute("AutoRightAlignPageNumbers", tocSetup.autoRightAlignPageNumbers);
 		docu.writeAttribute("Style", tocSetup.textStyle);
 		switch (tocSetup.pageLocation)
 		{
