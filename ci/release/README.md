@@ -17,6 +17,10 @@ rebuild against an older SDK and test there before claiming older macOS
 support. It is ad-hoc signed but **not** Developer ID signed or notarized, so
 Gatekeeper will block a normal public installation. Do not describe it as a
 production-ready Mac installer.
+The staging script records the highest bundled Mach-O deployment requirement
+as `LSMinimumSystemVersion` before signing, and the DMG workflow checks that
+the declared minimum is not lower than any bundled binary requires. This is a
+packaging consistency check, not a substitute for testing on that macOS version.
 
 The Linux AppImage is built on Ubuntu 24.04, so it is not guaranteed to run on
 distributions with an older glibc. Test it on a clean target distribution,

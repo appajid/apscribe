@@ -43,6 +43,7 @@ jobs:
         run: |
           app="$GITHUB_WORKSPACE/unpacked/Apscribe.app"
           codesign --verify --deep --strict "$app"
+          python3 "$GITHUB_WORKSPACE/ci/release/macos_runtime_floor.py" "$app" --check
           file "$app/Contents/MacOS/Apscribe" | grep -F 'arm64'
           dependencies="$(find "$app/Contents" -type f \
             \( -name '*.dylib' -o -name '*.so' -o -name Apscribe -o -name Python \) \

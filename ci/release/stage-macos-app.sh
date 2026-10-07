@@ -123,6 +123,7 @@ fi
 
 # install_name_tool invalidates signatures. Sign nested Python modules first,
 # then the enclosing app, and verify the result before distributing for test.
+python3 "$(dirname "$0")/macos_runtime_floor.py" "$staged_app" --write
 find "$contents" -type f \
   \( -name '*.dylib' -o -name '*.so' -o -name Python \) -print0 |
   xargs -0 -n1 codesign --force --sign - >/dev/null 2>&1
