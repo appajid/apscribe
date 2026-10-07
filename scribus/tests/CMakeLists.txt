@@ -59,6 +59,11 @@ set_tests_properties(stylecomboitemstests PROPERTIES
 	LABELS "styles;ui;accessibility"
 	ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+add_executable(recoveryfilestests recoveryfilestests.cpp)
+target_link_libraries(recoveryfilestests Qt6::Test Qt6::Core)
+add_test(NAME recoveryfilestests COMMAND recoveryfilestests)
+set_tests_properties(recoveryfilestests PROPERTIES LABELS "startup;recovery")
+
 # Phase 7 starts with an isolated reflowable EPUB package writer. Reading
 # order extraction and the application export command are separate slices.
 add_executable(epubexporttests epubexporttests.cpp ../epubexport.cpp)

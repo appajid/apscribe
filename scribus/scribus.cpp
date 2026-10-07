@@ -169,6 +169,7 @@ for which a new license (GPL+exception) is in place.
 #include "prefscontext.h"
 #include "prefsfile.h"
 #include "prefsmanager.h"
+#include "recoveryfiles.h"
 #include "pslib.h"
 #include "resourcecollection.h"
 #include "scclipboardprocessor.h"
@@ -2076,47 +2077,8 @@ bool ScribusMainWindow::arrowKeyDown()
 
 QStringList ScribusMainWindow::findRecoverableFile()
 {
-	QSet<QString> foundFiles;
-	QDir::SortFlags sortflags = QDir::Name | QDir::Time;
-	QDir::Filters filterflags = QDir::Files | QDir::NoSymLinks | QDir::NoDot | QDir::NoDotDot;
-	if (!m_prefsManager.appPrefs.docSetupPrefs.AutoSaveDir.isEmpty())
-	{
-		QDir dirAuto(m_prefsManager.appPrefs.docSetupPrefs.AutoSaveDir, "*_emergency_*.sla", sortflags, filterflags);
-		QFileInfoList aList = dirAuto.entryInfoList();
-		if (aList.count() > 0)
-		{
-			for (int i = 0; i < aList.count(); i++)
-				foundFiles.insert(aList[i].absoluteFilePath());
-		}
-		QDir dirAuto2(m_prefsManager.appPrefs.docSetupPrefs.AutoSaveDir, "*_autosave_*.sla", sortflags, filterflags);
-		QFileInfoList aList2 = dirAuto2.entryInfoList();
-		if (aList2.count() > 0)
-		{
-			for (int i = 0; i < aList2.count(); i++)
-				foundFiles.insert(aList2[i].absoluteFilePath());
-		}
-	}
-	QDir dirDoc(m_prefsManager.documentDir(), "*_emergency_*.sla", sortflags, filterflags);
-	QFileInfoList dList = dirDoc.entryInfoList();
-	for (int i = 0; i < dList.count(); i++)
-		foundFiles.insert(dList[i].absoluteFilePath());
-
-	QDir dirDoc2(m_prefsManager.documentDir(), "*_autosave_*.sla", sortflags, filterflags);
-	QFileInfoList dList2 = dirDoc2.entryInfoList();
-	for (int i = 0; i < dList2.count(); i++)
-		foundFiles.insert(dList2[i].absoluteFilePath());
-
-	QDir dirHome(QDir::toNativeSeparators(QDir::homePath()), "*_emergency_*.sla", sortflags, filterflags);
-	QFileInfoList hList = dirHome.entryInfoList();
-	for (int i = 0; i < hList.count(); i++)
-		foundFiles.insert(hList[i].absoluteFilePath());
-
-	QDir dirHome2(QDir::toNativeSeparators(QDir::homePath()), "*_autosave_*.sla", sortflags, filterflags);
-	QFileInfoList hList2 = dirHome2.entryInfoList();
-	for (int i = 0; i < hList2.count(); i++)
-		foundFiles.insert(hList2[i].absoluteFilePath());
-
-	return foundFiles.values();
+	return RecoveryFiles::find({ m_prefsManager.appPrefs.docSetupPrefs.AutoSaveDir,
+	                             m_prefsManager.documentDir(), QDir::homePath() });
 }
 
 bool ScribusMainWindow::recoverFile(const QStringList& foundFiles)
