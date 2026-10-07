@@ -10,6 +10,7 @@ for which a new license (GPL+exception) is in place.
 #include "ui_searchbase.h"
 
 #include "scribusapi.h"
+#include "searchquerypresets.h"
 #include <QRegularExpression>
 
 class PrefsContext;
@@ -18,6 +19,7 @@ class CharStyle;
 
 class ScribusDoc;
 class PageItem;
+class QComboBox;
 
 class SCRIBUS_API SearchReplace : public QDialog, Ui::SearchReplaceBase
 {
@@ -114,6 +116,12 @@ private:
 	bool m_stateCollapsed { true };
 
 	PrefsContext* m_prefs;
+	SearchQueryPresets::Queries m_savedQueries;
+	QComboBox* m_queryCombo { nullptr };
+	bool m_loadingQuery { false };
+	void refreshQueryList(const QString& selected = QString());
+	void saveQuery();
+	void deleteQuery();
 
 	void collapseFormat();
 	void readPrefs();

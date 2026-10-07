@@ -9,7 +9,10 @@ for which a new license (GPL+exception) is in place.
 
 #include <QApplication>
 #include <QCursor>
+#include <QHBoxLayout>
+#include <QInputDialog>
 #include <QListView>
+#include <QMessageBox>
 #include <QScopedValueRollback>
 #include <QScreen>
 #include <QSizePolicy>
@@ -69,6 +72,45 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	searchTextValue->setAccessibleDescription(tr("Text to find in the current story or selected text frames"));
 	replaceTextValue->setAccessibleName(tr("Replacement text"));
 	messageLabel->setAccessibleName(tr("Find and replace status"));
+	// Native, non-destructive text-query presets inspired by GREPS (MIT).
+	// They only restore dialog controls; matching and replacement stay in Apscribe.
+	auto* queryRow = new QHBoxLayout();
+	auto* queryLabel = new QLabel(tr("Saved text query:"), this);
+	m_queryCombo = new QComboBox(this);
+	m_queryCombo->setAccessibleName(tr("Saved find and replace query"));
+	m_queryCombo->setToolTip(tr("Saved queries include text and text-matching options, not formatting criteria."));
+	auto* saveQueryButton = new QPushButton(tr("Save..."), this);
+	auto* deleteQueryButton = new QPushButton(tr("Delete"), this);
+	queryRow->addWidget(queryLabel);
+	queryRow->addWidget(m_queryCombo, 1);
+	queryRow->addWidget(saveQueryButton);
+	queryRow->addWidget(deleteQueryButton);
+	searchReplaceLayout->insertLayout(0, queryRow);
+	connect(saveQueryButton, &QPushButton::clicked, this, &SearchReplace::saveQuery);
+	connect(deleteQueryButton, &QPushButton::clicked, this, &SearchReplace::deleteQuery);
+	connect(m_queryCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
+		if (index <= 0 || m_loadingQuery)
+			return;
+		const auto query = m_savedQueries.value(m_queryCombo->currentText());
+		m_loadingQuery = true;
+		clear();
+		searchTextValue->setText(query.find);
+		replaceTextValue->setText(query.replace);
+		regexCheckBox->setChecked(query.regex);
+		ignoreCaseCheckBox->setChecked(query.ignoreCase);
+		wholeWordsCheckBox->setChecked(query.wholeWords);
+		m_loadingQuery = false;
+		updateButtonState();
+	});
+	auto markQueryModified = [this]() {
+		if (!m_loadingQuery && m_queryCombo->currentIndex() > 0)
+			m_queryCombo->setCurrentIndex(0);
+	};
+	connect(searchTextValue, &QLineEdit::textChanged, this, markQueryModified);
+	connect(replaceTextValue, &QLineEdit::textChanged, this, markQueryModified);
+	connect(regexCheckBox, &QCheckBox::toggled, this, markQueryModified);
+	connect(ignoreCaseCheckBox, &QCheckBox::toggled, this, markQueryModified);
+	connect(wholeWordsCheckBox, &QCheckBox::toggled, this, markQueryModified);
 
 	QSizePolicy sp = messageLabel->sizePolicy();
 	sp.setRetainSizeWhenHidden(true);
@@ -155,9 +197,74 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	closeButton->setToolTip( tr( "Close search and replace" ) );
 
 	m_prefs = PrefsManager::instance().prefsFile->getContext("SearchReplace");
+	m_savedQueries = SearchQueryPresets::fromJson(m_prefs->get("savedTextQueries"));
+	refreshQueryList();
 	readPrefs();
 
 	collapseFormat();
+}
+
+void SearchReplace::refreshQueryList(const QString& selected)
+{
+	m_loadingQuery = true;
+	m_queryCombo->clear();
+	m_queryCombo->addItem(tr("Custom"));
+	m_queryCombo->addItems(m_savedQueries.keys());
+	int index = 0;
+	if (!selected.isEmpty())
+	{
+		for (int i = 1; i < m_queryCombo->count(); ++i)
+		{
+			if (m_queryCombo->itemText(i) == selected)
+			{
+				index = i;
+				break;
+			}
+		}
+	}
+	m_queryCombo->setCurrentIndex(index);
+	m_loadingQuery = false;
+}
+
+void SearchReplace::saveQuery()
+{
+	if (searchTextValue->text().isEmpty())
+	{
+		QMessageBox::information(this, tr("Save Query"), tr("Enter text to find before saving a query."));
+		return;
+	}
+	bool accepted = false;
+	const QString name = QInputDialog::getText(this, tr("Save Query"), tr("Query name:"),
+		QLineEdit::Normal, QString(), &accepted).trimmed();
+	if (!accepted || name.isEmpty())
+		return;
+	if (m_savedQueries.contains(name) && QMessageBox::question(this, tr("Replace Saved Query"),
+		tr("Replace the existing query named “%1”?").arg(name),
+		QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+		return;
+	SearchTextQuery query;
+	query.find = searchTextValue->text();
+	query.replace = replaceTextValue->text();
+	query.regex = regexCheckBox->isChecked();
+	query.ignoreCase = ignoreCaseCheckBox->isChecked();
+	query.wholeWords = wholeWordsCheckBox->isChecked();
+	m_savedQueries.insert(name, query);
+	m_prefs->set("savedTextQueries", SearchQueryPresets::toJson(m_savedQueries));
+	refreshQueryList(name);
+}
+
+void SearchReplace::deleteQuery()
+{
+	const QString name = m_queryCombo->currentIndex() > 0 ? m_queryCombo->currentText() : QString();
+	if (name.isEmpty())
+		return;
+	if (QMessageBox::question(this, tr("Delete Saved Query"),
+		tr("Delete the saved query named “%1”?").arg(name),
+		QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+		return;
+	m_savedQueries.remove(name);
+	m_prefs->set("savedTextQueries", SearchQueryPresets::toJson(m_savedQueries));
+	refreshQueryList();
 }
 
 void SearchReplace::processCurrentSelection(QString selection)

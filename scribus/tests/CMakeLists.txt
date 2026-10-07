@@ -38,6 +38,11 @@ target_link_libraries(regexsearchtests Qt6::Test Qt6::Core)
 add_test(NAME regexsearchtests COMMAND regexsearchtests)
 set_tests_properties(regexsearchtests PROPERTIES LABELS "find;regex")
 
+add_executable(searchquerypresetstests searchquerypresetstests.cpp ../searchquerypresets.cpp)
+target_link_libraries(searchquerypresetstests Qt6::Test Qt6::Core)
+add_test(NAME searchquerypresetstests COMMAND searchquerypresetstests)
+set_tests_properties(searchquerypresetstests PROPERTIES LABELS "find;regex;presets")
+
 # Ordered, inheritable GREP rules are stored on paragraph styles. Rendering
 # applies them in a later slice; these tests cover the data and match model.
 add_executable(grepstylerulestests grepstylerulestests.cpp ../grepstylerules.cpp ../regexsearch.cpp)
