@@ -573,10 +573,22 @@ void StyleManager::slotDelete()
 	slotOk();
 }
 
+bool StyleManager::hasPendingChanges() const
+{
+	return m_doc && m_isEditMode &&
+		(resetButton->isEnabled() || applyButton->isEnabled() || !okButton->isEnabled());
+}
+
 void StyleManager::slotDeleteUnused()
 {
 	if (!m_doc)
 		return;
+	if (hasPendingChanges())
+	{
+		ScMessageBox::information(this, tr("Remove Unused Styles"),
+			tr("Apply or reset pending style changes before removing unused styles."));
+		return;
+	}
 
 	// Scan page items to find styles referenced by content
 	ResourceCollection usedResources;
@@ -1592,6 +1604,7 @@ void StyleManager::slotClean()
 	applyButton->setEnabled(false);
 	resetButton->setEnabled(false);
 	uniqueLabel->hide();
+	okButton->setEnabled(true);
 }
 
 void StyleManager::reloadStyleView(bool loadFromDoc)
@@ -1660,6 +1673,7 @@ void StyleManager::slotNameChanged(const QString& name)
 	{
 		okButton->setEnabled(false);
 		applyButton->setEnabled(false);
+		resetButton->setEnabled(true);
 		return;
 	}
 	if (m_item && !nameIsUnique(name))
@@ -1667,6 +1681,7 @@ void StyleManager::slotNameChanged(const QString& name)
 		uniqueLabel->show();
 		okButton->setEnabled(false);
 		applyButton->setEnabled(false);
+		resetButton->setEnabled(true);
 		return;
 	}
 	if (uniqueLabel->isVisible())
@@ -1680,6 +1695,9 @@ void StyleManager::slotNameChanged(const QString& name)
 	{
 		if (m_doc == nullptr)
 			return;
+		// A corrected blank name has no visible duplicate-name label, but
+		// must unlock Done just as a corrected duplicate does.
+		okButton->setEnabled(true);
 		QString oldName(styleView->currentItem()->text(NAME_COL));
 		ToCSetupVector &tocSetups = m_doc->tocSetups();
 		for (auto tocSetupIt = tocSetups.begin(); tocSetupIt != tocSetups.end(); ++tocSetupIt)

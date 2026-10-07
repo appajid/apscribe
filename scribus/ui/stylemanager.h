@@ -53,6 +53,8 @@ public:
 	 * document, and recreates the tree and associated shortcut actions.
 	 */
 	void reloadStyles();
+	/** True when cleanup would conflict with unapplied or invalid editor changes. */
+	bool hasPendingChanges() const;
 
 	QMap<QString,Keys> keyMap();
 

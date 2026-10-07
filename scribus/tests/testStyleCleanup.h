@@ -15,6 +15,12 @@ private slots:
 	void transitiveGrepDependencies();
 	void emptyDocumentDefaults();
 	void managerConfirmation();
+	void pendingEdits_data();
+	void pendingEdits();
+	void pendingScriptEdits_data();
+	void pendingScriptEdits();
+	void invalidName_data();
+	void invalidName();
 	void cleanup();
 };
 

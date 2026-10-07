@@ -171,11 +171,12 @@ PyDoc_STRVAR(scribus_removeunusedstyles__doc__,
 QT_TR_NOOP("removeUnusedStyles() -> int\n\
 \n\
 Remove all unused paragraph, character, object, table, cell, and line styles\n\
-from the current document. A style is considered unused if it is not\n\
-applied to any object in the document and is not an ancestor of a\n\
-style that is in use. Default styles are never removed.\n\
+from the current document. Styles referenced by document content or settings,\n\
+and their dependencies, are kept. Default styles are never removed.\n\
 \n\
 Returns the number of styles removed.\n\
+Raises RuntimeError if the Style Manager has pending changes. Apply or reset\n\
+those edits first; cleanup does not apply or discard them automatically.\n\
 "));
 PyObject *scribus_removeunusedstyles(PyObject * /*self*/);
 
