@@ -1718,6 +1718,8 @@ bool Scribus171Format::loadFile(const QString & fileName, const FileFormat & /* 
 	bool firstElement = true;
 	bool success = true;
 	bool hasPageSets = false;
+	bool hasDocument = false;
+	bool hasNormalPage = false;
 	int  progress = 0;
 
 	ScXmlStreamReader reader(ioDevice.data());
@@ -1753,6 +1755,7 @@ bool Scribus171Format::loadFile(const QString & fileName, const FileFormat & /* 
 		//Remove uppercase in 1.8
 		if (tagName == QLatin1String("DOCUMENT") || tagName == QLatin1String("Document"))
 		{
+			hasDocument = true;
 			readDocAttributes(m_Doc, attrs);
 			if (attrs.hasAttribute("ActiveLayer"))
 				layerToSetActive = attrs.valueAsInt("ActiveLayer", 0);
@@ -1935,12 +1938,16 @@ bool Scribus171Format::loadFile(const QString & fileName, const FileFormat & /* 
 			success = readPage(m_Doc, reader);
 			if (!success)
 				break;
+			if (tagName == QLatin1String("PAGE"))
+				hasNormalPage = true;
 		}
 		else if (tagName == QLatin1String("Page") || tagName == QLatin1String("MasterPage"))
 		{
 			success = readPage(m_Doc, reader);
 			if (!success)
 				break;
+			if (tagName == QLatin1String("Page"))
+				hasNormalPage = true;
 		}
 		else if (tagName == QLatin1String("PAGEOBJECT") || tagName == QLatin1String("MASTEROBJECT") || tagName == QLatin1String("FRAMEOBJECT") ||
 				 tagName == QLatin1String("PageObject") || tagName == QLatin1String("MasterObject") || tagName == QLatin1String("FrameObject"))
@@ -2102,6 +2109,20 @@ bool Scribus171Format::loadFile(const QString & fileName, const FileFormat & /* 
 	if (reader.hasError())
 	{
 		setDomParsingError(reader.errorString(), reader.lineNumber(), reader.columnNumber());
+		return false;
+	}
+
+	// Finalization requires a complete document with at least one normal page.
+	if (!success)
+	{
+		if (!hasLastError())
+			setFileReadError();
+		return false;
+	}
+	if (firstElement || !hasDocument || !hasNormalPage || m_Doc->DocPages.isEmpty())
+	{
+		setDomParsingError(tr("Incomplete or incompatible SLA document: the document element or normal pages are missing."),
+			reader.lineNumber(), reader.columnNumber());
 		return false;
 	}
 

@@ -3565,6 +3565,9 @@ bool ScribusMainWindow::loadDoc(const QString& fileName)
 			loadSuccess = fileLoader->postLoad(doc);
 		if (!loadSuccess)
 		{
+			// This palette was attached before loading. Detach while the failed
+			// document is alive, before restoring another document's selection.
+			alignDistributePalette->setDoc(nullptr);
 			view->close();
 			delete fileLoader;
 			delete doc;

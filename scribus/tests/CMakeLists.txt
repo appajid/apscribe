@@ -15,6 +15,7 @@ testDocumentZoom.cpp
 testStyleCleanup.cpp
 testStyleSettings.cpp
 testTOCAlignment.cpp
+testSLALoadValidation.cpp
 )
 
 set(SCRIBUS_TESTS_LIB "scribus_tests_lib")
@@ -438,6 +439,18 @@ set_tests_properties(toc_default_alignment PROPERTIES
 	LABELS "integration;toc;styles;persistence;ui"
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
+
+set(sla_validation_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-sla_validation")
+file(MAKE_DIRECTORY "${sla_validation_prefs_dir}")
+add_test(NAME sla_load_validation
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${sla_validation_prefs_dir}" --document-tests --suite=sla-validation)
+set_tests_properties(sla_load_validation PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;file-loading;persistence;recovery"
+	RUN_SERIAL TRUE
+	TIMEOUT 60)
 
 set(data_merge_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-data_merge")
 set(data_merge_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-data_merge")

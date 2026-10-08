@@ -9,6 +9,7 @@
 #include "testStyleCleanup.h"
 #include "testStyleSettings.h"
 #include "testTOCAlignment.h"
+#include "testSLALoadValidation.h"
 
 int RunTests::runDocumentTests(const QStringList& arguments)
 {
@@ -34,6 +35,11 @@ int RunTests::runDocumentTests(const QStringList& arguments)
 	{
 		TestTOCAlignment tocTests;
 		return QTest::qExec(&tocTests, testArguments);
+	}
+	if (testArguments.removeAll("--suite=sla-validation") > 0)
+	{
+		TestSLALoadValidation slaTests;
+		return QTest::qExec(&slaTests, testArguments);
 	}
 	TestTableParagraphStyle tests;
 	return QTest::qExec(&tests, testArguments);
