@@ -91,6 +91,44 @@
          </property>
         </widget>
        </item>
+       <item row="3" column="1">
+        <widget class="QCheckBox" name="regexCheckBox">
+         <property name="text">
+          <string>Regular expression</string>
+         </property>
+         <property name="toolTip">
+          <string>Find and replace text using a regular expression.</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="regexStyleLayout">
+       <item>
+        <widget class="QLabel" name="regexStyleLabel">
+         <property name="text">
+          <string>Character Style:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="regexStyleComboBox">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="applyRegexStyleButton">
+         <property name="text">
+          <string>Apply to Matches</string>
+         </property>
+        </widget>
+       </item>
       </layout>
      </item>
      <item>
@@ -595,6 +633,9 @@
   <tabstop>replaceAllButton</tabstop>
   <tabstop>wholeWordsCheckBox</tabstop>
   <tabstop>ignoreCaseCheckBox</tabstop>
+  <tabstop>regexCheckBox</tabstop>
+  <tabstop>regexStyleComboBox</tabstop>
+  <tabstop>applyRegexStyleButton</tabstop>
   <tabstop>collapseButton</tabstop>
   <tabstop>searchStyleCheckBox</tabstop>
   <tabstop>searchStyleComboBox</tabstop>

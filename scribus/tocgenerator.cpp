@@ -20,6 +20,7 @@ for which a new license (GPL+exception) is in place.
  ***************************************************************************/
 #include "tocgenerator.h"
 
+#include <cmath>
 #include <vector>
 
 #include <QDebug>
@@ -31,10 +32,37 @@ for which a new license (GPL+exception) is in place.
 #include "gtwriter.h"
 #include "pageitem.h"
 #include "pageitemiterator.h"
+#include "pageitem_textframe.h"
 #include "pagestructs.h"
 #include "scpage.h"
 #include "scribusdoc.h"
 #include "text/storytext.h"
+
+namespace
+{
+void alignTOCPageNumbers(PageItem* frame, const QList<QPair<int, int>>& entryRanges)
+{
+	// Apply only to the generated story, never to a shared paragraph style.
+	// Do this after all writes so a generated tab cannot leak into the next entry.
+	const double columnWidth = frame->asTextFrame()->columnWidth();
+	for (const auto& range : entryRanges)
+	{
+		for (int pos = range.first; pos < range.second; pos = frame->itemText.startOfNextParagraph(pos))
+		{
+			const ParagraphStyle& style = frame->itemText.paragraphStyle(pos);
+			// Explicit and inherited custom tabs take priority over the default.
+			if (!style.tabValues().isEmpty())
+				continue;
+			const double rightEdge = columnWidth - style.rightMargin();
+			if (!std::isfinite(rightEdge) || rightEdge <= 0)
+				continue;
+			ParagraphStyle overrideStyle;
+			overrideStyle.setTabValues({ParagraphStyle::TabRecord {rightEdge, ParagraphStyle::RightTab, QChar()}});
+			frame->itemText.applyStyle(pos, overrideStyle);
+		}
+	}
+}
+}
 
 TOCGenerator::TOCGenerator(QObject *parent, ScribusDoc *doc)
             : QObject(parent), m_doc(doc)
@@ -133,6 +161,8 @@ void TOCGenerator::generateByAttribute()
 		writer.setParagraphStyle(pstyle);
 		
 		QString oldTocPage;
+		QList<QPair<int, int>> alignedEntries;
+		bool firstEntry = true;
 		for (QMap<QString, QString>::Iterator tocIt = tocMap.begin(); tocIt != tocMap.end(); ++tocIt)
 		{
 			QString tocPage(tocIt.key().section( ',', 2, 2 ).trimmed());
@@ -150,8 +180,13 @@ void TOCGenerator::generateByAttribute()
 			if (tocSetupIt->pageLocation == End && oldTocPage != tocPage)
 				tocLine += tocPage;
 			tocLine += "\n";
+			const int start = firstEntry ? 0 : tocFrame->itemText.length();
 			writer.append(tocLine);
+			firstEntry = false;
+			if (tocSetupIt->autoRightAlignPageNumbers && tocSetupIt->pageLocation == End)
+				alignedEntries.append({start, tocFrame->itemText.length()});
 		}
+		alignTOCPageNumbers(tocFrame, alignedEntries);
 	}
 }
 
@@ -310,6 +345,7 @@ void TOCGenerator::generateByStyle()
 			}
 		}
 		QString oldTocPage;
+		QList<QPair<int, int>> alignedEntries;
 		for (auto tocIt = tocMap.begin(); tocIt != tocMap.end(); ++tocIt)
 		{
 			QString tocPage(tocIt.key().section(',', 2, 2).trimmed());
@@ -333,8 +369,12 @@ void TOCGenerator::generateByStyle()
 			gtParagraphStyle *pstyle = new gtParagraphStyle(*fstyle);
 			pstyle->setName(tocMap.value(tocIt.key()).entryStyle);
 			writer.setParagraphStyle(pstyle);
+			const int start = tocFrame->itemText.length();
 			writer.append(tocLine);
+			if (tocSetupIt->autoRightAlignPageNumbers && tpl == End)
+				alignedEntries.append({start, tocFrame->itemText.length()});
 		}
+		alignTOCPageNumbers(tocFrame, alignedEntries);
 	}
 }
 

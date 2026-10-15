@@ -24,6 +24,8 @@ for which a new license (GPL+exception) is in place.
 class PageItem;
 class ScribusMainWindow;
 class ScribusDoc;
+class ParaStyleComboBox;
+class FormWidget;
 
 
 /**
@@ -74,6 +76,7 @@ public slots:
 private slots:
 	void setTableStyle(const QString& name);
 	void setCellStyle(const QString& name);
+	void setCellParagraphStyle(const QString& name);
 	/// Handles selection changes in the side selector.
 	void on_sideSelector_selectionChanged();
 	/// Handles selection changes in the list of border lines.
@@ -123,6 +126,7 @@ private:
 private:
 	void showTableStyle(const QString& name);
 	void showCellStyle(const QString& name);
+	void updateCellParagraphStyle();
 	/// Updates the list of border lines from the current border.
 	void updateBorderLineList();
 	/// Updates the list of border lines from the current border.
@@ -143,6 +147,8 @@ private:
 	ScGuardedPtr<ScribusDoc> m_doc;
 	/// The currently edited item.
 	PageItem* m_item {nullptr};
+	FormWidget* m_cellParagraphStyleLabel {nullptr};
+	ParaStyleComboBox* m_cellParagraphStyleCombo {nullptr};
 
 	double m_unitRatio {1.0};
 	int m_unitIndex {SC_PT};

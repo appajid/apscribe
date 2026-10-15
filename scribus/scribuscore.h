@@ -80,6 +80,7 @@ public:
 	*/
 	int initCoreServices(bool showSplash, bool showProfileInfo);
 	bool initialized() const {return m_scribusInitialized;}
+	bool startupCompletionDeferred() const { return m_startupCompletionDeferred; }
 	const QString& getGuiLanguage() const;
 
 	void initSplash(bool showSplash);
@@ -146,6 +147,9 @@ public:
 	ScColorTransform defaultLabToRGBTrans;
 	ScColorTransform defaultLabToCMYKTrans;
 	ScColorTransform defaultLabToScreenTrans;
+
+signals:
+	void guiStartupFinished();
 	
 protected:
 	void initCMS();
@@ -164,6 +168,7 @@ protected:
 	bool m_havePNGAlpha {false};
 	bool m_haveTiffSep {false};
 	bool m_scribusInitialized {false};
+	bool m_startupCompletionDeferred {false};
 	bool m_useGUI {false};
 	int m_currScMW {0};
 };

@@ -1291,8 +1291,8 @@ void IdmlPlug::parseCharacterStyle(const QDomElement& styleElem)
 			}
 		}
 	}
-	if ((!fontBaseName.isEmpty()) && (!fontStyle.isEmpty()))
-		fontName = constructFontName(fontBaseName, fontStyle);
+	if (!fontBaseName.isEmpty())
+		fontName = constructFontName(fontBaseName, fontStyle.isEmpty() ? QStringLiteral("Regular") : fontStyle);
 	newStyle.setFont((*m_Doc->AllFonts)[fontName]);
 	readCharStyleAttributes(newStyle, styleElem);
 	StyleSet<CharStyle> temp;
@@ -1407,8 +1407,8 @@ void IdmlPlug::parseParagraphStyle(const QDomElement& styleElem)
 			}
 		}
 	}
-	if ((!fontBaseName.isEmpty()) && (!fontStyle.isEmpty()))
-		fontName = constructFontName(fontBaseName, fontStyle);
+	if (!fontBaseName.isEmpty())
+		fontName = constructFontName(fontBaseName, fontStyle.isEmpty() ? QStringLiteral("Regular") : fontStyle);
 	newStyle.charStyle().setFont((*m_Doc->AllFonts)[fontName]);
 	readCharStyleAttributes(newStyle.charStyle(), styleElem);
 	readParagraphStyleAttributes(newStyle, styleElem);
@@ -3025,6 +3025,7 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 {
 	QString data;
 	bool hasChangedFont = false;
+	bool hasExplicitFontFamily = false;
 	auto applyLeading = [&newStyle](const QDomElement& leading)
 	{
 		if (leading.attribute("type") != "unit")
@@ -3048,6 +3049,7 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 				{
 					fontBase = spf.text();
 					hasChangedFont = true;
+					hasExplicitFontFamily = true;
 				}
 				else if (spf.tagName() == "Leading")
 					applyLeading(spf);
@@ -3058,10 +3060,16 @@ void IdmlPlug::parseCharacterStyleRange(QDomElement &stt, PageItem* item, QStrin
 	}
 	// Apply possible override of character style
 	CharStyle nstyle = newStyle.charStyle();
-	if (stt.hasAttribute("FontStyle"))
+	if (!stt.attribute("FontStyle").isEmpty())
 	{
 		fontStyle = stt.attribute("FontStyle", "");
 		hasChangedFont = true;
+	}
+	else if (hasExplicitFontFamily)
+	{
+		// An explicit family without a face does not inherit the previous
+		// paragraph's face (which may not exist in the new family).
+		fontStyle = QStringLiteral("Regular");
 	}
 	if (stt.hasAttribute("AppliedCharacterStyle"))
 	{

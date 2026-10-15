@@ -11,6 +11,7 @@ for which a new license (GPL+exception) is in place.
 import math
 import os
 from base64 import b64encode
+from html import escape
 from pathlib import Path
 from struct import pack
 from xml.etree import ElementTree
@@ -504,5 +505,117 @@ scribus.selectText(0, 1, "TextFrame/terminal")
 assert abs(scribus.getLineSpacing("TextFrame/terminal") - 15) < 0.01, (
     "IDML automatic leading was lost after SLA reopen"
 )
+scribus.closeDoc()
+
+# A character range that changes AppliedFont but omits FontStyle must not
+# inherit the previous paragraph's Bold face for the new font family.
+font_info = scribus.getXFontNames()
+regular_fonts = [entry for entry in font_info if entry[0] == entry[1] + " Regular"]
+assert regular_fonts, "IDML font-style test requires an installed Regular font"
+target_font = regular_fonts[0]
+bold_fonts = [entry for entry in font_info if entry[0] == entry[1] + " Bold"
+              and entry[1] != target_font[1]]
+assert bold_fonts, "IDML font-style test requires a Bold font in another family"
+source_font = bold_fonts[0]
+source_family = escape(source_font[1], quote=True)
+source_ps = escape(source_font[2], quote=True)
+target_family = escape(target_font[1], quote=True)
+target_ps = escape(target_font[2], quote=True)
+fontstyle_package = output / "missing-character-fontstyle.idml"
+fontstyle_map = """<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns:idPkg="http://ns.adobe.com/AdobeInDesign/idml/1.0/">
+  <idPkg:Fonts>
+    <FontFamily Name="{source_family}">
+      <Font FontStyleName="Bold" PostScriptName="{source_ps}"/>
+    </FontFamily>
+    <FontFamily Name="{target_family}">
+      <Font FontStyleName="Regular" PostScriptName="{target_ps}"/>
+    </FontFamily>
+  </idPkg:Fonts>
+  <idPkg:Styles><RootCharacterStyleGroup>
+    <CharacterStyle Self="CharacterStyle/RegularWithoutFace" Name="RegularWithoutFace">
+      <Properties><AppliedFont>{target_family}</AppliedFont></Properties>
+    </CharacterStyle>
+  </RootCharacterStyleGroup><RootParagraphStyleGroup>
+    <ParagraphStyle Self="ParagraphStyle/BoldParent" Name="BoldParent" FontStyle="Bold">
+      <Properties><AppliedFont>{source_family}</AppliedFont></Properties>
+    </ParagraphStyle>
+    <ParagraphStyle Self="ParagraphStyle/RegularWithoutFace" Name="RegularWithoutFace">
+      <Properties><AppliedFont>{target_family}</AppliedFont></Properties>
+    </ParagraphStyle>
+  </RootParagraphStyleGroup></idPkg:Styles>
+  <idPkg:Spread><Spread Self="Spread/fonts">
+    <Page Self="Page/fonts" ItemTransform="1 0 0 1 0 0"/>
+    <TextFrame Self="TextFrame/fonts" ParentStory="Story/fonts" ItemTransform="1 0 0 1 0 0">
+      <Properties><PathGeometry><GeometryPathType PathOpen="false"><PathPointArray>
+        {path_points}
+      </PathPointArray></GeometryPathType></PathGeometry></Properties>
+    </TextFrame>
+    <TextFrame Self="TextFrame/paragraph-font" ParentStory="Story/paragraph-font"
+               ItemTransform="1 0 0 1 0 100">
+      <Properties><PathGeometry><GeometryPathType PathOpen="false"><PathPointArray>
+        {path_points}
+      </PathPointArray></GeometryPathType></PathGeometry></Properties>
+    </TextFrame>
+    <TextFrame Self="TextFrame/character-font" ParentStory="Story/character-font"
+               ItemTransform="1 0 0 1 0 200">
+      <Properties><PathGeometry><GeometryPathType PathOpen="false"><PathPointArray>
+        {path_points}
+      </PathPointArray></GeometryPathType></PathGeometry></Properties>
+    </TextFrame>
+  </Spread></idPkg:Spread>
+  <idPkg:Story><Story Self="Story/fonts">
+    <ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/BoldParent">
+      <CharacterStyleRange>
+        <Properties><AppliedFont>{target_family}</AppliedFont></Properties>
+        <Content>Missing</Content>
+      </CharacterStyleRange>
+      <CharacterStyleRange FontStyle="Regular">
+        <Properties><AppliedFont>{target_family}</AppliedFont></Properties>
+        <Content>Explicit</Content>
+      </CharacterStyleRange>
+      <CharacterStyleRange FontStyle="">
+        <Properties><AppliedFont>{target_family}</AppliedFont></Properties>
+        <Content>Empty</Content>
+      </CharacterStyleRange>
+    </ParagraphStyleRange>
+  </Story></idPkg:Story>
+  <idPkg:Story><Story Self="Story/paragraph-font">
+    <ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/RegularWithoutFace">
+      <CharacterStyleRange><Content>Paragraph</Content></CharacterStyleRange>
+    </ParagraphStyleRange>
+  </Story></idPkg:Story>
+  <idPkg:Story><Story Self="Story/character-font">
+    <ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/BoldParent">
+      <CharacterStyleRange AppliedCharacterStyle="CharacterStyle/RegularWithoutFace">
+        <Content>Character</Content>
+      </CharacterStyleRange>
+    </ParagraphStyleRange>
+  </Story></idPkg:Story>
+</Document>
+""".format(source_family=source_family, source_ps=source_ps,
+           target_family=target_family, target_ps=target_ps,
+           path_points=path_points)
+with ZipFile(fontstyle_package, "w", ZIP_DEFLATED) as archive:
+    archive.writestr("designmap.xml", fontstyle_map)
+assert scribus.openDoc(str(fontstyle_package)), "IDML missing-FontStyle fixture failed to import"
+assert scribus.getAllText("TextFrame/fonts") == "MissingExplicitEmpty", "IDML font fixture lost text"
+scribus.selectText(0, 1, "TextFrame/fonts")
+assert scribus.getFont("TextFrame/fonts") == target_font[0], (
+    "Missing FontStyle selected the wrong font face"
+)
+scribus.selectText(7, 1, "TextFrame/fonts")
+assert scribus.getFont("TextFrame/fonts") == target_font[0], (
+    "Explicit Regular FontStyle selected the wrong font face"
+)
+scribus.selectText(15, 1, "TextFrame/fonts")
+assert scribus.getFont("TextFrame/fonts") == target_font[0], (
+    "Empty FontStyle selected the wrong font face"
+)
+for frame in ("TextFrame/paragraph-font", "TextFrame/character-font"):
+    scribus.selectText(0, 1, frame)
+    assert scribus.getFont(frame) == target_font[0], (
+        "IDML named style without FontStyle selected the wrong font in " + frame
+    )
 scribus.closeDoc()
 print("IDML_MINIMAL_IMPORT_PASSED", flush=True)

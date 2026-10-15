@@ -95,6 +95,34 @@ add_test(NAME windows_project_sources
 		-DSCRIBUS_ROOT=${SCRIBUS_ROOT}
 		-P "${CMAKE_CURRENT_LIST_DIR}/check_windows_projects.cmake")
 
+foreach(TEST_NAME IN ITEMS regexsearch searchquerypresets wheelzoomaccumulator)
+	add_scribus_portable_test(${TEST_NAME}tests
+		"${SCRIBUS_ROOT}/scribus/tests/${TEST_NAME}tests.cpp"
+		"${SCRIBUS_ROOT}/scribus/${TEST_NAME}.cpp")
+	target_link_libraries(${TEST_NAME}tests PRIVATE Qt6::Core Qt6::Test)
+endforeach()
+
+add_scribus_portable_test(grepstylerulestests
+	"${SCRIBUS_ROOT}/scribus/tests/grepstylerulestests.cpp"
+	"${SCRIBUS_ROOT}/scribus/grepstylerules.cpp"
+	"${SCRIBUS_ROOT}/scribus/regexsearch.cpp")
+target_link_libraries(grepstylerulestests PRIVATE Qt6::Core Qt6::Test)
+
+add_scribus_portable_test(grepstyleeditortests
+	"${SCRIBUS_ROOT}/scribus/tests/grepstyleeditortests.cpp"
+	"${SCRIBUS_ROOT}/scribus/ui/grepstyleeditor.cpp"
+	"${SCRIBUS_ROOT}/scribus/grepstylerules.cpp"
+	"${SCRIBUS_ROOT}/scribus/regexsearch.cpp")
+target_link_libraries(grepstyleeditortests PRIVATE Qt6::Core Qt6::Test Qt6::Widgets)
+set_tests_properties(grepstyleeditortests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+foreach(TEST_NAME IN ITEMS recoveryfiles stylecomboitems)
+	add_scribus_portable_test(${TEST_NAME}tests
+		"${SCRIBUS_ROOT}/scribus/tests/${TEST_NAME}tests.cpp")
+	target_link_libraries(${TEST_NAME}tests PRIVATE Qt6::Core Qt6::Test Qt6::Widgets)
+	set_tests_properties(${TEST_NAME}tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endforeach()
+
 add_test(NAME windows_packaging_contract
 	COMMAND "${CMAKE_COMMAND}"
 		-DSCRIBUS_ROOT=${SCRIBUS_ROOT}

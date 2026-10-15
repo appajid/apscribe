@@ -678,6 +678,12 @@ PyObject* scribus_removeunusedstyles(PyObject*)
 	if (!checkHaveDocument())
 		return nullptr;
 	ScribusMainWindow* mw = ScCore->primaryMainWindow();
+	if (mw->styleMgr()->hasPendingChanges())
+	{
+		PyErr_SetString(PyExc_RuntimeError, QObject::tr(
+			"Apply or reset pending style changes before removing unused styles.", "python error").toUtf8().constData());
+		return nullptr;
+	}
 	int removed = mw->doc->removeUnusedStyles();
 	// Refresh the Style Manager if it's open, so its cached
 	// style lists and tree view reflect the changes.

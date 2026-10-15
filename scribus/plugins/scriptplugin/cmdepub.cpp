@@ -490,10 +490,11 @@ PyObject* scribus_epubimageframepreflight(PyObject* /*self*/, PyObject* args)
 	const int savedCaptionAlignment = EpubDocument::savedImageCaptionAlignment(item);
 	PyObject* captionAlignment = PyUnicode_FromString(savedCaptionAlignment < 0
 		? "invalid" : alignmentName(static_cast<EpubExport::TextAlignment>(savedCaptionAlignment)));
+	PyObject* captionSizePercent = PyLong_FromLong(EpubDocument::savedImageCaptionSizePercent(item));
 	PyObject* decorative = PyBool_FromLong(EpubDocument::savedImageDecorative(item));
 	PyObject* widthPercent = PyLong_FromLong(EpubDocument::savedImageWidthPercent(item));
 	PyObject* frameCropApplied = PyBool_FromLong(inspected.cropped);
-	if (!result || !mediaType || !byteSize || !readingOrder || !caption || !captionAlignment ||
+	if (!result || !mediaType || !byteSize || !readingOrder || !caption || !captionAlignment || !captionSizePercent ||
 		!decorative || !widthPercent || !frameCropApplied)
 	{
 		Py_XDECREF(result);
@@ -502,6 +503,7 @@ PyObject* scribus_epubimageframepreflight(PyObject* /*self*/, PyObject* args)
 		Py_XDECREF(readingOrder);
 		Py_XDECREF(caption);
 		Py_XDECREF(captionAlignment);
+		Py_XDECREF(captionSizePercent);
 		Py_XDECREF(decorative);
 		Py_XDECREF(widthPercent);
 		Py_XDECREF(frameCropApplied);
@@ -512,6 +514,7 @@ PyObject* scribus_epubimageframepreflight(PyObject* /*self*/, PyObject* args)
 		PyDict_SetItemString(result, "readingOrder", readingOrder) == 0 &&
 		PyDict_SetItemString(result, "caption", caption) == 0 &&
 		PyDict_SetItemString(result, "captionAlignment", captionAlignment) == 0 &&
+		PyDict_SetItemString(result, "captionSizePercent", captionSizePercent) == 0 &&
 		PyDict_SetItemString(result, "decorative", decorative) == 0 &&
 		PyDict_SetItemString(result, "widthPercent", widthPercent) == 0 &&
 		PyDict_SetItemString(result, "frameCropApplied", frameCropApplied) == 0;
@@ -520,6 +523,7 @@ PyObject* scribus_epubimageframepreflight(PyObject* /*self*/, PyObject* args)
 	Py_DECREF(readingOrder);
 	Py_DECREF(caption);
 	Py_DECREF(captionAlignment);
+	Py_DECREF(captionSizePercent);
 	Py_DECREF(decorative);
 	Py_DECREF(widthPercent);
 	Py_DECREF(frameCropApplied);
@@ -633,6 +637,41 @@ PyObject* scribus_setepubimagecaptionalignment(PyObject* /*self*/, PyObject* arg
 	if (!item)
 		return nullptr;
 	if (!EpubDocument::setSavedImageCaptionAlignment(item, alignment))
+	{
+		PyErr_SetString(PyExc_ValueError, "A normal-page image frame with a saved EPUB caption is required");
+		return nullptr;
+	}
+	Py_RETURN_NONE;
+}
+
+PyObject* scribus_setepubimagecaptionsizepercent(PyObject* /*self*/, PyObject* args)
+{
+	PyObject* frameNameObject = nullptr;
+	PyObject* sizeObject = nullptr;
+	if (!PyArg_ParseTuple(args, "OO", &frameNameObject, &sizeObject))
+		return nullptr;
+	if (!PyUnicode_Check(frameNameObject) || !PyLong_Check(sizeObject) || PyBool_Check(sizeObject))
+	{
+		PyErr_SetString(PyExc_TypeError, "frameName must be a string and sizePercent an integer");
+		return nullptr;
+	}
+	const long sizePercent = PyLong_AsLong(sizeObject);
+	if (PyErr_Occurred())
+		return nullptr;
+	if (sizePercent != 0 && (sizePercent < 50 || sizePercent > 200))
+	{
+		PyErr_SetString(PyExc_ValueError, "sizePercent must be 0 (Auto) or between 50 and 200");
+		return nullptr;
+	}
+	if (!checkHaveDocument())
+		return nullptr;
+	const QString frameName = pythonText(frameNameObject);
+	if (PyErr_Occurred())
+		return nullptr;
+	PageItem* item = GetUniqueImageItem(frameName);
+	if (!item)
+		return nullptr;
+	if (!EpubDocument::setSavedImageCaptionSizePercent(item, static_cast<int>(sizePercent)))
 	{
 		PyErr_SetString(PyExc_ValueError, "A normal-page image frame with a saved EPUB caption is required");
 		return nullptr;

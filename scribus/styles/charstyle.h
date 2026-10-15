@@ -143,6 +143,9 @@ public:
 	bool equivForShaping(const CharStyle &other) const;
 
 	void applyCharStyle(const CharStyle & other);
+	// Apply only attributes explicitly defined by a named style (or its named
+	// ancestors), keeping this style's unrelated manual formatting intact.
+	void applyStyleAttributes(const CharStyle& other);
 	void eraseCharStyle(const CharStyle & other);
 	void setStyle(const CharStyle & other);
 	void erase() override { eraseCharStyle(*this); }

@@ -39,6 +39,14 @@ for which a new license (GPL+exception) is in place.
 PropertiesPalette_Table::PropertiesPalette_Table(QWidget* parent) : QWidget(parent)
 {
 	setupUi(this);
+	m_cellParagraphStyleLabel = new FormWidget(this);
+	m_cellParagraphStyleLabel->setObjectName("cellParagraphStyleLabel");
+	m_cellParagraphStyleLabel->setDirection(FormWidget::Left);
+	m_cellParagraphStyleCombo = new ParaStyleComboBox(m_cellParagraphStyleLabel);
+	m_cellParagraphStyleCombo->setObjectName("cellParagraphStyleCombo");
+	m_cellParagraphStyleLabel->addWidget(m_cellParagraphStyleCombo);
+	verticalLayout_4->addWidget(m_cellParagraphStyleLabel);
+	m_cellParagraphStyleLabel->hide();
 	setProperty("specialistTableEditor", true);
 	setAttribute(Qt::WA_StyledBackground, true);
 	setSizePolicy(QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred));
@@ -51,6 +59,9 @@ PropertiesPalette_Table::PropertiesPalette_Table(QWidget* parent) : QWidget(pare
 	}
 	tableStyleCombo->setAccessibleName(tr("Table style"));
 	cellStyleCombo->setAccessibleName(tr("Cell style"));
+	m_cellParagraphStyleCombo->setAccessibleName(tr("Selected-cell paragraph style"));
+	m_cellParagraphStyleLabel->setText(tr("Paragraph Style"));
+	m_cellParagraphStyleCombo->setToolTip(tr("Apply a paragraph style to all paragraphs in the selected cells"));
 	buttonClearTableStyle->setAccessibleName(tr("Remove direct table formatting"));
 	buttonClearCellStyle->setAccessibleName(tr("Remove direct cell formatting"));
 	addBorderLineButton->setAccessibleName(tr("Add border line"));
@@ -72,6 +83,7 @@ PropertiesPalette_Table::PropertiesPalette_Table(QWidget* parent) : QWidget(pare
 
 	connect(tableStyleCombo, SIGNAL(newStyle(QString)), this, SLOT(setTableStyle(QString)));
 	connect(cellStyleCombo, SIGNAL(newStyle(QString)), this, SLOT(setCellStyle(QString)));
+	connect(m_cellParagraphStyleCombo, &ParaStyleComboBox::newStyle, this, &PropertiesPalette_Table::setCellParagraphStyle);
 	connect(tableDirectionComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(on_tableDirectionComboBox_currentIndexChanged(int)));
 }
 
@@ -85,6 +97,7 @@ void PropertiesPalette_Table::iconSetChange()
 	buttonClearCellStyle->setIcon(iconManager.loadIcon("reset"));
 	labelTable->setPixmap(iconManager.loadPixmap("table-style"));
 	labelCells->setPixmap(iconManager.loadPixmap("table-cell-style"));
+	m_cellParagraphStyleLabel->setPixmap(iconManager.loadPixmap("paragraph-style"));
 }
 
 void PropertiesPalette_Table::handleUpdateRequest(int updateFlags)
@@ -93,6 +106,8 @@ void PropertiesPalette_Table::handleUpdateRequest(int updateFlags)
 		updateColorList();
 	tableStyleCombo->updateStyleList();
 	cellStyleCombo->updateStyleList();
+	m_cellParagraphStyleCombo->updateStyleList();
+	updateCellParagraphStyle();
 }
 
 void PropertiesPalette_Table::updateColorList()
@@ -128,6 +143,7 @@ void PropertiesPalette_Table::setDocument(ScribusDoc *doc)
 
 	tableStyleCombo->setDoc(m_doc);
 	cellStyleCombo->setDoc(m_doc);
+	m_cellParagraphStyleCombo->setDoc(m_doc);
 
 	connect(m_doc->m_Selection, SIGNAL(selectionChanged()), this, SLOT(handleSelectionChanged()));
 	connect(m_doc             , SIGNAL(docChanged())      , this, SLOT(handleSelectionChanged()));
@@ -145,6 +161,8 @@ void PropertiesPalette_Table::unsetDocument()
 
 	tableStyleCombo->setDoc(m_doc);
 	cellStyleCombo->setDoc(m_doc);
+	m_cellParagraphStyleCombo->setDoc(nullptr);
+	m_cellParagraphStyleLabel->hide();
 }
 
 void PropertiesPalette_Table::setItem(PageItem* item)
@@ -227,6 +245,7 @@ void PropertiesPalette_Table::showCellStyle(const QString& name)
 
 void PropertiesPalette_Table::updateStyleControls()
 {
+	updateCellParagraphStyle();
 	if (m_item && m_item->isTable())
 	{
 		PageItem_Table* table = m_item->asTable();
@@ -257,6 +276,49 @@ void PropertiesPalette_Table::updateStyleControls()
 		buttonClearTableStyle->setEnabled(false);
 		buttonClearCellStyle->setEnabled(false);
 	}
+}
+
+void PropertiesPalette_Table::updateCellParagraphStyle()
+{
+	const bool selectedCells = m_doc && m_item && m_item->isTable()
+		&& m_doc->appMode == modeEditTable && m_item->asTable()->hasSelection();
+	m_cellParagraphStyleLabel->setVisible(selectedCells);
+	m_cellParagraphStyleCombo->setEnabled(selectedCells);
+	if (!selectedCells)
+		return;
+
+	QString styleName;
+	bool haveStyle = false;
+	bool mixed = false;
+	for (const TableCell& cell : m_item->asTable()->selectedCells())
+	{
+		const StoryText& story = cell.textFrame()->itemText;
+		for (int pos = 0; pos <= story.length(); ++pos)
+		{
+			if (pos > 0 && story.text(pos - 1) != SpecialChars::PARSEP)
+				continue;
+			QString name = story.paragraphStyle(pos).parent();
+			if (name.isEmpty())
+				name = story.defaultStyle().parent();
+			if (name.isEmpty())
+				name = CommonStrings::DefaultParagraphStyle;
+			if (haveStyle && name != styleName)
+			{
+				mixed = true;
+				break;
+			}
+			styleName = name;
+			haveStyle = true;
+		}
+		if (mixed)
+			break;
+	}
+	QSignalBlocker blocker(m_cellParagraphStyleCombo);
+	m_cellParagraphStyleCombo->setPlaceholderText(tr("Mixed paragraph styles"));
+	if (mixed)
+		m_cellParagraphStyleCombo->setCurrentIndex(-1);
+	else
+		m_cellParagraphStyleCombo->setStyle(styleName);
 }
 
 void PropertiesPalette_Table::updatePaddingControls()
@@ -323,6 +385,7 @@ void PropertiesPalette_Table::toggleLabelVisibility(bool v)
 	fillColorLabel->setLabelVisibility(v);
 	fillShadeLabel->setLabelVisibility(v);
 	cellVerticalAlignment->setLabelVisibility(v);
+	m_cellParagraphStyleLabel->setLabelVisibility(v);
 }
 
 void PropertiesPalette_Table::setTableStyle(const QString &name)
@@ -344,6 +407,16 @@ void PropertiesPalette_Table::setCellStyle(const QString &name)
 
 	m_item->asTable()->update();
 	showCellStyle(name);
+}
+
+void PropertiesPalette_Table::setCellParagraphStyle(const QString& name)
+{
+	if (!m_doc || !m_item || !m_item->isTable() || m_doc->appMode != modeEditTable
+		|| !m_item->asTable()->hasSelection())
+		return;
+	m_doc->itemSelection_SetNamedParagraphStyle(name);
+	m_item->asTable()->update();
+	updateCellParagraphStyle();
 }
 
 void PropertiesPalette_Table::on_sideSelector_selectionChanged()
@@ -627,7 +700,7 @@ void PropertiesPalette_Table::applyToInnerVertical(const QSet<TableCell>& cells,
 
 void PropertiesPalette_Table::on_borderLineList_currentRowChanged(int row)
 {
-	if (row == -1)
+	if (row < 0 || row >= m_currentBorder.borderLines().size())
 	{
 		// No list item selected, so disable editing widgets.
 		borderLineWidth->setEnabled(false);
@@ -656,6 +729,10 @@ void PropertiesPalette_Table::on_borderLineList_currentRowChanged(int row)
 		borderLineShadeLabel->setEnabled(true);
 
 		// Fill in values.
+		// showValue()/setValue() can emit valueChanged. Those signals must not
+		// write back to the table while the list is changing its current row.
+		QSignalBlocker widthBlocker(borderLineWidth);
+		QSignalBlocker shadeBlocker(borderLineShade);
 		borderLineWidth->showValue(line.width());
 		setCurrentComboItem(borderLineColor, line.color());
 		borderLineStyle->setCurrentIndex(static_cast<int>(line.style()) - 1);
@@ -677,6 +754,8 @@ void PropertiesPalette_Table::on_addBorderLineButton_clicked()
 void PropertiesPalette_Table::on_removeBorderLineButton_clicked()
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	borderLineList->removeItemWidget(borderLineList->currentItem());
 	m_currentBorder.removeBorderLine(index);
 	
@@ -687,6 +766,8 @@ void PropertiesPalette_Table::on_removeBorderLineButton_clicked()
 void PropertiesPalette_Table::on_borderLineWidth_valueChanged(double width)
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	TableBorderLine borderLine = m_currentBorder.borderLines().at(index);
 	borderLine.setWidth(width);
 	m_currentBorder.replaceBorderLine(index, borderLine);
@@ -698,6 +779,8 @@ void PropertiesPalette_Table::on_borderLineWidth_valueChanged(double width)
 void PropertiesPalette_Table::on_borderLineShade_valueChanged(double shade)
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	TableBorderLine borderLine = m_currentBorder.borderLines().at(index);
 	borderLine.setShade(shade);
 	m_currentBorder.replaceBorderLine(index, borderLine);
@@ -709,6 +792,8 @@ void PropertiesPalette_Table::on_borderLineShade_valueChanged(double shade)
 void PropertiesPalette_Table::on_borderLineColor_textActivated(const QString& colorName)
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	TableBorderLine borderLine = m_currentBorder.borderLines().at(index);
 	QString color = colorName;
 	if (colorName == CommonStrings::tr_NoneColor)
@@ -723,6 +808,8 @@ void PropertiesPalette_Table::on_borderLineColor_textActivated(const QString& co
 void PropertiesPalette_Table::on_borderLineStyle_activated(int style)
 {
 	int index = borderLineList->currentRow();
+	if (index < 0 || index >= m_currentBorder.borderLines().size())
+		return;
 	TableBorderLine borderLine = m_currentBorder.borderLines().at(index);
 	borderLine.setStyle(static_cast<Qt::PenStyle>(style + 1));
 	m_currentBorder.replaceBorderLine(index, borderLine);
@@ -1026,6 +1113,10 @@ void PropertiesPalette_Table::updateBorders()
 void PropertiesPalette_Table::languageChange()
 {
 	retranslateUi(this);
+	m_cellParagraphStyleLabel->setText(tr("Paragraph Style"));
+	m_cellParagraphStyleCombo->setAccessibleName(tr("Selected-cell paragraph style"));
+	m_cellParagraphStyleCombo->setToolTip(tr("Apply a paragraph style to all paragraphs in the selected cells"));
+	updateCellParagraphStyle();
 
 	scTableStyles->setText(tr("Styles"));
 	scTableFills->setText(tr("Fill"));

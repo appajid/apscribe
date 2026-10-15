@@ -335,65 +335,90 @@ void PropertiesPalette::enablePalettes(bool enable)
 void PropertiesPalette::updateObjectStyleControls()
 {
 	QSignalBlocker blocker(m_objectStyleCombo);
-	m_objectStyleCombo->clear();
-	m_objectStyleCombo->addItem(tr("No Object Style"), QString());
-	m_objectStyleCombo->setItemData(0, false, ObjectStyleMixedRole);
-
-	if (!m_haveDoc || !m_doc)
-	{
-		m_objectStyleCombo->setEnabled(false);
-		m_objectStyleEditButton->setEnabled(false);
-		return;
-	}
-
-	const QList<int> sortedStyles = m_doc->getSortedObjectStyleList();
-	for (int styleIndex : sortedStyles)
-	{
-		const ObjectStyle& style = m_doc->objectStyles()[styleIndex];
-		m_objectStyleCombo->addItem(style.displayName(), style.name());
-	}
-
-	const int selectionCount = m_doc->m_Selection->count();
-	m_objectStyleCombo->setEnabled(selectionCount > 0);
-	if (selectionCount <= 0)
-	{
-		m_objectStyleEditButton->setEnabled(false);
-		return;
-	}
-
-	QString styleName = m_doc->m_Selection->itemAt(0)->objectStyleName();
+	const bool hasDoc = m_haveDoc && m_doc;
+	const int selectionCount = hasDoc ? m_doc->m_Selection->count() : 0;
+	QString styleName;
 	bool mixed = false;
-	for (int i = 1; i < selectionCount; ++i)
+	if (selectionCount > 0)
 	{
-		if (m_doc->m_Selection->itemAt(i)->objectStyleName() != styleName)
+		styleName = m_doc->m_Selection->itemAt(0)->objectStyleName();
+		for (int i = 1; i < selectionCount; ++i)
 		{
-			mixed = true;
-			break;
+			if (m_doc->m_Selection->itemAt(i)->objectStyleName() != styleName)
+			{
+				mixed = true;
+				break;
+			}
 		}
 	}
 
+	QList<QPair<QString, QString>> choices;
 	if (mixed)
+		choices.append({ tr("Multiple Object Styles"), QString() });
+	choices.append({ tr("No Object Style"), QString() });
+	if (hasDoc)
 	{
-		m_objectStyleCombo->insertItem(0, tr("Multiple Object Styles"));
-		m_objectStyleCombo->setItemData(0, true, ObjectStyleMixedRole);
+		const QList<int> sortedStyles = m_doc->getSortedObjectStyleList();
+		for (int styleIndex : sortedStyles)
+		{
+			const ObjectStyle& style = m_doc->objectStyles()[styleIndex];
+			choices.append({ style.displayName(), style.name() });
+		}
+	}
+	int comboIndex = 0;
+	if (!mixed && selectionCount > 0)
+	{
+		comboIndex = -1;
+		for (int i = 0; i < choices.count(); ++i)
+		{
+			if (choices[i].second == styleName)
+			{
+				comboIndex = i;
+				break;
+			}
+		}
+		if (comboIndex < 0 && !styleName.isEmpty())
+		{
+			choices.append({ tr("%1 (Missing)").arg(styleName), styleName });
+			comboIndex = choices.count() - 1;
+		}
+	}
+
+	// Retain existing rows when styles are added or removed, too. A full
+	// clear invalidates every accessibility child even for a one-row change.
+	while (m_objectStyleCombo->count() > choices.count())
+		m_objectStyleCombo->removeItem(m_objectStyleCombo->count() - 1);
+	for (int i = 0; i < choices.count(); ++i)
+	{
+		if (i >= m_objectStyleCombo->count())
+			m_objectStyleCombo->addItem(choices[i].first, choices[i].second);
+		else
+		{
+			if (m_objectStyleCombo->itemText(i) != choices[i].first)
+				m_objectStyleCombo->setItemText(i, choices[i].first);
+			if (m_objectStyleCombo->itemData(i).toString() != choices[i].second)
+				m_objectStyleCombo->setItemData(i, choices[i].second);
+		}
+		const bool mixedPlaceholder = mixed && i == 0;
+		if (m_objectStyleCombo->itemData(i, ObjectStyleMixedRole).toBool() != mixedPlaceholder)
+			m_objectStyleCombo->setItemData(i, mixedPlaceholder, ObjectStyleMixedRole);
 		if (auto* model = qobject_cast<QStandardItemModel*>(m_objectStyleCombo->model()))
 		{
-			if (QStandardItem* item = model->item(0))
-				item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+			if (QStandardItem* item = model->item(i))
+			{
+				Qt::ItemFlags flags = item->flags();
+				if (flags.testFlag(Qt::ItemIsEnabled) == mixedPlaceholder)
+				{
+					flags.setFlag(Qt::ItemIsEnabled, !mixedPlaceholder);
+					item->setFlags(flags);
+				}
+			}
 		}
-		m_objectStyleCombo->setCurrentIndex(0);
-		m_objectStyleEditButton->setEnabled(false);
-		return;
 	}
-
-	int comboIndex = m_objectStyleCombo->findData(styleName);
-	if (comboIndex < 0 && !styleName.isEmpty())
-	{
-		m_objectStyleCombo->addItem(tr("%1 (Missing)").arg(styleName), styleName);
-		comboIndex = m_objectStyleCombo->count() - 1;
-	}
+	m_objectStyleCombo->setEnabled(selectionCount > 0);
 	m_objectStyleCombo->setCurrentIndex(qMax(0, comboIndex));
-	m_objectStyleEditButton->setEnabled(!styleName.isEmpty() && m_doc->objectStyles().contains(styleName));
+	m_objectStyleEditButton->setEnabled(selectionCount > 0 && !mixed && !styleName.isEmpty()
+	                                    && m_doc->objectStyles().contains(styleName));
 }
 
 void PropertiesPalette::handleObjectStyleActivated(int index)

@@ -134,7 +134,7 @@ void StyleManager::languageChange()
 	importButton->setToolTip( tr("Import styles from another document"));
 	cloneButton->setToolTip(  tr("Clone selected style"));
 	deleteButton->setToolTip( tr("Delete selected styles"));
-	deleteUnusedButton->setToolTip( tr("Find and remove all styles not used by any object in the document"));
+	deleteUnusedButton->setToolTip( tr("Find and remove styles not referenced by document content, defaults, or document settings"));
 
 /***********************************/
 /*      End Tooltips               */
@@ -573,10 +573,22 @@ void StyleManager::slotDelete()
 	slotOk();
 }
 
+bool StyleManager::hasPendingChanges() const
+{
+	return m_doc && m_isEditMode &&
+		(resetButton->isEnabled() || applyButton->isEnabled() || !okButton->isEnabled());
+}
+
 void StyleManager::slotDeleteUnused()
 {
 	if (!m_doc)
 		return;
+	if (hasPendingChanges())
+	{
+		ScMessageBox::information(this, tr("Remove Unused Styles"),
+			tr("Apply or reset pending style changes before removing unused styles."));
+		return;
+	}
 
 	// Scan page items to find styles referenced by content
 	ResourceCollection usedResources;
@@ -1527,18 +1539,72 @@ void StyleManager::slotClean()
 	if (m_isEditMode)
 	{
 		StyleItem *tmp = m_item;
+		// Applying an ordinary style property must not destroy the selected tree
+		// item. Cocoa accessibility may still be reading that item when the style
+		// manager refreshes, and repeatedly clearing the tree can crash Qt.
+		for (StyleItem* item : std::as_const(m_items))
+			item->reload();
 
-		for (int i = 0; i < m_items.count(); ++i)
+		QMap<QString, QMap<QString, QString>> expectedStyles;
+		for (StyleItem* item : std::as_const(m_items))
 		{
-			m_item = m_items.at(i);
-			reloadStyleView();
+			for (const StyleName& style : item->styles(false))
+				expectedStyles[item->typeName()].insert(style.first, style.second);
 		}
+
+		// Entering edit mode still needs a full tree refresh so the new editor
+		// state is exposed to assistive technology. A dirty Apply/Reset can keep
+		// its existing tree when only style properties changed.
+		bool rebuild = !applyButton->isEnabled();
+		int styleCount = 0;
+		int rootCount = 0;
+		QTreeWidgetItemIterator treeIt(styleView);
+		while (*treeIt && !rebuild)
+		{
+			StyleViewItem* viewItem = dynamic_cast<StyleViewItem*>(*treeIt);
+			if (!viewItem)
+			{
+				rebuild = true;
+				break;
+			}
+			if (viewItem->isRoot())
+			{
+				++rootCount;
+				rebuild = !expectedStyles.contains(viewItem->text(NAME_COL));
+			}
+			else
+			{
+				++styleCount;
+				const auto& styles = expectedStyles.value(viewItem->rootName());
+				const QString name = viewItem->text(NAME_COL);
+				if (!styles.contains(name))
+					rebuild = true;
+				else
+				{
+					QString expectedParent = styles.value(name);
+					if (!styles.contains(expectedParent))
+						expectedParent.clear();
+					StyleViewItem* parent = dynamic_cast<StyleViewItem*>(viewItem->parent());
+					const QString actualParent = parent && !parent->isRoot() ? parent->text(NAME_COL) : QString();
+					rebuild = (actualParent != expectedParent);
+				}
+			}
+			++treeIt;
+		}
+		int expectedCount = 0;
+		for (const auto& styles : std::as_const(expectedStyles))
+			expectedCount += styles.count();
+		if (rootCount != m_items.count() || styleCount != expectedCount)
+			rebuild = true;
+		if (rebuild)
+			reloadStyleView(false);
 		slotSetupWidget();
 		m_item = tmp;
 	}
 	applyButton->setEnabled(false);
 	resetButton->setEnabled(false);
 	uniqueLabel->hide();
+	okButton->setEnabled(true);
 }
 
 void StyleManager::reloadStyleView(bool loadFromDoc)
@@ -1607,6 +1673,7 @@ void StyleManager::slotNameChanged(const QString& name)
 	{
 		okButton->setEnabled(false);
 		applyButton->setEnabled(false);
+		resetButton->setEnabled(true);
 		return;
 	}
 	if (m_item && !nameIsUnique(name))
@@ -1614,6 +1681,7 @@ void StyleManager::slotNameChanged(const QString& name)
 		uniqueLabel->show();
 		okButton->setEnabled(false);
 		applyButton->setEnabled(false);
+		resetButton->setEnabled(true);
 		return;
 	}
 	if (uniqueLabel->isVisible())
@@ -1627,17 +1695,12 @@ void StyleManager::slotNameChanged(const QString& name)
 	{
 		if (m_doc == nullptr)
 			return;
+		// A corrected blank name has no visible duplicate-name label, but
+		// must unlock Done just as a corrected duplicate does.
+		okButton->setEnabled(true);
 		QString oldName(styleView->currentItem()->text(NAME_COL));
-		ToCSetupVector &tocSetups = m_doc->tocSetups();
-		for (auto tocSetupIt = tocSetups.begin(); tocSetupIt != tocSetups.end(); ++tocSetupIt)
-		{
-			if (tocSetupIt->tocSource == "Attribute")
-				continue;
-			int i = tocSetupIt->styleListToFind.indexOf(oldName);
-			if (i >= 0)
-				tocSetupIt->styleListToFind[i]=name;
-		}
-
+		// Settings are live document data, not editor drafts. Update their
+		// references through replaceNamedResources only when styles are applied.
 		m_item->nameChanged(name);
 		updateActionName(oldName, name);
 		styleView->currentItem()->setText(NAME_COL, name);

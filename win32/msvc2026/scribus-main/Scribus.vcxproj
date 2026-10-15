@@ -272,6 +272,13 @@
     <ClInclude Include="..\..\..\scribus\imagecmykexport.h" />
     <ClInclude Include="..\..\..\scribus\imagelinkreplacement.h" />
     <ClInclude Include="..\..\..\scribus\dynamicvariable.h" />
+    <ClInclude Include="..\..\..\scribus\regexsearch.h" />
+    <ClInclude Include="..\..\..\scribus\grepstylerules.h" />
+    <ClInclude Include="..\..\..\scribus\searchquerypresets.h" />
+    <ClInclude Include="..\..\..\scribus\wheelzoomaccumulator.h" />
+    <ClInclude Include="..\..\..\scribus\recoveryfiles.h" />
+    <ClInclude Include="..\..\..\scribus\ui\stylecomboitems.h" />
+    <moc Include="..\..\..\scribus\ui\grepstyleeditor.h" />
     <ClInclude Include="..\..\..\scribus\epubdocument.h" />
     <ClInclude Include="..\..\..\scribus\epubexport.h" />
     <ClInclude Include="..\..\..\scribus\epubreadingorder.h" />
@@ -988,6 +995,11 @@
     <ClCompile Include="..\..\..\scribus\imagelinkreplacement.cpp" />
     <ClCompile Include="..\..\..\scribus\imagealphasilhouette.cpp" />
     <ClCompile Include="..\..\..\scribus\dynamicvariable.cpp" />
+    <ClCompile Include="..\..\..\scribus\regexsearch.cpp" />
+    <ClCompile Include="..\..\..\scribus\grepstylerules.cpp" />
+    <ClCompile Include="..\..\..\scribus\searchquerypresets.cpp" />
+    <ClCompile Include="..\..\..\scribus\wheelzoomaccumulator.cpp" />
+    <ClCompile Include="..\..\..\scribus\ui\grepstyleeditor.cpp" />
     <ClCompile Include="..\..\..\scribus\epubdocument.cpp" />
     <ClCompile Include="..\..\..\scribus\epubexport.cpp" />
     <ClCompile Include="..\..\..\scribus\epubreadingorder.cpp" />

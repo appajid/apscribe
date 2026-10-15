@@ -14,6 +14,7 @@ for which a new license (GPL+exception) is in place.
 #include "scribus.h"
 #include "scribusapp.h"
 #include "smcstylewidget.h"
+#include "stylecomboitems.h"
 #include "util.h"
 #include "units.h"
 
@@ -263,8 +264,9 @@ void SMCStyleWidget::show(const CharStyle *cstyle, const QList<CharStyle> &cstyl
 	effects_->UnderlineVal->LWidth->setValue(cstyle->underlineWidth() / 10.0);
 	slotColorChange();
 
-	parentCombo->clear();
-	parentCombo->addItem( cstyle->isDefaultStyle()? tr("A default style cannot be assigned a parent style") : "");
+	QStringList parentChoices;
+	parentChoices.append(cstyle->isDefaultStyle()
+	                     ? tr("A default style cannot be assigned a parent style") : QString());
 	if (!cstyle->isDefaultStyle())
 	{
 		QStringList styleNames;
@@ -274,8 +276,9 @@ void SMCStyleWidget::show(const CharStyle *cstyle, const QList<CharStyle> &cstyl
 				styleNames.append(cstyles[i].name());
 		}
 		styleNames.sort(Qt::CaseSensitive);
-		parentCombo->addItems(styleNames);
+		parentChoices.append(styleNames);
 	}
+	StyleComboItems::update(parentCombo, parentChoices);
 
 	if (cstyle->isDefaultStyle() || !hasParent)
 		parentCombo->setCurrentIndex(0);

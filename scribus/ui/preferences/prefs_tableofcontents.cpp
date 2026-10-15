@@ -43,6 +43,11 @@ Prefs_TableOfContents::Prefs_TableOfContents(QWidget* parent, ScribusDoc* doc)
 	connect(itemParagraphStyleComboBox, SIGNAL(currentTextChanged(QString)), this, SLOT(itemParagraphStyleSelected(QString)));
 	connect(itemNumberPlacementComboBox, SIGNAL(currentTextChanged(QString)), this, SLOT(itemPageNumberPlacedSelected(QString)));
 	connect(itemListNonPrintingCheckBox, SIGNAL( toggled(bool) ), this, SLOT( nonPrintingFramesSelected(bool)));
+	connect(autoRightAlignCheckBox, &QCheckBox::toggled, this, [this](bool checked)
+	{
+		if (numSelected >= 0 && numSelected < localToCSetupVector.count())
+			localToCSetupVector[numSelected].autoRightAlignPageNumbers = checked;
+	});
 	connect(styleListWidget, SIGNAL(itemChanged(QListWidgetItem *)), this, SLOT(styleListUpdate()));
 	connect(styleListWidget, SIGNAL(itemClicked(QListWidgetItem *)), this, SLOT(styleListWidgetClicked()));
 	connect(addStyleButton, SIGNAL(clicked()), this, SLOT(addStyleClicked()));
@@ -59,6 +64,7 @@ Prefs_TableOfContents::Prefs_TableOfContents(QWidget* parent, ScribusDoc* doc)
 	itemParagraphStyleComboBox->setEnabled(false);
 	itemNumberPlacementComboBox->setEnabled(false);
 	itemListNonPrintingCheckBox->setEnabled(false);
+	autoRightAlignCheckBox->setEnabled(false);
 	styleListWidget->setEnabled(false);
 	paragraphStyleComboBox->setEnabled(false);
 	addStyleButton->setEnabled(false);
@@ -108,6 +114,8 @@ void Prefs_TableOfContents::saveGuiToPrefs(struct ApplicationPrefs *prefsData) c
 
 void Prefs_TableOfContents::languageChange()
 {
+	autoRightAlignCheckBox->setText(tr("Align Page Numbers at Right Edge"));
+	autoRightAlignCheckBox->setToolTip(tr("For entries with page numbers at the end and no custom paragraph tabs, add a right-aligned tab at the column edge, respecting the paragraph right indent. Regenerate the table of contents after changing the frame size, insets, columns or paragraph indents."));
 	trStrPNBeginning = tr("Beginning");
 	strPNBeginning = "Beginning";
 	trStrPNEnd = tr("End");
@@ -200,6 +208,7 @@ void Prefs_TableOfContents::selectToC(int numberSelected)
 	QSignalBlocker sigBlocker5(itemParagraphStyleComboBox);
 	QSignalBlocker sigBlocker6(itemNumberPlacementComboBox);
 	QSignalBlocker sigBlocker7(itemListNonPrintingCheckBox);
+	QSignalBlocker sigBlocker8(autoRightAlignCheckBox);
 
 	numSelected = numberSelected;
 	if (numSelected < 0)
@@ -229,6 +238,7 @@ void Prefs_TableOfContents::selectToC(int numberSelected)
 		setCurrentComboItem(itemNumberPlacementComboBox, trStrPNEnd);
 
 	itemListNonPrintingCheckBox->setChecked(localToCSetupVector.at(numSelected).listNonPrintingFrames);
+	autoRightAlignCheckBox->setChecked(localToCSetupVector.at(numSelected).autoRightAlignPageNumbers);
 	if (m_Doc != nullptr)
 	{
 		if (localToCSetupVector[numSelected].frameName == CommonStrings::None)
@@ -318,6 +328,7 @@ void Prefs_TableOfContents::enableGUIWidgets()
 	tocDeleteButton->setEnabled(haveTocSelected);
 	itemToCSource->setEnabled(haveTocSelected);
 	itemListNonPrintingCheckBox->setEnabled(haveTocSelected);
+	autoRightAlignCheckBox->setEnabled(haveTocSelected);
 	bool haveDoc = (haveTocSelected && m_Doc != nullptr);
 	itemDestFrameComboBox->setEnabled(haveDoc);
 	itemParagraphStyleComboBox->setEnabled(haveDoc);
@@ -355,6 +366,7 @@ void Prefs_TableOfContents::addToC()
 	newToCEntry.textStyle = CommonStrings::None;
 	newToCEntry.pageLocation = End;
 	newToCEntry.listNonPrintingFrames = false;
+	newToCEntry.autoRightAlignPageNumbers = true;
 	localToCSetupVector.append(newToCEntry);
 	QSignalBlocker sigBlocker1(tocListBox);
 	updateToCListBox();

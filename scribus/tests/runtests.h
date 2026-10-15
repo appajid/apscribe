@@ -9,5 +9,6 @@ class RunTests
 {
 public:
 	static int runTests(const QStringList& arguments);
+	static int runDocumentTests(const QStringList& arguments);
 };
 #endif

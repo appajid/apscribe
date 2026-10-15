@@ -45,6 +45,8 @@ struct ToCSetup
 	QString frameName; //Destination frame
 	TOCPageLocation pageLocation; //Place the page number for the TOC at the beginning, end or not at all
 	bool listNonPrintingFrames; //List non printing frames in the TOC
+	// Opt in for new setups only; documents without this setting keep their tabs.
+	bool autoRightAlignPageNumbers {false};
 	QString textStyle; //Paragraph style for text
 	QStringList styleListToFind; //If the ToC is based on styles, this is the list of styles we'll search for
 	QStringList styleListForTOC; //If the ToC is based on styles, this is the list of styles we'll set on the TOC entries

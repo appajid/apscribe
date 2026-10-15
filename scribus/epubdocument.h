@@ -94,6 +94,10 @@ SCRIBUS_API bool setSavedImageCaption(PageItem* item, const QString& caption);
 // -1 indicates malformed saved metadata and blocks export.
 SCRIBUS_API int savedImageCaptionAlignment(const PageItem* item);
 SCRIBUS_API bool setSavedImageCaptionAlignment(PageItem* item, int alignment);
+// Relative EPUB caption text size: 0 uses the reader default; 50-200 is explicit.
+// -1 indicates malformed saved metadata and blocks export.
+SCRIBUS_API int savedImageCaptionSizePercent(const PageItem* item);
+SCRIBUS_API bool setSavedImageCaptionSizePercent(PageItem* item, int sizePercent);
 // Reflowable figure width, independent of Scribus frame geometry. Zero
 // removes the override; malformed stored values fail image preflight.
 SCRIBUS_API int savedImageWidthPercent(const PageItem* item);

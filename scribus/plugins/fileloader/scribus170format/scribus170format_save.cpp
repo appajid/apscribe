@@ -842,6 +842,8 @@ void Scribus170Format::putPStyle(ScXmlStreamWriter & docu, const ParagraphStyle 
 		docu.writeAttribute("NACH", style.gapAfter());
 	if (!style.isInhPeCharStyleName())
 		docu.writeAttribute("ParagraphEffectCharStyle", style.peCharStyleName());
+	if (!style.isInhGrepStyleRulesJson())
+		docu.writeAttribute("GrepStyleRules", style.grepStyleRulesJson());
 	if (!style.isInhParEffectOffset())
 		docu.writeAttribute("ParagraphEffectOffset", style.parEffectOffset());
 	if (!style.isInhParEffectIndent())
@@ -1385,6 +1387,7 @@ void Scribus170Format::writeTOC(ScXmlStreamWriter & docu) const
 		docu.writeAttribute("ItemAttributeName", tocSetup.itemAttrName);
 		docu.writeAttribute("FrameName", tocSetup.frameName);
 		docu.writeAttribute("ListNonPrinting", tocSetup.listNonPrintingFrames);
+		docu.writeAttribute("AutoRightAlignPageNumbers", tocSetup.autoRightAlignPageNumbers);
 		docu.writeAttribute("Style", tocSetup.textStyle);
 		switch (tocSetup.pageLocation)
 		{

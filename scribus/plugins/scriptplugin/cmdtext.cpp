@@ -622,8 +622,19 @@ PyObject *scribus_settext(PyObject* /* self */, PyObject* args)
 	userText.replace("\r\n", SpecialChars::PARSEP);
 	userText.replace(QChar('\n') , SpecialChars::PARSEP);
 	text.free();
-	currItem->itemText.clear();
-	currItem->itemText.insertChars(0, userText);
+	StoryText& story = currItem->itemText;
+	story.deselectAll();
+	if (story.length() > 0)
+	{
+		// Replace in place so styles on existing characters and paragraphs
+		// survive. Clearing the story also erases its default/trailing styles.
+		story.select(0, story.length());
+		story.replaceSelection(userText);
+		story.deselectAll();
+	}
+	else
+		story.insertChars(0, userText, true);
+	currItem->HasSel = false;
 	currItem->invalidateLayout();
 
 	Py_RETURN_NONE;

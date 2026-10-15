@@ -42,6 +42,8 @@ ATTRDEF(int, dropCapLines, DropCapLines, 2)
 ATTRDEF(double, parEffectOffset, ParEffectOffset, 0.0)
 ATTRDEF(bool, parEffectIndent, ParEffectIndent, false)
 ATTRDEF(QString, peCharStyleName, PeCharStyleName,"")
+// JSON preserves ordered GREP rules as one inheritable paragraph-style value.
+ATTRDEF(QString, grepStyleRulesJson, GrepStyleRulesJson, QString())
 ATTRDEF(bool, hasBullet, HasBullet, false)
 ATTRDEF(QString, bulletStr, BulletStr, QString(QChar(0x2022)))
 ATTRDEF(bool, hasNum, HasNum, false)

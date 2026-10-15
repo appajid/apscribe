@@ -83,6 +83,7 @@ private slots:
 	void slotNumName(const QString &str);
 	void slotNumNew();
 	void slotSelectionDirty();
+	void slotGrepRulesEdited(const QString& json, bool inherit);
 	void slotNumFormat(int);
 	void slotNumLevel(int level);
 	void slotNumPrefix(const QString &str);

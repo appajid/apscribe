@@ -1662,6 +1662,8 @@ bool Scribus170Format::loadFile(const QString & fileName, const FileFormat & /* 
 	bool firstElement = true;
 	bool success = true;
 	bool hasPageSets = false;
+	bool hasDocument = false;
+	bool hasNormalPage = false;
 	int  progress = 0;
 
 	ScXmlStreamReader reader(ioDevice.data());
@@ -1697,6 +1699,7 @@ bool Scribus170Format::loadFile(const QString & fileName, const FileFormat & /* 
 
 		if (tagName == QLatin1String("DOCUMENT"))
 		{
+			hasDocument = true;
 			readDocAttributes(m_Doc, attrs);
 			layerToSetActive = attrs.valueAsInt("ALAYER", 0);
 			if (m_Doc->pagePositioning() == 0)
@@ -1848,6 +1851,8 @@ bool Scribus170Format::loadFile(const QString & fileName, const FileFormat & /* 
 			success = readPage(m_Doc, reader);
 			if (!success)
 				break;
+			if (tagName == QLatin1String("PAGE"))
+				hasNormalPage = true;
 		}
 		else if (tagName == QLatin1String("PAGEOBJECT") || tagName == QLatin1String("MASTEROBJECT") || tagName == QLatin1String("FRAMEOBJECT"))
 		{
@@ -2003,6 +2008,21 @@ bool Scribus170Format::loadFile(const QString & fileName, const FileFormat & /* 
 	if (reader.hasError())
 	{
 		setDomParsingError(reader.errorString(), reader.lineNumber(), reader.columnNumber());
+		return false;
+	}
+
+	// Do not finalize an incomplete document (including a newer schema with an
+	// incorrectly labelled version). Finalization assumes normal pages exist.
+	if (!success)
+	{
+		if (!hasLastError())
+			setFileReadError();
+		return false;
+	}
+	if (firstElement || !hasDocument || !hasNormalPage || m_Doc->DocPages.isEmpty())
+	{
+		setDomParsingError(tr("Incomplete or incompatible SLA document: the document element or normal pages are missing."),
+			reader.lineNumber(), reader.columnNumber());
 		return false;
 	}
 
@@ -3126,6 +3146,8 @@ void Scribus170Format::readParagraphStyle(ScribusDoc *doc, ScXmlStreamReader& re
 	static const QString ParagraphEffectCharStyle("ParagraphEffectCharStyle");
 	if (attrs.hasAttribute(ParagraphEffectCharStyle))
 		newStyle.setPeCharStyleName(attrs.valueAsString(ParagraphEffectCharStyle));
+	if (attrs.hasAttribute("GrepStyleRules"))
+		newStyle.setGrepStyleRulesJson(attrs.valueAsString("GrepStyleRules"));
 
 	static const QString ParagraphEffectOffset("ParagraphEffectOffset");
 	if (attrs.hasAttribute(ParagraphEffectOffset))
@@ -3794,6 +3816,7 @@ bool Scribus170Format::readTableOfContents(ScribusDoc* doc, ScXmlStreamReader& r
 			tocsetup.itemAttrName = attrs.valueAsString("ItemAttributeName");
 			tocsetup.frameName    = attrs.valueAsString("FrameName");
 			tocsetup.textStyle    = attrs.valueAsString("Style");
+			tocsetup.autoRightAlignPageNumbers = attrs.valueAsBool("AutoRightAlignPageNumbers", false);
 			if (attrs.hasAttribute("ListNonPrinting"))
 				tocsetup.listNonPrintingFrames = QVariant(attrs.valueAsString("ListNonPrinting")).toBool();
 			else

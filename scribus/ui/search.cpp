@@ -9,7 +9,10 @@ for which a new license (GPL+exception) is in place.
 
 #include <QApplication>
 #include <QCursor>
+#include <QHBoxLayout>
+#include <QInputDialog>
 #include <QListView>
+#include <QMessageBox>
 #include <QScopedValueRollback>
 #include <QScreen>
 #include <QSizePolicy>
@@ -26,10 +29,12 @@ for which a new license (GPL+exception) is in place.
 #include "prefscontext.h"
 #include "prefsfile.h"
 #include "prefsmanager.h"
+#include "regexsearch.h"
 #include "scpage.h"
 #include "scribus.h"
 #include "scribusview.h"
 #include "scrspinbox.h"
+#include "text/specialchars.h"
 #include "selection.h"
 #include "shadebutton.h"
 #include "styles/charstyle.h"
@@ -40,6 +45,19 @@ for which a new license (GPL+exception) is in place.
 #include "undotransaction.h"
 #include "util.h"
 #include "util_text.h"
+
+namespace
+{
+bool storyEditorRangeMatches(SEditor* editor, const StoryText& storyText, int start, int length)
+{
+	if (start < 0 || length <= 0 || start + length >= editor->document()->characterCount())
+		return false;
+	QTextCursor cursor(editor->document());
+	cursor.setPosition(start);
+	cursor.setPosition(start + length, QTextCursor::KeepAnchor);
+	return cursor.selectedText() == storyText.text(start, length);
+}
+}
 
 SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	: QDialog(parent)
@@ -54,6 +72,45 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	searchTextValue->setAccessibleDescription(tr("Text to find in the current story or selected text frames"));
 	replaceTextValue->setAccessibleName(tr("Replacement text"));
 	messageLabel->setAccessibleName(tr("Find and replace status"));
+	// Native, non-destructive text-query presets inspired by GREPS (MIT).
+	// They only restore dialog controls; matching and replacement stay in Apscribe.
+	auto* queryRow = new QHBoxLayout();
+	auto* queryLabel = new QLabel(tr("Saved text query:"), this);
+	m_queryCombo = new QComboBox(this);
+	m_queryCombo->setAccessibleName(tr("Saved find and replace query"));
+	m_queryCombo->setToolTip(tr("Saved queries include text and text-matching options, not formatting criteria."));
+	auto* saveQueryButton = new QPushButton(tr("Save..."), this);
+	auto* deleteQueryButton = new QPushButton(tr("Delete"), this);
+	queryRow->addWidget(queryLabel);
+	queryRow->addWidget(m_queryCombo, 1);
+	queryRow->addWidget(saveQueryButton);
+	queryRow->addWidget(deleteQueryButton);
+	searchReplaceLayout->insertLayout(0, queryRow);
+	connect(saveQueryButton, &QPushButton::clicked, this, &SearchReplace::saveQuery);
+	connect(deleteQueryButton, &QPushButton::clicked, this, &SearchReplace::deleteQuery);
+	connect(m_queryCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
+		if (index <= 0 || m_loadingQuery)
+			return;
+		const auto query = m_savedQueries.value(m_queryCombo->currentText());
+		m_loadingQuery = true;
+		clear();
+		searchTextValue->setText(query.find);
+		replaceTextValue->setText(query.replace);
+		regexCheckBox->setChecked(query.regex);
+		ignoreCaseCheckBox->setChecked(query.ignoreCase);
+		wholeWordsCheckBox->setChecked(query.wholeWords);
+		m_loadingQuery = false;
+		updateButtonState();
+	});
+	auto markQueryModified = [this]() {
+		if (!m_loadingQuery && m_queryCombo->currentIndex() > 0)
+			m_queryCombo->setCurrentIndex(0);
+	};
+	connect(searchTextValue, &QLineEdit::textChanged, this, markQueryModified);
+	connect(replaceTextValue, &QLineEdit::textChanged, this, markQueryModified);
+	connect(regexCheckBox, &QCheckBox::toggled, this, markQueryModified);
+	connect(ignoreCaseCheckBox, &QCheckBox::toggled, this, markQueryModified);
+	connect(wholeWordsCheckBox, &QCheckBox::toggled, this, markQueryModified);
 
 	QSizePolicy sp = messageLabel->sizePolicy();
 	sp.setRetainSizeWhenHidden(true);
@@ -70,6 +127,10 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	}
 	searchStyleComboBox->setCurrentIndex(findParagraphStyle(doc, doc->currentStyle));
 	replaceStyleComboBox->setCurrentIndex(findParagraphStyle(doc, doc->currentStyle));
+	for (int i = 0; i < doc->charStyles().count(); ++i)
+		regexStyleComboBox->addItem(doc->charStyles()[i].name());
+	regexStyleComboBox->setAccessibleName(tr("Character style for regular-expression matches"));
+	applyRegexStyleButton->setToolTip(tr("Apply the selected character style to all matching canvas text without changing the text"));
 
 	QStringList alignment{tr("Left"), tr("Center"), tr("Right"), tr("Block"), tr("Forced")};
 	searchAlignmentComboBox->addItems(alignment);
@@ -99,6 +160,7 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	connect(clearButton, &QPushButton::clicked, this, &SearchReplace::clear);
 	connect(closeButton, &QPushButton::clicked, this, &SearchReplace::accept);
 	connect(replaceAllButton, &QPushButton::clicked, this, &SearchReplace::slotReplaceAll);
+	connect(applyRegexStyleButton, &QPushButton::clicked, this, &SearchReplace::applyRegexCharacterStyle);
 	connect(replaceButton, &QPushButton::clicked, this, &SearchReplace::slotReplace);
 	connect(searchButton, &QPushButton::clicked, this, &SearchReplace::slotSearch);
 	connect(previousButton, &QPushButton::clicked, this, &SearchReplace::slotSearchPrevious);
@@ -113,7 +175,8 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	connect(searchStrokeColorCheckBox, &QCheckBox::clicked, [this](){enableStrokeColorSearch(); updateButtonState();});
 	connect(searchStrokeShadeCheckBox, &QCheckBox::clicked, [this](){enableStrokeShadeSearch(); updateButtonState();});
 	connect(searchStyleCheckBox, &QCheckBox::clicked, [this](){enableStyleSearch(); updateButtonState();});
-	connect(searchTextValue, &QLineEdit::textChanged, [this]() {enableTextSearch(); updateButtonState();});
+	connect(searchTextValue, &QLineEdit::textChanged, [this]() {hideMessage(); enableTextSearch(); updateButtonState();});
+	connect(regexCheckBox, &QCheckBox::toggled, [this]() {hideMessage(); enableTextSearch(); updateButtonState();});
 
 	connect(replaceAlignmentCheckBox, &QCheckBox::clicked, this, &SearchReplace::enableAlignmentReplace);
 	connect(replaceFillColorCheckBox, &QCheckBox::clicked, this, &SearchReplace::enableFillColorReplace);
@@ -134,9 +197,74 @@ SearchReplace::SearchReplace(QWidget* parent, ScribusDoc *doc)
 	closeButton->setToolTip( tr( "Close search and replace" ) );
 
 	m_prefs = PrefsManager::instance().prefsFile->getContext("SearchReplace");
+	m_savedQueries = SearchQueryPresets::fromJson(m_prefs->get("savedTextQueries"));
+	refreshQueryList();
 	readPrefs();
 
 	collapseFormat();
+}
+
+void SearchReplace::refreshQueryList(const QString& selected)
+{
+	m_loadingQuery = true;
+	m_queryCombo->clear();
+	m_queryCombo->addItem(tr("Custom"));
+	m_queryCombo->addItems(m_savedQueries.keys());
+	int index = 0;
+	if (!selected.isEmpty())
+	{
+		for (int i = 1; i < m_queryCombo->count(); ++i)
+		{
+			if (m_queryCombo->itemText(i) == selected)
+			{
+				index = i;
+				break;
+			}
+		}
+	}
+	m_queryCombo->setCurrentIndex(index);
+	m_loadingQuery = false;
+}
+
+void SearchReplace::saveQuery()
+{
+	if (searchTextValue->text().isEmpty())
+	{
+		QMessageBox::information(this, tr("Save Query"), tr("Enter text to find before saving a query."));
+		return;
+	}
+	bool accepted = false;
+	const QString name = QInputDialog::getText(this, tr("Save Query"), tr("Query name:"),
+		QLineEdit::Normal, QString(), &accepted).trimmed();
+	if (!accepted || name.isEmpty())
+		return;
+	if (m_savedQueries.contains(name) && QMessageBox::question(this, tr("Replace Saved Query"),
+		tr("Replace the existing query named “%1”?").arg(name),
+		QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+		return;
+	SearchTextQuery query;
+	query.find = searchTextValue->text();
+	query.replace = replaceTextValue->text();
+	query.regex = regexCheckBox->isChecked();
+	query.ignoreCase = ignoreCaseCheckBox->isChecked();
+	query.wholeWords = wholeWordsCheckBox->isChecked();
+	m_savedQueries.insert(name, query);
+	m_prefs->set("savedTextQueries", SearchQueryPresets::toJson(m_savedQueries));
+	refreshQueryList(name);
+}
+
+void SearchReplace::deleteQuery()
+{
+	const QString name = m_queryCombo->currentIndex() > 0 ? m_queryCombo->currentText() : QString();
+	if (name.isEmpty())
+		return;
+	if (QMessageBox::question(this, tr("Delete Saved Query"),
+		tr("Delete the saved query named “%1”?").arg(name),
+		QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+		return;
+	m_savedQueries.remove(name);
+	m_prefs->set("savedTextQueries", SearchQueryPresets::toJson(m_savedQueries));
+	refreshQueryList();
 }
 
 void SearchReplace::processCurrentSelection(QString selection)
@@ -269,6 +397,22 @@ QPair<int, int> SearchReplace::searchStoryBackward(const StoryText& storyText, c
 	// then reuse getMatchRange() for wholeWords / format validation.
 	if (options.textEnabled)
 	{
+		if (options.regularExpression)
+		{
+			const QString text = storyText.plainText();
+			int before = beforePos;
+			while (before > 0)
+			{
+				const auto candidate = RegexSearch::findPrevious(text, options.compiledRegex, before, options.wholeWords);
+				if (candidate.start < 0)
+					break;
+				const auto match = getMatchRange(storyText, candidate.start, length, options, &text);
+				if (match.start == candidate.start)
+					return { match.start, match.end };
+				before = candidate.start;
+			}
+			return { -1, -1 };
+		}
 		const Qt::CaseSensitivity cs = options.ignoreCase ? Qt::CaseInsensitive : Qt::CaseSensitive;
 		int searchFrom = beforePos - 1;
 		while (searchFrom >= 0)
@@ -419,11 +563,13 @@ bool SearchReplace::initCanvasSelection()
 	{
 		// TODO: search the whole document or the whole page?
 		readAllPageItems();
+		if (m_pageItems.empty())
+			return false;
 		selectPageItem(m_pageItems.at(0));
 	}
 	else
 		readSelectedPageItems();
-	return true;
+	return !m_pageItems.empty();
 }
 
 void SearchReplace::readAllPageItems()
@@ -532,7 +678,7 @@ void SearchReplace::selectPageItem(PageItem* pageItem)
 	m_doc->view()->requestMode(modeNormal);
 }
 
-SearchReplace::MatchRange SearchReplace::getMatchRange(const StoryText& storyText, int position, const int length, const Options& options)
+SearchReplace::MatchRange SearchReplace::getMatchRange(const StoryText& storyText, int position, const int length, const Options& options, const QString* plainText)
 {
 	if (length == 0)
 		return { -1, 0, 1 };
@@ -544,9 +690,18 @@ SearchReplace::MatchRange SearchReplace::getMatchRange(const StoryText& storyTex
 	{
 		// match the text
 		int matchLength = 0;
-
-		Qt::CaseSensitivity cs = options.ignoreCase ? Qt::CaseInsensitive : Qt::CaseSensitive;
-		matchStart = storyText.indexOf(options.text, matchStart, cs, &matchLength);
+		if (options.regularExpression)
+		{
+			const QString fallback = plainText ? QString() : storyText.plainText();
+			const auto match = RegexSearch::findNext(plainText ? *plainText : fallback, options.compiledRegex, matchStart, options.wholeWords);
+			matchStart = match.start;
+			matchLength = match.length;
+		}
+		else
+		{
+			Qt::CaseSensitivity cs = options.ignoreCase ? Qt::CaseInsensitive : Qt::CaseSensitive;
+			matchStart = storyText.indexOf(options.text, matchStart, cs, &matchLength);
+		}
 
 		if (matchStart < 0)
 			// there is no match after position
@@ -556,7 +711,7 @@ SearchReplace::MatchRange SearchReplace::getMatchRange(const StoryText& storyTex
 		// if yes qMin(i + matchLength, length[ -1])
 		matchEnd = matchStart + matchLength - 1;
 
-		if (options.wholeWords)
+		if (options.wholeWords && !options.regularExpression)
 		{
 			if (matchStart > 0 && storyText.text(matchStart - 1).isLetterOrNumber())
 				return {-1, 0, matchEnd + 1};
@@ -611,6 +766,7 @@ QPair<int, int> SearchReplace::searchStory(const StoryText& storyText, const int
 {
 	if (length == 0)
 		return { -1, -1 };
+	const QString plainText = options.regularExpression ? storyText.plainText() : QString();
 
 	int matchStart = start;
 	int matchEnd = start;
@@ -622,7 +778,7 @@ QPair<int, int> SearchReplace::searchStory(const StoryText& storyText, const int
 		if (!m_searching)
 			break;
 
-		const auto match = getMatchRange(storyText, matchStart, length, options);
+		const auto match = getMatchRange(storyText, matchStart, length, options, options.regularExpression ? &plainText : nullptr);
 		if (match.start == -1)
 			matchStart = match.nextPosition;
 		else
@@ -731,7 +887,33 @@ void SearchReplace::replaceInStoryEditor()
 	MatchRange match = getMatchRange(storyText, selectionStart, storyText.length(), options);
 
 	if (selectionStart == match.start && selectionEnd - 1 == match.end)
-		replaceSelectionInStoryEditor();
+	{
+		if (options.regularExpression)
+		{
+			QString replacement;
+			QString error;
+			if (!regexReplacementForMatch(storyText, selectionStart, selectionEnd - selectionStart,
+				options, &replacement, &error))
+			{
+				showMessage(error);
+				return;
+			}
+			if (!storyEditorRangeMatches(storyTextEdit, storyText, selectionStart, selectionEnd - selectionStart))
+			{
+				showMessage(tr("The Story Editor display does not match the story at this position."));
+				return;
+			}
+			QTextCursor cursor = storyTextEdit->textCursor();
+			storyTextEdit->beginRegexEdit();
+			cursor.beginEditBlock();
+			cursor.insertText(replacement);
+			cursor.endEditBlock();
+			storyTextEdit->endRegexEdit();
+			storyTextEdit->setTextCursor(cursor);
+		}
+		else
+			replaceSelectionInStoryEditor();
+	}
 
 	searchInStoryEditor();
 }
@@ -759,7 +941,20 @@ void SearchReplace::replaceOnCanvas()
 
 	if (selectionStart == match.start && selectionEnd - 1 == match.end)
 	{
-		replaceSelectionOnCanvas();
+		if (options.regularExpression)
+		{
+			QString replacement;
+			QString error;
+			if (!regexReplacementForMatch(storyText, selectionStart, selectionEnd - selectionStart,
+				options, &replacement, &error))
+			{
+				showMessage(error);
+				return;
+			}
+			replaceSelectionOnCanvas(&replacement);
+		}
+		else
+			replaceSelectionOnCanvas();
 		updatePageItemSelection(pageItem);
 	}
 
@@ -820,9 +1015,14 @@ void SearchReplace::replaceSelectionInStoryEditor()
 	se->Editor->setTextCursor(textCursor);
 }
 
-void SearchReplace::replaceSelectionOnCanvas()
+void SearchReplace::replaceSelectionOnCanvas(const QString* replacementText)
 {
 	auto options = getReplaceOptions();
+	if (replacementText)
+	{
+		options.textEnabled = true;
+		options.text = *replacementText;
+	}
 	auto pageItem = currentPageItem();
 	UndoTransaction transaction;
 	if (UndoManager::undoEnabled())
@@ -916,8 +1116,58 @@ void SearchReplace::replaceSelectionOnCanvas()
 		transaction.commit();
 }
 
+bool SearchReplace::regexReplacementForMatch(const StoryText& storyText, int start, int length,
+	const Options& searchOptions, QString* replacement, QString* error) const
+{
+	if (anyReplaceChecked())
+	{
+		*error = tr("Regex Replace currently supports text replacement only; clear the Replace Formatting options.");
+		return false;
+	}
+	if (length <= 0 || start < 0 || start + length > storyText.length())
+	{
+		*error = tr("The selected text is no longer a regular-expression match.");
+		return false;
+	}
+
+	// The existing canvas undo stores one character style for deleted text.
+	// Restrict this first slice to a uniform, ordinary text run so Undo can
+	// restore its formatting and cannot delete an anchored object or mark.
+	const CharStyle& firstStyle = storyText.charStyle(start);
+	for (int i = start; i < start + length; ++i)
+	{
+		if (storyText.text(i) == SpecialChars::OBJECT || storyText.text(i) == SpecialChars::PARSEP
+			|| !storyText.charStyle(i).equiv(firstStyle))
+		{
+			*error = tr("Regex Replace currently requires one text style within a single paragraph, with no inline objects.");
+			return false;
+		}
+	}
+
+	const auto match = searchOptions.compiledRegex.match(storyText.plainText(), start,
+		QRegularExpression::NormalMatch, QRegularExpression::AnchorAtOffsetMatchOption);
+	if (!match.hasMatch() || match.capturedStart() != start || match.capturedLength() != length)
+	{
+		*error = tr("The selected text is no longer a regular-expression match.");
+		return false;
+	}
+	return RegexSearch::expandReplacement(replaceTextValue->text(), match, replacement, error);
+}
+
 void SearchReplace::slotReplaceAll()
 {
+	if (regexCheckBox->isChecked() && !searchTextValue->text().isEmpty())
+	{
+		m_searching = true;
+		updateButtonState();
+		if (m_storyEditorMode)
+			replaceAllInStoryEditorRegex();
+		else
+			replaceAllOnCanvasRegex();
+		m_searching = false;
+		updateButtonState();
+		return;
+	}
 	m_searching = true;
 	updateButtonState();
 	showMessage();
@@ -971,6 +1221,67 @@ void SearchReplace::replaceAllInStoryEditor()
 
 	if (!found)
 		showMessage(tr(messageNoMatch));
+}
+
+void SearchReplace::replaceAllInStoryEditorRegex()
+{
+	if (!m_doc || !m_doc->scMW()->CurrStED)
+		return;
+	SEditor* editor = m_doc->scMW()->CurrStED->Editor;
+	const StoryText& storyText = editor->StyledText;
+	const auto options = getSearchOptions();
+	struct PendingReplacement
+	{
+		int start;
+		int length;
+		QString text;
+	};
+	std::vector<PendingReplacement> pending;
+	int from = 0;
+	while (from < storyText.length())
+	{
+		const auto found = searchStory(storyText, from, storyText.length(), options);
+		if (found.first < 0)
+			break;
+		QString replacement;
+		QString error;
+		const int length = found.second + 1 - found.first;
+		if (!regexReplacementForMatch(storyText, found.first, length, options, &replacement, &error))
+		{
+			showMessage(tr("Regex Replace All made no changes: %1").arg(error));
+			return;
+		}
+		if (!storyEditorRangeMatches(editor, storyText, found.first, length))
+		{
+			showMessage(tr("Regex Replace All made no changes: the Story Editor display does not match the story at a match position."));
+			return;
+		}
+		pending.push_back({ found.first, length, replacement });
+		from = found.second + 1;
+	}
+	if (pending.empty())
+	{
+		showMessage(tr(messageNoMatch));
+		return;
+	}
+
+	// A single QTextDocument edit block makes the complete operation one Story
+	// Editor Undo action. The editor's contentsChange hook keeps StyledText in
+	// sync as each replacement is applied from the end of the story.
+	QTextCursor cursor = editor->textCursor();
+	editor->beginRegexEdit();
+	cursor.beginEditBlock();
+	for (auto it = pending.rbegin(); it != pending.rend(); ++it)
+	{
+		cursor.setPosition(it->start);
+		cursor.setPosition(it->start + it->length, QTextCursor::KeepAnchor);
+		cursor.insertText(it->text);
+	}
+	cursor.endEditBlock();
+	editor->endRegexEdit();
+	editor->setTextCursor(cursor);
+	m_matchesFound = static_cast<int>(pending.size());
+	showMessage(QString(tr(messageOccurrences)).arg(m_matchesFound));
 }
 
 void SearchReplace::replaceAllOnCanvas()
@@ -1038,6 +1349,166 @@ void SearchReplace::replaceAllOnCanvas()
 	m_doc->regionsChanged()->update(QRectF());
 }
 
+void SearchReplace::replaceAllOnCanvasRegex()
+{
+	if (!initCanvasSelection())
+		return;
+
+	struct PendingReplacement
+	{
+		size_t pageItemIndex;
+		int start;
+		int length;
+		QString text;
+	};
+	std::vector<PendingReplacement> pending;
+	const auto options = getSearchOptions();
+	for (size_t index = 0; index < m_pageItems.size(); ++index)
+	{
+		const StoryText& storyText = m_pageItems.at(index)->itemText;
+		int from = 0;
+		while (from < storyText.length())
+		{
+			const auto found = searchStory(storyText, from, storyText.length(), options);
+			if (found.first < 0)
+				break;
+			QString replacement;
+			QString error;
+			if (!regexReplacementForMatch(storyText, found.first, found.second + 1 - found.first,
+				options, &replacement, &error))
+			{
+				showMessage(tr("Regex Replace All made no changes: %1").arg(error));
+				return;
+			}
+			pending.push_back({ index, found.first, found.second + 1 - found.first, replacement });
+			from = found.second + 1;
+		}
+	}
+
+	if (pending.empty())
+	{
+		showMessage(tr(messageNoMatch));
+		return;
+	}
+
+	// Enter text-edit mode before starting the grouped undo action. The mode
+	// transition can change undo availability, which would otherwise leave
+	// each replacement as a separate history entry.
+	m_currentPageItem = pending.back().pageItemIndex;
+	selectPageItem(m_pageItems.at(m_currentPageItem));
+	m_doc->view()->requestMode(modeEdit);
+
+	UndoTransaction allTransaction;
+	if (UndoManager::undoEnabled())
+		allTransaction = UndoManager::instance()->beginTransaction(
+			Um::Selection, Um::ITextFrame, tr("Regex Replace All"));
+	{
+		QScopedValueRollback<bool> drawingGuard(m_doc->DoDrawing, false);
+		size_t selectedIndex = m_currentPageItem;
+		for (auto it = pending.rbegin(); it != pending.rend(); ++it)
+		{
+			m_currentPageItem = it->pageItemIndex;
+			PageItem* pageItem = m_pageItems.at(it->pageItemIndex);
+			if (selectedIndex != it->pageItemIndex)
+			{
+				selectPageItem(pageItem);
+				m_doc->view()->requestMode(modeEdit);
+				selectedIndex = it->pageItemIndex;
+			}
+			pageItem->itemText.select(it->start, it->length);
+			pageItem->itemText.setCursorPosition(it->start + it->length);
+			replaceSelectionOnCanvas(&it->text);
+		}
+	}
+	if (allTransaction)
+		allTransaction.commit();
+	m_doc->view()->requestMode(modeNormal);
+	m_matchesFound = static_cast<int>(pending.size());
+	for (auto pageItem : m_pageItems)
+		pageItem->asTextFrame()->invalidateLayout(true);
+	m_doc->regionsChanged()->update(QRectF());
+	showMessage(QString(tr(messageOccurrences)).arg(m_matchesFound));
+}
+
+void SearchReplace::applyRegexCharacterStyle()
+{
+	if (m_storyEditorMode || !regexCheckBox->isChecked() || searchTextValue->text().isEmpty()
+		|| regexStyleComboBox->currentText().isEmpty())
+		return;
+
+	const QString styleName = regexStyleComboBox->currentText();
+	if (m_doc->charStyles().find(styleName) < 0 || !initCanvasSelection())
+		return;
+
+	struct Match
+	{
+		size_t pageItemIndex;
+		int start;
+		int length;
+	};
+	std::vector<Match> matches;
+	const auto options = getSearchOptions();
+	if (!options.compiledRegex.isValid())
+		return;
+	QScopedValueRollback<bool> searchingGuard(m_searching, true);
+	for (size_t index = 0; index < m_pageItems.size(); ++index)
+	{
+		const StoryText& storyText = m_pageItems.at(index)->itemText;
+		int from = 0;
+		while (from < storyText.length())
+		{
+			const auto found = searchStory(storyText, from, storyText.length(), options);
+			if (found.first < 0)
+				break;
+			const int length = found.second + 1 - found.first;
+			for (int i = found.first; i <= found.second; ++i)
+			{
+				if (storyText.text(i) == SpecialChars::OBJECT || storyText.text(i) == SpecialChars::PARSEP)
+				{
+					showMessage(tr("No styles applied: matches cannot include an inline object or cross a paragraph boundary."));
+					return;
+				}
+			}
+			matches.push_back({ index, found.first, length });
+			from = found.second + 1;
+		}
+	}
+	if (matches.empty())
+	{
+		showMessage(tr(messageNoMatch));
+		return;
+	}
+
+	// Enter edit mode before the outer transaction; switching modes otherwise
+	// can split a multi-match style change into separate Undo actions.
+	m_currentPageItem = matches.back().pageItemIndex;
+	selectPageItem(m_pageItems.at(m_currentPageItem));
+	m_doc->view()->requestMode(modeEdit);
+	UndoTransaction allTransaction;
+	if (UndoManager::undoEnabled())
+		allTransaction = UndoManager::instance()->beginTransaction(
+			Um::Selection, Um::ITextFrame, tr("Apply Character Style to Regex Matches"));
+	size_t selectedIndex = m_currentPageItem;
+	for (auto it = matches.rbegin(); it != matches.rend(); ++it)
+	{
+		PageItem* pageItem = m_pageItems.at(it->pageItemIndex);
+		if (selectedIndex != it->pageItemIndex)
+		{
+			selectPageItem(pageItem);
+			m_doc->view()->requestMode(modeEdit);
+			selectedIndex = it->pageItemIndex;
+		}
+		pageItem->itemText.select(it->start, it->length);
+		pageItem->itemText.setCursorPosition(it->start + it->length);
+		m_doc->itemSelection_SetNamedCharStyle(styleName);
+	}
+	if (allTransaction)
+		allTransaction.commit();
+	m_doc->view()->requestMode(modeNormal);
+	m_matchesFound = static_cast<int>(matches.size());
+	showMessage(tr("%1 matches styled").arg(m_matchesFound));
+}
+
 void SearchReplace::slotSearchPrevious()
 {
 	m_searching = true;
@@ -1075,6 +1546,9 @@ void SearchReplace::enableTextSearch()
 	bool enabled = !searchTextValue->text().isEmpty();
 	wholeWordsCheckBox->setEnabled(enabled);
 	ignoreCaseCheckBox->setEnabled(enabled);
+	regexCheckBox->setEnabled(enabled);
+	ignoreCaseCheckBox->setText(regexCheckBox->isChecked()
+		? tr("Ignore Case") : tr("Ignore Case, Diacritics and Kashida"));
 }
 
 void SearchReplace::enableStyleSearch()
@@ -1215,6 +1689,7 @@ void SearchReplace::clear()
 
 	ignoreCaseCheckBox->setChecked(false);
 	wholeWordsCheckBox->setChecked(false);
+	regexCheckBox->setChecked(false);
 	
 	replaceAlignmentComboBox->setEnabled(false);
 	replaceFillColorComboBox->setEnabled(false);
@@ -1256,7 +1731,7 @@ bool SearchReplace::anySearchChecked()
 		searchStyleCheckBox->isChecked();
 }
 
-bool SearchReplace::anyReplaceChecked()
+bool SearchReplace::anyReplaceChecked() const
 {
 	return
 		replaceAlignmentCheckBox->isChecked() ||
@@ -1282,13 +1757,18 @@ SearchReplace::Options SearchReplace::getSearchOptions()
 	options.fontSizeEnabled = searchFontSizeCheckBox->isChecked();
 	options.ignoreCase = ignoreCaseCheckBox->isChecked();
 	options.paragraphStyleEnabled = searchStyleCheckBox->isChecked();
+	options.regularExpression = regexCheckBox->isChecked() && !searchTextValue->text().isEmpty();
 	options.strokeColorEnabled = searchStrokeColorCheckBox->isChecked();
 	options.strokeShadeEnabled = searchStrokeShadeCheckBox->isChecked();
 	options.textEnabled = !searchTextValue->text().isEmpty();
 	options.wholeWords = wholeWordsCheckBox->isChecked();
 
 	if (options.textEnabled)
+	{
 		options.text = searchTextValue->text();
+		if (options.regularExpression)
+			options.compiledRegex = RegexSearch::compile(options.text, options.ignoreCase, options.wholeWords);
+	}
 	if (options.paragraphStyleEnabled)
 		options.paragraphStyle = searchStyleComboBox->currentIndex();
 	if (options.alignmentEnabled)
@@ -1369,11 +1849,26 @@ void SearchReplace::updateButtonState()
 	previousButton->setVisible(!m_searching);
 
 	bool enabled = anySearchChecked();
+	const bool regexMode = regexCheckBox->isChecked() && !searchTextValue->text().isEmpty();
+	const bool showRegexStyle = regexCheckBox->isChecked() && !m_storyEditorMode;
+	regexStyleLabel->setVisible(showRegexStyle);
+	regexStyleComboBox->setVisible(showRegexStyle);
+	applyRegexStyleButton->setVisible(showRegexStyle && !m_searching);
+	if (regexMode)
+	{
+		const auto expression = RegexSearch::compile(searchTextValue->text(), ignoreCaseCheckBox->isChecked(), wholeWordsCheckBox->isChecked());
+		if (!expression.isValid())
+		{
+			showMessage(tr("Invalid regular expression: %1").arg(expression.errorString()));
+			enabled = false;
+		}
+	}
 
 	replaceAllButton->setEnabled(enabled);
 	replaceButton->setEnabled(enabled);
 	searchButton->setEnabled(enabled);
 	previousButton->setEnabled(enabled);
+	applyRegexStyleButton->setEnabled(enabled && regexMode && regexStyleComboBox->count() > 0);
 }
 
 void SearchReplace::hideMessage()
@@ -1453,6 +1948,7 @@ void SearchReplace::readPrefs()
 
 	ignoreCaseCheckBox->setChecked(m_prefs->getBool("ignoreCase", false));
 	wholeWordsCheckBox->setChecked(m_prefs->getBool("wholeword", false));
+	regexCheckBox->setChecked(m_prefs->getBool("regularExpression", false));
 
 	enableAlignmentReplace();
 	enableAlignmentSearch();
@@ -1524,4 +2020,5 @@ void SearchReplace::writePrefs()
 	m_prefs->set("searchTextValue", searchTextValue->text());
 	m_prefs->set("ignoreCase", ignoreCaseCheckBox->isChecked());
 	m_prefs->set("wholeword", wholeWordsCheckBox->isChecked());
+	m_prefs->set("regularExpression", regexCheckBox->isChecked());
 }

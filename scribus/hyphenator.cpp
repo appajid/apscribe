@@ -99,6 +99,11 @@ void Hyphenator::slotHyphenateWord(PageItem* it, const QString& text, int firstC
 {
 	if (text.contains(SpecialChars::SHYPHEN))
 		return;
+	if (ignoredWords.contains(text.trimmed()))
+	{
+		it->itemText.hyphenateWord(firstC, text.length(), nullptr);
+		return;
+	}
 
 	const CharStyle& style = it->itemText.charStyle(firstC);
 	if (text.length() < style.hyphenWordMin())
@@ -164,11 +169,18 @@ void Hyphenator::slotHyphenate(PageItem* it)
 		pos = bi->next();
 		int lastC = pos;
 		int countC = lastC - firstC;
+		if (countC <= 0)
+			continue;
+		QString word = text.mid(firstC, countC);
+		if (!word.contains(SpecialChars::SHYPHEN) && ignoredWords.contains(word))
+		{
+			it->itemText.hyphenateWord(startC + firstC, countC, nullptr);
+			continue;
+		}
 
-		const CharStyle& style = it->itemText.charStyle(firstC);
+		const CharStyle& style = it->itemText.charStyle(startC + firstC);
 		if (countC > 0 && countC > style.hyphenWordMin() - 1)
 		{
-			QString word = text.mid(firstC, countC);
 			QString wordLower = QLocale(style.language()).toLower(word);
 			if (wordLower.contains(SpecialChars::SHYPHEN))
 				continue;
@@ -267,7 +279,7 @@ void Hyphenator::slotHyphenate(PageItem* it)
 									++ii;
 								}
 							}
-							it->itemText.hyphenateWord(firstC, wordLower.length(), buffer);
+							it->itemText.hyphenateWord(startC + firstC, wordLower.length(), buffer);
 						}
 						else
 						{
@@ -298,15 +310,17 @@ void Hyphenator::slotHyphenate(PageItem* it)
 									rememberedWords.insert(input, outs);
 								if (dia->addToIgnoreList->isChecked())
 								{
-									if (!ignoredWords.contains(word))
-										ignoredWords.insert(word);
+									ignoredWords.insert(word);
+									m_doc->hyphenatorPrefs().ignoredWords.insert(word);
+									m_doc->changed();
 								}
 								if (dia->addToExceptionList->isChecked())
 								{
 									if (!specialWords.contains(word))
 										specialWords.insert(word, outs);
 								}
-								it->itemText.hyphenateWord(firstC, wordLower.length(), buffer);
+								it->itemText.hyphenateWord(startC + firstC, wordLower.length(),
+									dia->addToIgnoreList->isChecked() ? nullptr : buffer);
 							}
 							else
 							{

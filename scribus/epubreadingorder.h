@@ -66,6 +66,7 @@ struct Image
 	bool decorative { false }; // Explicit choice; empty alt is otherwise invalid.
 	int widthPercent { 0 }; // 0 = automatic; 1-100 = explicit reflowable figure width.
 	EpubExport::TextAlignment captionAlignment { EpubExport::TextAlignment::Left };
+	int captionSizePercent { 0 }; // 0 = reader default; 50-200 = explicit relative size.
 };
 
 enum class ContentKind { Group, TextFrame, ImageFrame, Unsupported };

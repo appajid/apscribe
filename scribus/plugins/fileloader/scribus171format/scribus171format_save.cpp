@@ -852,6 +852,8 @@ void Scribus171Format::putPStyle(ScXmlStreamWriter & docu, const ParagraphStyle 
 		docu.writeAttribute("GapAfter", style.gapAfter());
 	if (!style.isInhPeCharStyleName())
 		docu.writeAttribute("ParagraphEffectCharStyle", style.peCharStyleName());
+	if (!style.isInhGrepStyleRulesJson())
+		docu.writeAttribute("GrepStyleRules", style.grepStyleRulesJson());
 	if (!style.isInhParEffectOffset())
 		docu.writeAttribute("ParagraphEffectOffset", style.parEffectOffset());
 	if (!style.isInhParEffectIndent())
@@ -1512,6 +1514,7 @@ void Scribus171Format::writeTOC(ScXmlStreamWriter & docu) const
 		docu.writeAttribute("ItemAttributeName", tocSetup.itemAttrName);
 		docu.writeAttribute("FrameName", tocSetup.frameName);
 		docu.writeAttribute("ListNonPrinting", tocSetup.listNonPrintingFrames);
+		docu.writeAttribute("AutoRightAlignPageNumbers", tocSetup.autoRightAlignPageNumbers);
 		docu.writeAttribute("Style", tocSetup.textStyle);
 		switch (tocSetup.pageLocation)
 		{
@@ -2003,9 +2006,15 @@ void Scribus171Format::writeITEXTs(ScribusDoc *doc, ScXmlStreamWriter &docu, Sto
 		else if (ch == SpecialChars::OBJECT && story.hasMark(k))
 		{
 			const Mark* mark = story.mark(k);
-			if (!mark->isType(MARKBullNumType))
+			if (mark->isType(MARKBullNumType))
 			{
-				//dont save marks for bullets and numbering
+				// Persist the character formatting, while letting layout regenerate
+				// the bullet or number from the paragraph style on load.
+				docu.writeEmptyElement("ListMarker");
+				putCStyle(docu, lastStyle);
+			}
+			else
+			{
 				docu.writeEmptyElement("MARK");
 				docu.writeAttribute("label", mark->label);
 				docu.writeAttribute("type", mark->getType());

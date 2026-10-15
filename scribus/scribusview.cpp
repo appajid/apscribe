@@ -3247,11 +3247,22 @@ void ScribusView::wheelEvent(QWheelEvent *w)
 	QPoint angleDelta = w->angleDelta();
 	if (w->modifiers() == Qt::ControlModifier)
 	{
-		FPoint mp = m_canvas->globalToCanvas(w->globalPosition());
-		angleDelta.y() > 0 ? slotZoomIn(mp.x(), mp.y(), true) : slotZoomOut(mp.x(), mp.y(), true);
+		const int steps = m_wheelZoom.consume(angleDelta.y(), w->phase());
+		if (steps != 0)
+		{
+			FPoint mp = m_canvas->globalToCanvas(w->globalPosition());
+			for (int i = 0; i < qAbs(steps); ++i)
+			{
+				if (steps > 0)
+					slotZoomIn(mp.x(), mp.y(), true);
+				else
+					slotZoomOut(mp.x(), mp.y(), true);
+			}
+		}
 	}
 	else
 	{
+		m_wheelZoom.reset();
 		int dX = 0;
 		int dY = 0;
 		QPoint pixelDelta = w->pixelDelta();
@@ -3341,6 +3352,17 @@ void ScribusView::setScale(double newScale)
 	double v3 = 320 * Prefs->displayPrefs.displayScale;
 	if (canvasScale > v3)
 		canvasScale = v3;
+
+	// QScrollArea uses a real QWidget for the canvas. Qt silently clamps
+	// widgets at QWIDGETSIZE_MAX, which otherwise truncates the scroll range
+	// and jumps backwards in long documents at high magnification. Reserve
+	// space for zoom() to extend the pasteboard around the viewport anchor.
+	const QSize viewportSize = maximumViewportSize();
+	const double width = qMax(1.0, m_doc->maxCanvasCoordinate.x() - m_doc->minCanvasCoordinate.x());
+	const double height = qMax(1.0, m_doc->maxCanvasCoordinate.y() - m_doc->minCanvasCoordinate.y());
+	const double maxWidth = qMax(1, QWIDGETSIZE_MAX - 2 * viewportSize.width());
+	const double maxHeight = qMax(1, QWIDGETSIZE_MAX - 2 * viewportSize.height());
+	canvasScale = qMin(canvasScale, qMin(maxWidth / width, maxHeight / height));
 
 	m_canvas->setScale(canvasScale);
 
@@ -3603,6 +3625,8 @@ void ScribusView::zoom(double canvasX, double canvasY, double scale, bool preser
 	undoManager->setUndoEnabled(false);
 	updatesOn(false);
 	setScale(newScale);
+	// setScale() can also clamp to the document-dependent canvas size limit.
+	newScale = m_canvas->scale();
 
 	FPoint minPos = m_doc->minCanvasCoordinate;
 	FPoint maxPos = m_doc->maxCanvasCoordinate;

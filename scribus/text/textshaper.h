@@ -2,7 +2,9 @@
 #define TEXTSHAPER_H
 
 #include <QList>
+#include <QHash>
 #include <QMap>
+#include <QSharedPointer>
 #include <QString>
 #include <QStringList>
 
@@ -15,6 +17,7 @@
 class GlyphCluster;
 class StoryText;
 class PageItem;
+class CharStyle;
 
 using namespace icu;
 
@@ -54,6 +57,8 @@ private:
 	};
 
 	void buildText(int fromPos, int toPos, QVector<int>& smallCaps);
+	void buildGrepStyles(int fromPos, int toPos);
+	const CharStyle& effectiveStyle(int pos) const;
 
 	QList<TextRun> itemizeBiDi(int fromPos) const;
 	QList<TextRun> itemizeScripts(const QList<TextRun> &runs) const;
@@ -67,6 +72,7 @@ private:
 	bool m_singlePar { false };
 	QString m_text;
 	QMap<int, int> m_textMap;
+	QHash<int, QSharedPointer<CharStyle>> m_grepStyles;
 };
 
 #endif // TEXTSHAPER_H

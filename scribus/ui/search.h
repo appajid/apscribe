@@ -10,6 +10,8 @@ for which a new license (GPL+exception) is in place.
 #include "ui_searchbase.h"
 
 #include "scribusapi.h"
+#include "searchquerypresets.h"
+#include <QRegularExpression>
 
 class PrefsContext;
 class ParagraphStyle;
@@ -17,6 +19,7 @@ class CharStyle;
 
 class ScribusDoc;
 class PageItem;
+class QComboBox;
 
 class SCRIBUS_API SearchReplace : public QDialog, Ui::SearchReplaceBase
 {
@@ -33,6 +36,7 @@ private:
 		bool fontSizeEnabled { false };
 		bool ignoreCase { false };
 		bool paragraphStyleEnabled { false };
+		bool regularExpression { false };
 		bool strokeColorEnabled { false };
 		bool strokeShadeEnabled { false };
 		bool textEnabled { false };
@@ -42,6 +46,7 @@ private:
 		QString font;
 		QString strokeColor;
 		QString text;
+		QRegularExpression compiledRegex;
 
 		int alignment { 0 };
 		int fillColorId { 0 };
@@ -65,7 +70,7 @@ public:
 	SearchReplace( QWidget* parent, ScribusDoc *doc);
 	~SearchReplace() {};
 
-	void setStoryEditorMode(bool mode = true) { m_storyEditorMode = mode; }
+	void setStoryEditorMode(bool mode = true) { m_storyEditorMode = mode; updateButtonState(); }
 	QPair<int, int> cursorPosition();
 	//! \brief fill the text field with the current selection, if the selection does not contain a newline.
 	void processCurrentSelection(QString selection);
@@ -75,6 +80,7 @@ public slots:
 	void slotSearch();
 	void slotReplace();
 	void slotReplaceAll();
+	void applyRegexCharacterStyle();
 	void slotSearchPrevious();
 	void slotStop();
 	void clear();
@@ -110,6 +116,12 @@ private:
 	bool m_stateCollapsed { true };
 
 	PrefsContext* m_prefs;
+	SearchQueryPresets::Queries m_savedQueries;
+	QComboBox* m_queryCombo { nullptr };
+	bool m_loadingQuery { false };
+	void refreshQueryList(const QString& selected = QString());
+	void saveQuery();
+	void deleteQuery();
 
 	void collapseFormat();
 	void readPrefs();
@@ -137,7 +149,7 @@ private:
 	//! \brief Check if there is a match starting at position
 	//!
 	//! When textEnabled, the resulting start position might be different than position.
-	MatchRange getMatchRange(const StoryText& storyText, int position, const int length, const Options& options);
+	MatchRange getMatchRange(const StoryText& storyText, int position, const int length, const Options& options, const QString* plainText = nullptr);
 	//! If the current selection matches the search, replace the selection.
 	// Otherwise do a search.
 	void replaceInStoryEditor();
@@ -145,9 +157,13 @@ private:
 	//! \brief if the current selection matches the search, replace the selection.
 	// otherwise do a search.
 	void replaceSelectionInStoryEditor();
-	void replaceSelectionOnCanvas();
+	void replaceSelectionOnCanvas(const QString* replacementText = nullptr);
 	void replaceAllInStoryEditor();
+	void replaceAllInStoryEditorRegex();
 	void replaceAllOnCanvas();
+	void replaceAllOnCanvasRegex();
+	bool regexReplacementForMatch(const StoryText& storyText, int start, int length,
+		const Options& searchOptions, QString* replacement, QString* error) const;
 
 	//! \brief Initialize pageItems based on the current selection
 	bool initCanvasSelection();
@@ -173,7 +189,7 @@ private:
 	// \brief is any search checkbox checked?
 	bool anySearchChecked();
 	// \brief is any replace checkbox checked?
-	bool anyReplaceChecked();
+	bool anyReplaceChecked() const;
 	Options getSearchOptions();
 	Options getReplaceOptions();
 	// \brief Check for all search options but the text

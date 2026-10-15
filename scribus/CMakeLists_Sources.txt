@@ -183,6 +183,10 @@ set(SCRIBUS_SOURCES
 	pslib.cpp
 	qtiocompressor.cpp
 	rawimage.cpp
+	regexsearch.cpp
+	searchquerypresets.cpp
+	wheelzoomaccumulator.cpp
+	grepstylerules.cpp
 	rc4.c
 	sampleitem.cpp
 	scclipboardprocessor.cpp
@@ -374,6 +378,7 @@ set(SCRIBUS_SOURCES
 	ui/fontembeddingmodel.cpp
 	ui/fontlistview.cpp
 	ui/fontreplacedialog.cpp
+	ui/grepstyleeditor.cpp
 	ui/gradientaddedit.cpp
 	ui/gradienteditor.cpp
 	ui/gradientpreview.cpp

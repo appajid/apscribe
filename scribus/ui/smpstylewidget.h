@@ -10,6 +10,7 @@ for which a new license (GPL+exception) is in place.
 
 class QEvent;
 class CharStyle;
+class GrepStyleEditor;
 
 #include <QVector>
 
@@ -47,6 +48,7 @@ private:
 	QString m_currFontName;
 	ParagraphStyle* m_currPStyle = nullptr;
 	StyleSet<CharStyle> *m_cstyles = nullptr;
+	GrepStyleEditor* m_grepEditor = nullptr;
 
 	void fillBulletStrEditCombo();
 	void fillNumerationsCombo();

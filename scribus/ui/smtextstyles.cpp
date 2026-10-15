@@ -13,6 +13,8 @@ for which a new license (GPL+exception) is in place.
 #include "colorcombo.h"
 #include "commonstrings.h"
 #include "fontcombo.h"
+#include "grepstylerules.h"
+#include "grepstyleeditor.h"
 #include "langmgr.h"
 #include "ui/scmwmenumanager.h"
 #include "prefsmanager.h"
@@ -45,6 +47,8 @@ SMParagraphStyle::SMParagraphStyle(SMCharacterStyle* cstyleItem):
 	m_cstyles = &m_cstyleItem->tmpStyles();
 	m_pwidget = new SMPStyleWidget(m_doc, m_cstyles);
 	Q_CHECK_PTR(m_pwidget);
+	// Keep references valid even when the user edits Character Styles first.
+	connect(m_cstyleItem, &SMCharacterStyle::charStylesDeleted, this, &SMParagraphStyle::slotCharStylesDeleted);
 }
 
 QTabWidget* SMParagraphStyle::widget()
@@ -483,6 +487,7 @@ void SMParagraphStyle::setupConnections()
 {
 	if (!m_pwidget)
 		return;
+	connect(m_pwidget->m_grepEditor, &GrepStyleEditor::rulesEdited, this, &SMParagraphStyle::slotGrepRulesEdited);
 
 	// paragraph attributes
 	connect(m_pwidget->lineSpacingMode, SIGNAL(activated(int)), this, SLOT(slotLineSpacingMode(int)));
@@ -571,14 +576,13 @@ void SMParagraphStyle::setupConnections()
 	connect(m_pwidget->cpage->hyphenCharLineEdit, SIGNAL(textChanged(QString)), this, SLOT(slotHyphenChar()));
 	connect(m_pwidget->cpage->smallestWordSpinBox, SIGNAL(valueChanged(int)), this, SLOT(slotWordMin()));
 
-	// Referenced character style changes
-	connect(m_cstyleItem, SIGNAL(charStylesDeleted(QList<RemoveItem>)), this, SLOT(slotCharStylesDeleted(QList<RemoveItem>)));
 }
 
 void SMParagraphStyle::removeConnections()
 {
 	if (!m_pwidget)
 		return;
+	disconnect(m_pwidget->m_grepEditor, &GrepStyleEditor::rulesEdited, this, &SMParagraphStyle::slotGrepRulesEdited);
 
 	disconnect(m_pwidget->lineSpacingMode, SIGNAL(activated(int)), this, SLOT(slotLineSpacingMode(int)));
 	disconnect(m_pwidget->lineSpacing, SIGNAL(valueChanged(double)), this, SLOT(slotLineSpacing()));
@@ -663,7 +667,6 @@ void SMParagraphStyle::removeConnections()
 	disconnect(m_pwidget->cpage->fontfeaturesSetting, SIGNAL(changed()), this, SLOT(slotFontFeatures()));
 	disconnect(m_pwidget->cpage->hyphenCharLineEdit, SIGNAL(textChanged(QString)), this, SLOT(slotHyphenChar()));
 	disconnect(m_pwidget->cpage->smallestWordSpinBox, SIGNAL(valueChanged(int)), this, SLOT(slotWordMin()));
-	disconnect(m_cstyleItem, SIGNAL(charStylesDeleted(const QList<RemoveItem>&)), this, SLOT(slotCharStylesDeleted(const QList<RemoveItem>&)));
 }
 
 void SMParagraphStyle::slotLineSpacingMode(int mode)
@@ -1067,6 +1070,18 @@ void SMParagraphStyle::slotSelectionDirty()
 		return;
 	m_selectionIsDirty = true;
 	emit selectionDirty();
+}
+
+void SMParagraphStyle::slotGrepRulesEdited(const QString& json, bool inherit)
+{
+	for (ParagraphStyle* style : m_selection)
+	{
+		if (inherit)
+			style->resetGrepStyleRulesJson();
+		else
+			style->setGrepStyleRulesJson(json);
+	}
+	slotSelectionDirty();
 }
 
 void SMParagraphStyle::slotNumFormat(int)
@@ -1808,6 +1823,16 @@ void SMParagraphStyle::slotFontFeatures()
 
 void SMParagraphStyle::slotCharStylesDeleted(const QList<RemoveItem> &removeList)
 {
+	if (!m_doc)
+		return;
+	QList<QPair<QString, QString>> grepReplacements;
+	for (const RemoveItem& replacement : removeList)
+	{
+		const bool removeRule = replacement.second.isEmpty()
+			|| replacement.second == CommonStrings::trDefaultCharacterStyle
+			|| replacement.second == CommonStrings::DefaultCharacterStyle;
+		grepReplacements.append({ replacement.first, removeRule ? QString() : replacement.second });
+	}
 	for (int i = 0; i < m_tmpStyles.count(); ++i)
 	{
 		ParagraphStyle& parStyle = m_tmpStyles[i];
@@ -1843,6 +1868,15 @@ void SMParagraphStyle::slotCharStylesDeleted(const QList<RemoveItem> &removeList
 					parStyle.setPeCharStyleName(replacementName);
 					break;
 				}
+			}
+		}
+		if (!parStyle.isInhGrepStyleRulesJson())
+		{
+			QList<GrepStyleRules::Rule> rules;
+			if (GrepStyleRules::parse(parStyle.grepStyleRulesJson(), &rules))
+			{
+				if (GrepStyleRules::remapCharacterStyles(&rules, grepReplacements))
+					parStyle.setGrepStyleRulesJson(GrepStyleRules::serialize(rules));
 			}
 		}
 	}
@@ -2256,6 +2290,9 @@ void SMCharacterStyle::reloadTmpStyles()
 
 	m_selection.clear();
 	m_tmpStyles.clear();
+	// Reset/reload discards the whole draft, including queued rename/deletion
+	// mappings. Otherwise a later Apply can replay a canceled rename.
+	m_deleted.clear();
 	m_tmpStyles.redefine(m_doc->charStyles(), true);
 }
 
@@ -2745,4 +2782,3 @@ SMCharacterStyle::~SMCharacterStyle()
 	m_page = nullptr;
 	m_widget = nullptr;
 }
-

@@ -9,6 +9,7 @@ for which a new license (GPL+exception) is in place.
 
 
 #include "iconmanager.h"
+#include "grepstyleeditor.h"
 #include "numeration.h"
 #include "smpstylewidget.h"
 #include "scribus.h"
@@ -31,6 +32,8 @@ SMPStyleWidget::SMPStyleWidget(ScribusDoc* doc, StyleSet<CharStyle> *cstyles) :
 	m_cstyles(cstyles)
 {
 	setupUi(this);
+	m_grepEditor = new GrepStyleEditor(tabWidget);
+	tabWidget->addTab(m_grepEditor, tr("GREP Styles"));
 
 	//Not used yet
 // 	optMarginCheckLeftProtruding->setVisible(false);
@@ -128,6 +131,8 @@ void SMPStyleWidget::iconSetChange()
 void SMPStyleWidget::languageChange()
 {
 	retranslateUi(this);
+	if (m_grepEditor)
+		tabWidget->setTabText(tabWidget->indexOf(m_grepEditor), tr("GREP Styles"));
 	alignment->languageChange();
 	tabList->firstLineSpin->setToolTip( tr("First Line Indent"));
 	tabList->leftIndentSpin->setToolTip(  tr("Left Indent"));
@@ -445,6 +450,14 @@ void SMPStyleWidget::show(ParagraphStyle *pstyle, QList<ParagraphStyle> &pstyles
 			index = 0;
 		parentCombo->setCurrentIndex(index);
 	}
+	QStringList characterStyleNames;
+	for (const CharStyle& style : cstyles)
+	{
+		if (style.hasName() && !style.isDefaultStyle())
+			characterStyleNames.append(style.name());
+	}
+	m_grepEditor->setCharacterStyles(characterStyleNames);
+	m_grepEditor->setRules(pstyle->grepStyleRulesJson(), pstyle->isInhGrepStyleRulesJson(), m_hasParent, true);
 
 }
 
@@ -473,7 +486,17 @@ void SMPStyleWidget::show(QList<ParagraphStyle*> &pstyles, QList<ParagraphStyle>
 		//checkParEffectState();
 		setParagraphEffect(0);
 		showColors(pstyles);
+		QStringList characterStyleNames;
+		for (const CharStyle& style : cstyles)
+		{
+			if (style.hasName() && !style.isDefaultStyle())
+				characterStyleNames.append(style.name());
+		}
+		m_grepEditor->setCharacterStyles(characterStyleNames);
+		m_grepEditor->setRules(pstyles[0]->grepStyleRulesJson(), pstyles[0]->isInhGrepStyleRulesJson(), pstyles[0]->hasParent(), false);
 	}
+	else
+		m_grepEditor->setRules(QString(), false, false, false);
 }
 
 void SMPStyleWidget::showColors(const QList<ParagraphStyle*> &cstyles)
@@ -872,7 +895,7 @@ void SMPStyleWidget::showParent(const QList<ParagraphStyle*> &pstyles)
 
 void SMPStyleWidget::clearAll()
 {
-
+	m_grepEditor->setRules(QString(), false, false, false);
 }
 
 /*********************************************************************

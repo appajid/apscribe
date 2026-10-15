@@ -24,6 +24,7 @@ for which a new license (GPL+exception) is in place.
 #include "commonstrings.h"
 #include "scribusdoc.h"
 #include "stylecombos.h"
+#include "stylecomboitems.h"
 
 #include <QListView>
 
@@ -121,12 +122,11 @@ void ParaStyleComboBox::updateStyleList()
 		oldStyleName = this->currentText();
 
 	bool sigBlocked = this->blockSignals(true);
-	clear();
+	QStringList choices;
 	if (m_doc != nullptr)
 	{
 		QStringList st;
-		addItem( firstItemString()  );
-		addItem( CommonStrings::trDefaultParagraphStyle );
+		choices << firstItemString() << CommonStrings::trDefaultParagraphStyle;
 		for (int i = 0; i < m_doc->paragraphStyles().count(); ++i)
 		{
 			const ParagraphStyle& paraStyle = m_doc->paragraphStyles()[i];
@@ -134,8 +134,12 @@ void ParaStyleComboBox::updateStyleList()
 				st.append(paraStyle.name());
 		}
 		st.sort();
-		addItems(st);
+		choices.append(st);
+	}
+	StyleComboItems::update(this, choices);
 
+	if (m_doc != nullptr)
+	{
 		if (oldStyleName.length() > 0)
 		{
 			int newIndex = this->findText(oldStyleName);
@@ -258,12 +262,11 @@ void CharStyleComboBox::updateStyleList()
 		oldStyleName = this->currentText();
 
 	bool sigBlocked = this->blockSignals(true);
-	clear();
+	QStringList choices;
 	if (m_doc != nullptr)
 	{
 		QStringList st;
-		addItem( firstItemString()  );
-		addItem( CommonStrings::trDefaultCharacterStyle );
+		choices << firstItemString() << CommonStrings::trDefaultCharacterStyle;
 		for (int i = 0; i < m_doc->charStyles().count(); ++i)
 		{
 			const CharStyle& charStyle = m_doc->charStyles()[i];
@@ -271,8 +274,12 @@ void CharStyleComboBox::updateStyleList()
 				st.append(charStyle.name());
 		}
 		st.sort();
-		addItems(st);
+		choices.append(st);
+	}
+	StyleComboItems::update(this, choices);
 
+	if (m_doc != nullptr)
+	{
 		if (oldStyleName.length() > 0)
 		{
 			int newIndex = this->findText(oldStyleName);
@@ -395,12 +402,11 @@ void CellStyleComboBox::updateStyleList()
 		oldStyleName = this->currentText();
 
 	bool sigBlocked = this->blockSignals(true);
-	clear();
+	QStringList choices;
 	if (m_doc != nullptr)
 	{
 		QStringList st;
-		addItem( firstItemString()  );
-		addItem( CommonStrings::trDefaultCellStyle  );
+		choices << firstItemString() << CommonStrings::trDefaultCellStyle;
 		for (int i = 0; i < m_doc->cellStyles().count(); ++i)
 		{
 			const CellStyle& cellStyle = m_doc->cellStyles()[i];
@@ -408,8 +414,12 @@ void CellStyleComboBox::updateStyleList()
 				st.append(cellStyle.name());
 		}
 		st.sort();
-		addItems(st);
+		choices.append(st);
+	}
+	StyleComboItems::update(this, choices);
 
+	if (m_doc != nullptr)
+	{
 		if (oldStyleName.length() > 0)
 		{
 			int newIndex = this->findText(oldStyleName);
@@ -533,12 +543,11 @@ void TableStyleComboBox::updateStyleList()
 		oldStyleName = this->currentText();
 
 	bool sigBlocked = this->blockSignals(true);
-	clear();
+	QStringList choices;
 	if (m_doc != nullptr)
 	{
 		QStringList st;
-		addItem( firstItemString()  );
-		addItem( CommonStrings::trDefaultTableStyle );
+		choices << firstItemString() << CommonStrings::trDefaultTableStyle;
 		for (int i = 0; i < m_doc->tableStyles().count(); ++i)
 		{
 			const TableStyle& tableStyle = m_doc->tableStyles()[i];
@@ -546,8 +555,12 @@ void TableStyleComboBox::updateStyleList()
 				st.append(tableStyle.name());
 		}
 		st.sort();
-		addItems(st);
+		choices.append(st);
+	}
+	StyleComboItems::update(this, choices);
 
+	if (m_doc != nullptr)
+	{
 		if (oldStyleName.length() > 0)
 		{
 			int newIndex = this->findText(oldStyleName);

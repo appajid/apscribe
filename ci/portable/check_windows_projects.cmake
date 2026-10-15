@@ -8,6 +8,18 @@ if(NOT DEFINED SCRIBUS_ROOT)
 endif()
 
 set(FORK_APPLICATION_FILES
+	scribus/regexsearch.cpp
+	scribus/regexsearch.h
+	scribus/grepstylerules.cpp
+	scribus/grepstylerules.h
+	scribus/searchquerypresets.cpp
+	scribus/searchquerypresets.h
+	scribus/wheelzoomaccumulator.cpp
+	scribus/wheelzoomaccumulator.h
+	scribus/recoveryfiles.h
+	scribus/ui/stylecomboitems.h
+	scribus/ui/grepstyleeditor.cpp
+	scribus/ui/grepstyleeditor.h
 	scribus/anchorposition.cpp
 	scribus/anchorposition.h
 	scribus/dynamicvariable.cpp

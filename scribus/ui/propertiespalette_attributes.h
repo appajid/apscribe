@@ -50,6 +50,7 @@ private slots:
 	void handleEpubImageDecorative(bool decorative);
 	void handleEpubImageCaption();
 	void handleEpubImageCaptionAlignment(int alignment);
+	void handleEpubImageCaptionSize(int sizePercent);
 	void handleEpubImageWidth(int widthPercent);
 	void handleEpubImageFrameCrop(bool enabled);
 

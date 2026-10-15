@@ -680,7 +680,7 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		 * @brief Remove all unused styles from the document.
 		 *
 		 * Uses getUsedStylesFromItems() to determine which styles are in use,
-		 * then removes all paragraph, character, table, cell, and line styles
+		 * then removes all paragraph, character, object, table, cell, and line styles
 		 * that are not referenced by any document content. Default styles are
 		 * never removed.
 		 *
@@ -697,9 +697,10 @@ class SCRIBUS_API ScribusDoc : public QObject, public UndoObject, public Observa
 		 *
 		 * This is similar to getNamedResources() but deliberately omits the
 		 * iteration over defined style sets (m_docParagraphStyles, etc.).
-		 * Only styles actually referenced by page items, master page items,
-		 * frame items, and pattern items are collected. Default styles are
-		 * always included.
+		 * Collects references from page/master/frame/pattern items, defaults,
+		 * running headers, TOC/index settings, and note-style definitions.
+		 * Expands the dependency closure of these retained definitions, including
+		 * inherited and GREP character styles. Orphaned style chains are omitted.
 		 *
 		 * ParagraphStyle::getNamedResources() and CharStyle::getNamedResources()
 		 * walk parent chains automatically, so ancestor styles of any used

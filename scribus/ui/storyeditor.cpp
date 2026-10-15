@@ -34,6 +34,7 @@ for which a new license (GPL+exception) is in place.
 #include <QHBoxLayout>
 #include <QHideEvent>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QList>
 #include <QMessageBox>
@@ -276,12 +277,35 @@ SEditor::SEditor(QWidget* parent, ScribusDoc *docc, StoryEditor* parentSE) :
 	setAutoFillBackground(true);
 	connect(QApplication::clipboard(), SIGNAL(dataChanged()), this, SLOT(ClipChange()));
 	connect(this->document(), SIGNAL(contentsChange(int,int,int)), this, SLOT(handleContentsChange(int,int,int)));
+	// General Story Editor undo is not format-safe yet. Keep the temporary Qt
+	// undo scope limited to consecutive regex text replacements.
+	connect(document(), &QTextDocument::undoCommandAdded, this, [this]() {
+		if (!regexEditInProgress)
+		{
+			regexUndoDepth = 0;
+			regexRedoDepth = 0;
+		}
+	});
+}
+
+void SEditor::beginRegexEdit()
+{
+	regexEditInProgress = true;
+}
+
+void SEditor::endRegexEdit()
+{
+	regexEditInProgress = false;
+	++regexUndoDepth;
+	regexRedoDepth = 0;
 }
 
 void SEditor::setCurrentDocument(ScribusDoc *docc)
 {
 	doc = docc;
 	StyledText = StoryText(docc);
+	regexUndoDepth = 0;
+	regexRedoDepth = 0;
 }
 
 void SEditor::inputMethodEvent(QInputMethodEvent *event)
@@ -319,6 +343,34 @@ void SEditor::inputMethodEvent(QInputMethodEvent *event)
 void SEditor::keyPressEvent(QKeyEvent *k)
 {
 	emit SideBarUp(false);
+	if (k->matches(QKeySequence::Undo))
+	{
+		if (regexUndoDepth > 0)
+		{
+			const int previousUndoDepth = regexUndoDepth;
+			const int previousRedoDepth = regexRedoDepth;
+			undo();
+			regexUndoDepth = previousUndoDepth - 1;
+			regexRedoDepth = previousRedoDepth + 1;
+		}
+		emit SideBarUp(true);
+		emit SideBarUpdate();
+		return;
+	}
+	if (k->matches(QKeySequence::Redo))
+	{
+		if (regexRedoDepth > 0)
+		{
+			const int previousUndoDepth = regexUndoDepth;
+			const int previousRedoDepth = regexRedoDepth;
+			redo();
+			regexRedoDepth = previousRedoDepth - 1;
+			regexUndoDepth = previousUndoDepth + 1;
+		}
+		emit SideBarUp(true);
+		emit SideBarUpdate();
+		return;
+	}
 
 	if (ScCore->primaryMainWindow()->actionManager->compareKeySeqToShortcut(k->key(), k->modifiers(), "specialUnicodeSequenceBegin"))
 	{
@@ -457,6 +509,11 @@ void SEditor::keyPressEvent(QKeyEvent *k)
 
 void SEditor::handleContentsChange(int position, int charsRemoved, int charsAdded)
 {
+	if (!regexEditInProgress)
+	{
+		regexUndoDepth = 0;
+		regexRedoDepth = 0;
+	}
 	// As of Qt 4.7.4, Cococa-QTextEdit output of input method is broken.
 	// We need a workaround to avoit the bug.
 	if (SuspendContentsChange != 0)
@@ -683,6 +740,8 @@ void SEditor::setDirection(QTextCursor& tCursor, int dir)
 
 void SEditor::loadItemText(PageItem *currItem)
 {
+	regexUndoDepth = 0;
+	regexRedoDepth = 0;
 	setTextColor(Qt::black);
 	FrameItems.clear();
 	StyledText = StoryText(currItem->doc());
@@ -704,6 +763,8 @@ void SEditor::loadItemText(PageItem *currItem)
 
 void SEditor::loadText(const QString& tx, PageItem *currItem)
 {
+	regexUndoDepth = 0;
+	regexRedoDepth = 0;
 	setTextColor(Qt::black);
 	setUpdatesEnabled(false);
 	StyledText.clear();

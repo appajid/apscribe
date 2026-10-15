@@ -1,6 +1,19 @@
 # Apscribe fork changes and status
 
-This is a public inventory of work in the [Apscribe development branch](https://github.com/appajid/apscribe/tree/codex/apscribe-granular-2026-10-03) as of 3 October 2026. It describes code and tests in that branch, **not** a release or a promise that every document round-trips perfectly. The fork's `master` branch is separate and does not yet contain all of this work. The [commit history](https://github.com/appajid/apscribe/commits/codex/apscribe-granular-2026-10-03/) records each implementation slice and correction.
+This is a public inventory of Apscribe work updated for the RC2 integration on 16 October 2026. It describes code and tests, **not** a stable release or a promise that every document round-trips perfectly. The [commit history](https://github.com/appajid/apscribe/commits/master/) records individual implementation slices and corrections; candidate branches and Actions runs identify changes still under validation.
+
+## RC2 integration additions
+
+- Regular-expression search and capture-group replacement in canvas text and Story Editor; saved text queries; inherited paragraph GREP rules with an editor and non-destructive rendering.
+- Faster unchanged style-control refresh and asynchronous startup recovery discovery.
+- IDML fallback when an explicit font family omits its face, HTML ordered-list start/restart handling, and preservation of existing text formatting in Scripter `setText`.
+- Bullet/number marker formatting persistence in current-format SLA, multi-cell paragraph styling, hyphenation ignore handling, fine-wheel zoom accumulation, and a safe zoom cap for very large canvases.
+- Style cleanup preserves generator settings and inherited dependencies, refuses unresolved Style Manager drafts, and handles Apply/Reset and TOC/index/note references more safely.
+- Opt-in right-edge TOC page-number alignment and more complete application TOC preset persistence. Regenerate after frame changes; unusual linked-frame widths and RTL require further review.
+- Rejection of incomplete/mislabelled SLA files before finalization and safe failed-open recovery with another document open.
+- Relative EPUB caption sizing (Auto or 50–200%) with preflight and persistence. EPUB remains limited; native INDD import remains unavailable.
+
+The [individual upstream/MIT review ledger](doc/upstream-and-mit-integration-review-2026-10-07.md) records reproduced defects, test results and outstanding limitations. Contributions were reviewed separately, not bulk-imported. RC2 also registers the new sources in all maintained Visual Studio projects and extends portable tests to GREP/search, recovery and style controls. New packages are being rebuilt; consult Actions before assuming a platform build has passed.
 
 ## Implemented in the development branch
 

@@ -10,11 +10,23 @@ set(SCRIBUS_TEST_SOURCES
 runtests.cpp
 #testIndex.cpp
 testStoryText.cpp
+testTableParagraphStyle.cpp
+testDocumentZoom.cpp
+testStyleCleanup.cpp
+testStyleSettings.cpp
+testTOCAlignment.cpp
+testSLALoadValidation.cpp
 )
 
 set(SCRIBUS_TESTS_LIB "scribus_tests_lib")
 add_library(${SCRIBUS_TESTS_LIB} STATIC ${SCRIBUS_TEST_SOURCES})
-target_link_libraries(${SCRIBUS_TESTS_LIB} PRIVATE Qt6::Test)
+target_link_libraries(${SCRIBUS_TESTS_LIB} PRIVATE Qt6::Test Qt6::Widgets)
+# Propagate to the linked app, including MSVC's hand-maintained config path.
+target_compile_definitions(${SCRIBUS_TESTS_LIB} PUBLIC WITH_TESTS=1)
+target_include_directories(${SCRIBUS_TESTS_LIB} PRIVATE
+	"${CMAKE_CURRENT_BINARY_DIR}/../third_party/Qt-Advanced-Docking-System/src")
+set_target_properties(${SCRIBUS_TESTS_LIB} PROPERTIES
+	AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../ui;${CMAKE_CURRENT_SOURCE_DIR}/../ui/preferences")
 
 
 # This is a convenience library that for linkage purposes is part of Scribus's
@@ -31,6 +43,48 @@ set_target_properties(${SCRIBUS_TESTS_LIB}
 #
 
 set(TESTS_LIBRARIES Qt6::Test Qt6::Core)
+
+# Regular-expression matching used by Find; kept independent of document UI.
+add_executable(regexsearchtests regexsearchtests.cpp ../regexsearch.cpp)
+target_link_libraries(regexsearchtests Qt6::Test Qt6::Core)
+add_test(NAME regexsearchtests COMMAND regexsearchtests)
+set_tests_properties(regexsearchtests PROPERTIES LABELS "find;regex")
+
+add_executable(searchquerypresetstests searchquerypresetstests.cpp ../searchquerypresets.cpp)
+target_link_libraries(searchquerypresetstests Qt6::Test Qt6::Core)
+add_test(NAME searchquerypresetstests COMMAND searchquerypresetstests)
+set_tests_properties(searchquerypresetstests PROPERTIES LABELS "find;regex;presets")
+
+add_executable(wheelzoomaccumulatortests wheelzoomaccumulatortests.cpp ../wheelzoomaccumulator.cpp)
+target_link_libraries(wheelzoomaccumulatortests Qt6::Test Qt6::Core)
+add_test(NAME wheelzoomaccumulatortests COMMAND wheelzoomaccumulatortests)
+set_tests_properties(wheelzoomaccumulatortests PROPERTIES LABELS "ui;zoom;input")
+
+# Ordered, inheritable GREP rules are stored on paragraph styles. Rendering
+# applies them in a later slice; these tests cover the data and match model.
+add_executable(grepstylerulestests grepstylerulestests.cpp ../grepstylerules.cpp ../regexsearch.cpp)
+target_link_libraries(grepstylerulestests Qt6::Test Qt6::Core)
+add_test(NAME grepstylerulestests COMMAND grepstylerulestests)
+set_tests_properties(grepstylerulestests PROPERTIES LABELS "find;regex;grep-styles")
+
+add_executable(grepstyleeditortests grepstyleeditortests.cpp ../ui/grepstyleeditor.cpp ../grepstylerules.cpp ../regexsearch.cpp)
+target_link_libraries(grepstyleeditortests Qt6::Test Qt6::Widgets)
+add_test(NAME grepstyleeditortests COMMAND grepstyleeditortests)
+set_tests_properties(grepstyleeditortests PROPERTIES
+	LABELS "grep-styles;ui"
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_executable(stylecomboitemstests stylecomboitemstests.cpp)
+target_link_libraries(stylecomboitemstests Qt6::Test Qt6::Widgets)
+add_test(NAME stylecomboitemstests COMMAND stylecomboitemstests)
+set_tests_properties(stylecomboitemstests PROPERTIES
+	LABELS "styles;ui;accessibility"
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_executable(recoveryfilestests recoveryfilestests.cpp)
+target_link_libraries(recoveryfilestests Qt6::Test Qt6::Core)
+add_test(NAME recoveryfilestests COMMAND recoveryfilestests)
+set_tests_properties(recoveryfilestests PROPERTIES LABELS "startup;recovery")
 
 # Phase 7 starts with an isolated reflowable EPUB package writer. Reading
 # order extraction and the application export command are separate slices.
@@ -172,6 +226,24 @@ set_tests_properties(runningheader_test_install PROPERTIES
 	LABELS "integration;running-headers"
 	TIMEOUT 180)
 
+set(grep_style_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-grep_style_persistence")
+set(grep_style_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-grep_style_persistence")
+file(MAKE_DIRECTORY "${grep_style_prefs_dir}")
+file(MAKE_DIRECTORY "${grep_style_output_dir}")
+add_test(NAME grep_style_persistence
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${grep_style_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_grep_style_persistence.py")
+set_tests_properties(grep_style_persistence PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${grep_style_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;grep-styles"
+	PASS_REGULAR_EXPRESSION "GREP_STYLE_PERSISTENCE_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
 set(epub_order_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-epub_order")
 set(epub_order_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-epub_order")
 file(MAKE_DIRECTORY "${epub_order_prefs_dir}" "${epub_order_output_dir}")
@@ -239,6 +311,146 @@ set_tests_properties(dynamic_variables PROPERTIES
 	PASS_REGULAR_EXPRESSION "DYNAMIC_VARIABLE_TEST_PASSED"
 	RUN_SERIAL TRUE
 	TIMEOUT 180)
+
+set(settext_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-settext_styles")
+set(settext_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-settext_styles")
+file(MAKE_DIRECTORY "${settext_prefs_dir}" "${settext_output_dir}")
+add_test(NAME settext_preserves_styles
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${settext_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_settext_preserves_styles.py")
+set_tests_properties(settext_preserves_styles PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${settext_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;scripter;text-formatting"
+	PASS_REGULAR_EXPRESSION "SETTEXT_STYLES_QA_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(html_list_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-html_list")
+set(html_list_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-html_list")
+file(MAKE_DIRECTORY "${html_list_prefs_dir}" "${html_list_output_dir}")
+add_test(NAME html_ordered_list_start
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${html_list_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_html_ordered_list_start.py")
+set_tests_properties(html_ordered_list_start PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${html_list_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;scripter;html-import"
+	PASS_REGULAR_EXPRESSION "HTML_ORDERED_LIST_START_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(list_marker_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-list_markers")
+set(list_marker_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-list_markers")
+file(MAKE_DIRECTORY "${list_marker_prefs_dir}" "${list_marker_output_dir}")
+add_test(NAME list_marker_formatting
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${list_marker_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_list_marker_formatting.py")
+set_tests_properties(list_marker_formatting PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${list_marker_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;persistence;lists;text-formatting"
+	PASS_REGULAR_EXPRESSION "LIST_MARKER_FORMATTING_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(hyphenation_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-hyphenation_ignore")
+set(hyphenation_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-hyphenation_ignore")
+file(MAKE_DIRECTORY "${hyphenation_prefs_dir}" "${hyphenation_output_dir}")
+add_test(NAME hyphenation_ignore_list
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash
+		--prefs "${hyphenation_prefs_dir}"
+		--no-gui
+		--python-script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_hyphenation_ignore_list.py")
+set_tests_properties(hyphenation_ignore_list PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SCRIBUS_TEST_OUTPUT_DIR=${hyphenation_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;persistence;hyphenation"
+	PASS_REGULAR_EXPRESSION "HYPHENATION_IGNORE_LIST_PASSED"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(table_paragraph_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-table_paragraph_style")
+file(MAKE_DIRECTORY "${table_paragraph_prefs_dir}")
+add_test(NAME table_paragraph_style_selection
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${table_paragraph_prefs_dir}" --document-tests)
+set_tests_properties(table_paragraph_style_selection PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;tables;styles;undo-redo;persistence;ui"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(document_zoom_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-document_zoom")
+file(MAKE_DIRECTORY "${document_zoom_prefs_dir}")
+add_test(NAME document_zoom_position
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${document_zoom_prefs_dir}" --document-tests --suite=zoom)
+set_tests_properties(document_zoom_position PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;ui;zoom;input"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(style_cleanup_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-style_cleanup")
+file(MAKE_DIRECTORY "${style_cleanup_prefs_dir}")
+add_test(NAME style_cleanup_dependencies
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${style_cleanup_prefs_dir}" --document-tests --suite=style-cleanup)
+set_tests_properties(style_cleanup_dependencies PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;styles;persistence;grep-styles"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(style_settings_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-style_settings")
+file(MAKE_DIRECTORY "${style_settings_prefs_dir}")
+add_test(NAME style_settings_references
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${style_settings_prefs_dir}" --document-tests --suite=style-settings)
+set_tests_properties(style_settings_references PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;styles;persistence;ui"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(toc_alignment_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-toc_alignment")
+file(MAKE_DIRECTORY "${toc_alignment_prefs_dir}")
+add_test(NAME toc_default_alignment
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${toc_alignment_prefs_dir}" --document-tests --suite=toc-alignment)
+set_tests_properties(toc_default_alignment PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;toc;styles;persistence;ui"
+	RUN_SERIAL TRUE
+	TIMEOUT 180)
+
+set(sla_validation_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-sla_validation")
+file(MAKE_DIRECTORY "${sla_validation_prefs_dir}")
+add_test(NAME sla_load_validation
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${sla_validation_prefs_dir}" --document-tests --suite=sla-validation)
+set_tests_properties(sla_load_validation PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;file-loading;persistence;recovery"
+	RUN_SERIAL TRUE
+	TIMEOUT 60)
 
 set(data_merge_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-data_merge")
 set(data_merge_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-data_merge")
