@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Draft prerelease containing the unsigned Mac app ZIP
         required: true
-        default: v2.0.0-rc1
+        default: v2.0.0-rc2
 
 permissions:
   # Draft releases are only visible to callers with push-level access.
@@ -27,14 +27,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          version="${RELEASE_TAG#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]] || exit 1
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
           mkdir -p input
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.zip*' \
+            --pattern "Apscribe-$version-macos-arm64-unsigned-test.zip*" \
             --dir input
           (cd input && shasum -a 256 -c \
-            Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.zip.sha256)
+            "Apscribe-$version-macos-arm64-unsigned-test.zip.sha256")
           mkdir -p unpacked
-          ditto -x -k input/Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.zip unpacked
+          ditto -x -k "input/Apscribe-$version-macos-arm64-unsigned-test.zip" unpacked
 
       - name: Check signature, platform, dependencies, and bundled Scripter
         env:
@@ -65,23 +68,23 @@ jobs:
           mkdir -p dmg-stage mounted
           ditto unpacked/Apscribe.app dmg-stage/Apscribe.app
           ln -s /Applications dmg-stage/Applications
-          hdiutil create -volname 'Apscribe 2.0.0 RC1 Test' \
+          hdiutil create -volname "Apscribe $RELEASE_VERSION Test" \
             -srcfolder dmg-stage -format UDZO -ov \
-            Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.dmg
+            "Apscribe-$RELEASE_VERSION-macos-arm64-unsigned-test.dmg"
           hdiutil attach -readonly -nobrowse -mountpoint "$GITHUB_WORKSPACE/mounted" \
-            Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.dmg
+            "Apscribe-$RELEASE_VERSION-macos-arm64-unsigned-test.dmg"
           test -x mounted/Apscribe.app/Contents/MacOS/Apscribe
           codesign --verify --deep --strict mounted/Apscribe.app
           hdiutil detach "$GITHUB_WORKSPACE/mounted"
-          shasum -a 256 Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.dmg \
-            > Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.dmg.sha256
+          shasum -a 256 "Apscribe-$RELEASE_VERSION-macos-arm64-unsigned-test.dmg" \
+            > "Apscribe-$RELEASE_VERSION-macos-arm64-unsigned-test.dmg.sha256"
 
       - name: Upload macOS candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Apscribe-2.0.0-rc1-macOS-ARM64-unsigned-DMG
+          name: Apscribe-${{ env.RELEASE_VERSION }}-macOS-ARM64-unsigned-DMG
           path: |
-            Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.dmg
-            Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.dmg.sha256
+            Apscribe-${{ env.RELEASE_VERSION }}-macos-arm64-unsigned-test.dmg
+            Apscribe-${{ env.RELEASE_VERSION }}-macos-arm64-unsigned-test.dmg.sha256
           if-no-files-found: error
           retention-days: 30

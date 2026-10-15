@@ -2,15 +2,20 @@
 # Prepare an unsigned, self-contained macOS ARM64 test app and ZIP.
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-  echo "Usage: $0 /path/to/Apscribe.app /path/to/output-directory" >&2
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+  echo "Usage: $0 /path/to/Apscribe.app /path/to/output-directory [2.0.0-rc2]" >&2
   exit 2
 fi
 
 source_app=$1
 output_dir=$2
+release_version=${3:-2.0.0-rc2}
+[[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]] || {
+  echo 'Expected a release-candidate version, e.g. 2.0.0-rc2' >&2
+  exit 2
+}
 staged_app="$output_dir/Apscribe.app"
-archive="$output_dir/Apscribe-2.0.0-rc1-macos-arm64-unsigned-test.zip"
+archive="$output_dir/Apscribe-$release_version-macos-arm64-unsigned-test.zip"
 contents="$staged_app/Contents"
 frameworks="$contents/Frameworks"
 python_version=3.14

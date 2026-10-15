@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/windows-test-package
+      - codex/apscribe-release-*
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,7 @@ jobs:
 
     env:
       SCRIBUS_VERSION: 2.0.0
+      RELEASE_VERSION: 2.0.0-rc2
       SCRIBUS_DEPENDENCY_ROOT: C:\scribus-deps
 
     steps:
@@ -134,13 +136,27 @@ jobs:
             -AppDir "$env:GITHUB_WORKSPACE\win32\deploy\dist\Apscribe-$env:SCRIBUS_VERSION-win64" `
             -Sources $env:GITHUB_WORKSPACE
 
+      - name: Name and checksum the release candidate
+        shell: pwsh
+        run: |
+          $packages = @{
+            "win32/deploy/dist/Apscribe-$env:SCRIBUS_VERSION-win64.zip" = "Apscribe-$env:RELEASE_VERSION-Windows-x64-portable.zip"
+            "win32/installer/dist/Apscribe-$env:SCRIBUS_VERSION-Setup.exe" = "Apscribe-$env:RELEASE_VERSION-Windows-x64-Setup.exe"
+          }
+          New-Item -ItemType Directory -Path release-candidate | Out-Null
+          foreach ($entry in $packages.GetEnumerator()) {
+            $target = Join-Path release-candidate $entry.Value
+            Copy-Item -LiteralPath $entry.Key -Destination $target
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+            "$hash  $($entry.Value)" | Set-Content -Encoding ascii -LiteralPath "$target.sha256"
+          }
+
       - name: Upload Windows test applications
         uses: actions/upload-artifact@v4
         with:
-          name: Apscribe-${{ env.SCRIBUS_VERSION }}-Windows-x64
+          name: Apscribe-${{ env.RELEASE_VERSION }}-Windows-x64
           path: |
-            win32/deploy/dist/Apscribe-${{ env.SCRIBUS_VERSION }}-win64.zip
-            win32/installer/dist/Apscribe-${{ env.SCRIBUS_VERSION }}-Setup.exe
+            release-candidate/*
           if-no-files-found: error
           retention-days: 14
 

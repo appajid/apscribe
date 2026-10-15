@@ -2,7 +2,9 @@
 
 Apscribe is an independently developed desktop-publishing application based on [Scribus](https://www.scribus.net/) source code. It retains the GPL foundation while developing a revised workspace and additional long-document, production, import, and publishing tools. It is not affiliated with the Scribus project or a finished release. The application currently reports version 2.0.0; that number does not imply feature-complete or production-ready status.
 
-**Where the changes are:** the [Apscribe development branch](https://github.com/appajid/apscribe/tree/codex/apscribe-granular-2026-10-03) contains the new code and granular commits. The [feature inventory](FORK_CHANGES.md) separates implemented work from limited or experimental work and points to the relevant tests. Consult the [development branch's commit history](https://github.com/appajid/apscribe/commits/codex/apscribe-granular-2026-10-03/) for individual changes.
+**Where the changes are:** this repository contains the Apscribe changes as granular commits. The [feature inventory](FORK_CHANGES.md) separates implemented work from limited or experimental work and points to the relevant tests. Consult the [commit history](https://github.com/appajid/apscribe/commits/master/) for individual changes and [Actions](https://github.com/appajid/apscribe/actions) for the exact revision tested on each platform.
+
+**Release candidates:** [RC1 downloads](https://github.com/appajid/apscribe/releases/tag/v2.0.0-rc1) remain available. RC2 integrates the newer GREP/search, style safety, import and crash fixes and EPUB caption sizing. Fresh RC2 packages are being rebuilt and validated; this is not a stable-release announcement. See the [packaging requirements and limitations](ci/release/README.md).
 
 ## Highlights in the development branch
 
@@ -12,6 +14,8 @@ Apscribe is an independently developed desktop-publishing application based on [
 - CSV/JSON data merge, mail-merge PDFs, and a limited catalogue publisher.
 - Improved PageMaker `.p65`/`.pm7` and IDML import paths. **Native INDD import is not available**; the current INDD work is read-only format research.
 - A **limited reflowable EPUB** export path for supported text and linked images. It has explicit reading order and preflight but does not yet preserve every document feature or offer fixed-layout EPUB.
+- Regular-expression Find/Replace, saved text queries, and inherited paragraph GREP styles that render without rewriting story text.
+- Safer style cleanup and Apply/Reset handling, TOC/index style-reference updates, opt-in TOC page-number alignment, and safer rejection/recovery when opening incomplete SLA files.
 
 See [what works and what remains](FORK_CHANGES.md) before relying on a feature for a production document. Automated checks cover parts of the macOS, Linux, and Windows builds; they are not a guarantee of identical behavior across all platforms or documents.
 

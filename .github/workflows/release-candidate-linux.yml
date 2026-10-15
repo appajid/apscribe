@@ -17,6 +17,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
       APPIMAGE_EXTRACT_AND_RUN: '1'
+      RELEASE_VERSION: 2.0.0-rc2
     steps:
       - uses: actions/checkout@v4
 
@@ -76,7 +77,7 @@ jobs:
           sudo env QT_QPA_PLATFORM=offscreen \
             LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
             QT_PLUGIN_PATH="$QT_PLUGIN_PATH" \
-            ctest --test-dir build/release-appimage -L phase-5 --output-on-failure
+            ctest --test-dir build/release-appimage --output-on-failure -j2
           # The install fixture writes this manifest as root; the later
           # unprivileged DESTDIR stage must be able to replace it.
           sudo chown "$USER" build/release-appimage/install_manifest.txt
@@ -123,30 +124,30 @@ jobs:
             --appdir AppDir --plugin qt --output appimage
           mapfile -t images < <(find . -maxdepth 1 -type f -name '*.AppImage')
           test "${#images[@]}" -eq 1
-          mv "${images[0]}" Apscribe-2.0.0-rc1-linux-x86_64.AppImage
+          mv "${images[0]}" "Apscribe-${RELEASE_VERSION}-linux-x86_64.AppImage"
 
       - name: Smoke test the packaged AppImage
         run: |
-          chmod +x Apscribe-2.0.0-rc1-linux-x86_64.AppImage
+          chmod +x "Apscribe-${RELEASE_VERSION}-linux-x86_64.AppImage"
           env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH \
-            ./Apscribe-2.0.0-rc1-linux-x86_64.AppImage \
+            "./Apscribe-${RELEASE_VERSION}-linux-x86_64.AppImage" \
             --appimage-extract-and-run --version | grep -F 'Apscribe Version 2.0.0'
           marker="$(mktemp)"
           APSCRIBE_SMOKE_RESULT="$marker" \
             env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH \
-            ./Apscribe-2.0.0-rc1-linux-x86_64.AppImage \
+            "./Apscribe-${RELEASE_VERSION}-linux-x86_64.AppImage" \
             --appimage-extract-and-run --no-splash --no-gui \
             --python-script "$GITHUB_WORKSPACE/ci/release/macos-scripter-smoke.py"
           test -s "$marker"
-          sha256sum Apscribe-2.0.0-rc1-linux-x86_64.AppImage \
-            > Apscribe-2.0.0-rc1-linux-x86_64.AppImage.sha256
+          sha256sum "Apscribe-${RELEASE_VERSION}-linux-x86_64.AppImage" \
+            > "Apscribe-${RELEASE_VERSION}-linux-x86_64.AppImage.sha256"
 
       - name: Upload Linux candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Apscribe-2.0.0-rc1-Linux-x86_64-AppImage
+          name: Apscribe-${{ env.RELEASE_VERSION }}-Linux-x86_64-AppImage
           path: |
-            Apscribe-2.0.0-rc1-linux-x86_64.AppImage
-            Apscribe-2.0.0-rc1-linux-x86_64.AppImage.sha256
+            Apscribe-${{ env.RELEASE_VERSION }}-linux-x86_64.AppImage
+            Apscribe-${{ env.RELEASE_VERSION }}-linux-x86_64.AppImage.sha256
           if-no-files-found: error
           retention-days: 30
