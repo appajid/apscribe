@@ -7,6 +7,7 @@ to the COPYING file provided with the program.
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QSet>
 #include <QTemporaryDir>
 #include <QThread>
@@ -47,12 +48,21 @@ void RecoveryFilesTests::findsBothRecoveryTypesOnceWithoutScanningSubdirectories
 	QCOMPARE(files.count(), 2);
 	QCOMPARE(files, QStringList({ autosave, emergency }));
 
-	const QString shortcut = root.filePath(QStringLiteral("link_autosave_999.sla"));
-	if (QFile::link(autosave, shortcut))
-	{
-		const QStringList withoutLinks = RecoveryFiles::find({ directory.path() });
-		QVERIFY(!withoutLinks.contains(shortcut));
-	}
+	QString shortcut = root.filePath(QStringLiteral("link_autosave_999.sla"));
+#ifdef Q_OS_WIN
+	// QFile::link creates a shell shortcut on Windows, not an NTFS symlink.
+	// Qt requires .lnk; a shortcut misnamed .sla is treated as a regular file.
+	shortcut += QStringLiteral(".lnk");
+#endif
+	QVERIFY(QFile::link(autosave, shortcut));
+#ifdef Q_OS_WIN
+	QVERIFY(QFileInfo(shortcut).isShortcut());
+#else
+	QVERIFY(QFileInfo(shortcut).isSymbolicLink());
+#endif
+	const QStringList withoutLinks = RecoveryFiles::find({ directory.path() });
+	QVERIFY(!withoutLinks.contains(shortcut));
+	QCOMPARE(withoutLinks, files);
 }
 
 void RecoveryFilesTests::reportsAsyncResultsOnTheUiThread()
