@@ -77,3 +77,25 @@ jobs:
 
       - name: Run portable tests
         run: ctest --test-dir build/portable -C Release --output-on-failure
+
+      - name: Capture Windows recovery test diagnostics
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $test = 'build/portable/Release/recoveryfilestests.exe'
+          if (Test-Path $test) {
+            & $test -o recovery-debug.txt,txt
+            $result = $LASTEXITCODE
+            if (Test-Path recovery-debug.txt) { Get-Content recovery-debug.txt }
+            Write-Host "Recovery test exit code: $result"
+          }
+
+      - name: Preserve failed portability diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-test-diagnostics-${{ runner.os }}-${{ github.run_id }}
+          path: |
+            build/portable/Testing/Temporary/LastTest.log
+            recovery-debug.txt
+          if-no-files-found: warn
