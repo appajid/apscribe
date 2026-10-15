@@ -37,6 +37,7 @@ PropertiesPalette_Attributes::PropertiesPalette_Attributes(QWidget *parent) :
 	connect(epubImageDecorativeCheck, SIGNAL(clicked(bool)), this, SLOT(handleEpubImageDecorative(bool)));
 	connect(epubImageCaptionEdit, SIGNAL(editingFinished()), this, SLOT(handleEpubImageCaption()));
 	connect(epubImageCaptionAlignmentCombo, SIGNAL(currentIndexChanged(int)), this, SLOT(handleEpubImageCaptionAlignment(int)));
+	connect(epubImageCaptionSizeSpin, SIGNAL(valueChanged(int)), this, SLOT(handleEpubImageCaptionSize(int)));
 	connect(epubImageWidthSpin, SIGNAL(valueChanged(int)), this, SLOT(handleEpubImageWidth(int)));
 	connect(epubImageFrameCropCheck, SIGNAL(clicked(bool)), this, SLOT(handleEpubImageFrameCrop(bool)));
 	epubOrderSpin->setEnabled(false);
@@ -48,6 +49,8 @@ PropertiesPalette_Attributes::PropertiesPalette_Attributes(QWidget *parent) :
 	epubImageCaptionEdit->setVisible(false);
 	epubImageCaptionAlignmentLabel->setVisible(false);
 	epubImageCaptionAlignmentCombo->setVisible(false);
+	epubImageCaptionSizeLabel->setVisible(false);
+	epubImageCaptionSizeSpin->setVisible(false);
 	epubImageWidthLabel->setVisible(false);
 	epubImageWidthSpin->setVisible(false);
 	epubImageFrameCropCheck->setVisible(false);
@@ -107,6 +110,8 @@ void PropertiesPalette_Attributes::unsetDoc()
 	epubImageCaptionEdit->setVisible(false);
 	epubImageCaptionAlignmentLabel->setVisible(false);
 	epubImageCaptionAlignmentCombo->setVisible(false);
+	epubImageCaptionSizeLabel->setVisible(false);
+	epubImageCaptionSizeSpin->setVisible(false);
 	epubImageWidthLabel->setVisible(false);
 	epubImageWidthSpin->setVisible(false);
 	epubImageFrameCropCheck->setVisible(false);
@@ -152,6 +157,7 @@ void PropertiesPalette_Attributes::setCurrentItem(PageItem *item)
 	QSignalBlocker sigEpubImageDecorative(epubImageDecorativeCheck);
 	QSignalBlocker sigEpubImageCaption(epubImageCaptionEdit);
 	QSignalBlocker sigEpubImageCaptionAlignment(epubImageCaptionAlignmentCombo);
+	QSignalBlocker sigEpubImageCaptionSize(epubImageCaptionSizeSpin);
 	QSignalBlocker sigEpubImageWidth(epubImageWidthSpin);
 	QSignalBlocker sigEpubImageFrameCrop(epubImageFrameCropCheck);
 
@@ -192,6 +198,10 @@ void PropertiesPalette_Attributes::setCurrentItem(PageItem *item)
 	epubImageCaptionAlignmentCombo->setVisible(imageEligible);
 	epubImageCaptionAlignmentCombo->setEnabled(imageEligible && !decorative && !EpubDocument::savedImageCaption(item).isEmpty());
 	epubImageCaptionAlignmentCombo->setCurrentIndex(imageEligible ? qMax(0, EpubDocument::savedImageCaptionAlignment(item)) : 0);
+	epubImageCaptionSizeLabel->setVisible(imageEligible);
+	epubImageCaptionSizeSpin->setVisible(imageEligible);
+	epubImageCaptionSizeSpin->setEnabled(imageEligible && !decorative && !EpubDocument::savedImageCaption(item).isEmpty());
+	epubImageCaptionSizeSpin->setValue(imageEligible ? qMax(0, EpubDocument::savedImageCaptionSizePercent(item)) : 0);
 	epubImageWidthLabel->setVisible(imageEligible);
 	epubImageWidthSpin->setVisible(imageEligible);
 	epubImageWidthSpin->setEnabled(imageEligible);
@@ -243,6 +253,8 @@ void PropertiesPalette_Attributes::handleSelectionChanged()
 		epubImageCaptionEdit->setVisible(false);
 		epubImageCaptionAlignmentLabel->setVisible(false);
 		epubImageCaptionAlignmentCombo->setVisible(false);
+		epubImageCaptionSizeLabel->setVisible(false);
+		epubImageCaptionSizeSpin->setVisible(false);
 		epubImageWidthLabel->setVisible(false);
 		epubImageWidthSpin->setVisible(false);
 		epubImageFrameCropCheck->setVisible(false);
@@ -394,6 +406,7 @@ void PropertiesPalette_Attributes::handleEpubImageDecorative(bool decorative)
 	epubImageAltEdit->setEnabled(!saved);
 	epubImageCaptionEdit->setEnabled(!saved);
 	epubImageCaptionAlignmentCombo->setEnabled(!saved && !EpubDocument::savedImageCaption(m_item).isEmpty());
+	epubImageCaptionSizeSpin->setEnabled(!saved && !EpubDocument::savedImageCaption(m_item).isEmpty());
 }
 
 void PropertiesPalette_Attributes::handleEpubImageCaption()
@@ -411,6 +424,10 @@ void PropertiesPalette_Attributes::handleEpubImageCaption()
 	epubImageCaptionAlignmentCombo->setEnabled(!EpubDocument::savedImageDecorative(m_item) &&
 		!EpubDocument::savedImageCaption(m_item).isEmpty());
 	epubImageCaptionAlignmentCombo->setCurrentIndex(qMax(0, EpubDocument::savedImageCaptionAlignment(m_item)));
+	QSignalBlocker sizeBlocker(epubImageCaptionSizeSpin);
+	epubImageCaptionSizeSpin->setEnabled(!EpubDocument::savedImageDecorative(m_item) &&
+		!EpubDocument::savedImageCaption(m_item).isEmpty());
+	epubImageCaptionSizeSpin->setValue(qMax(0, EpubDocument::savedImageCaptionSizePercent(m_item)));
 }
 
 void PropertiesPalette_Attributes::handleEpubImageCaptionAlignment(int alignment)
@@ -424,6 +441,20 @@ void PropertiesPalette_Attributes::handleEpubImageCaptionAlignment(int alignment
 			tr("Add a valid EPUB image caption before changing its alignment."));
 		QSignalBlocker blocker(epubImageCaptionAlignmentCombo);
 		epubImageCaptionAlignmentCombo->setCurrentIndex(qMax(0, EpubDocument::savedImageCaptionAlignment(m_item)));
+	}
+}
+
+void PropertiesPalette_Attributes::handleEpubImageCaptionSize(int sizePercent)
+{
+	if (!m_haveDoc || !m_haveItem || !m_item || !m_ScMW || m_ScMW->scriptIsRunning() ||
+		m_doc->m_Selection->count() != 1)
+		return;
+	if (!EpubDocument::setSavedImageCaptionSizePercent(m_item, sizePercent))
+	{
+		ScMessageBox::warning(this, CommonStrings::trWarning,
+			tr("Add an EPUB image caption first. Its size must be Auto or between 50% and 200%."));
+		QSignalBlocker blocker(epubImageCaptionSizeSpin);
+		epubImageCaptionSizeSpin->setValue(qMax(0, EpubDocument::savedImageCaptionSizePercent(m_item)));
 	}
 }
 

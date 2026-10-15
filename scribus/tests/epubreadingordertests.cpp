@@ -209,7 +209,14 @@ void EpubReadingOrderTests::permitsOneUnrankedImage()
 	const Result centered = extractMixedSavedOrder({}, { centeredCaption });
 	QVERIFY(centered.ready());
 	QCOMPARE(centered.blocks.first().captionAlignment, EpubExport::TextAlignment::Center);
+	centeredCaption.captionSizePercent = 125;
+	const Result sizedCaption = extractMixedSavedOrder({}, { centeredCaption });
+	QVERIFY(sizedCaption.ready());
+	QCOMPARE(sizedCaption.blocks.first().captionSizePercent, 125);
 	centeredCaption.caption.clear();
+	QCOMPARE(extractMixedSavedOrder({}, { centeredCaption }).status, Status::UnsupportedContent);
+	centeredCaption.caption = image.caption;
+	centeredCaption.captionSizePercent = 49;
 	QCOMPARE(extractMixedSavedOrder({}, { centeredCaption }).status, Status::UnsupportedContent);
 	QCOMPARE(result.images.first().mediaType, QStringLiteral("image/jpeg"));
 	Image sized = image;

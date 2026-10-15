@@ -354,6 +354,28 @@
     </layout>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="epubImageCaptionSizeLayout">
+     <item>
+      <widget class="QLabel" name="epubImageCaptionSizeLabel">
+       <property name="text">
+        <string>EPUB caption size</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSpinBox" name="epubImageCaptionSizeSpin">
+       <property name="toolTip">
+        <string>Set the visible caption size relative to reader text (50–200%). Auto keeps the reader default; this does not alter print typography.</string>
+       </property>
+       <property name="specialValueText"><string>Auto</string></property>
+       <property name="suffix"><string>%</string></property>
+       <property name="maximum"><number>200</number></property>
+       <property name="singleStep"><number>50</number></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
    <layout class="QHBoxLayout" name="epubImageWidthLayout">
      <item>
       <widget class="QLabel" name="epubImageWidthLabel">

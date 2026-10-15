@@ -135,6 +135,7 @@ text_rank(second, 3)
 scribus.setEpubImageAltText(image, "Blue square & తెలుగు")
 scribus.setEpubImageCaption(image, "Figure 1: blue & తెలుగు")
 scribus.setEpubImageCaptionAlignment(image, "center")
+scribus.setEpubImageCaptionSizePercent(image, 125)
 scribus.setEpubImageWidthPercent(image, 55)
 scribus.setEpubImageReadingOrder(image, 2)
 scribus.setImageOffset(2, 3, image)
@@ -162,6 +163,8 @@ check(scribus.epubImageFramePreflight(image)["caption"] == "Figure 1: blue & త
       "saved EPUB caption missing before document save")
 check(scribus.epubImageFramePreflight(image)["captionAlignment"] == "center",
       "saved EPUB caption alignment missing before document save")
+check(scribus.epubImageFramePreflight(image)["captionSizePercent"] == 125,
+      "saved EPUB caption size missing before document save")
 check(scribus.epubImageFramePreflight(image)["widthPercent"] == 55,
       "saved EPUB figure width missing before document save")
 check(scribus.epubReadingOrderPreflight()["status"] == "unsupported-content",
@@ -174,6 +177,8 @@ check(scribus.epubImageFramePreflight(image)["caption"] == "Figure 1: blue & త
       "EPUB caption did not survive SLA save/reopen")
 check(scribus.epubImageFramePreflight(image)["captionAlignment"] == "center",
       "EPUB caption alignment did not survive SLA save/reopen")
+check(scribus.epubImageFramePreflight(image)["captionSizePercent"] == 125,
+      "EPUB caption size did not survive SLA save/reopen")
 check(scribus.epubImageFramePreflight(image)["widthPercent"] == 55,
       "EPUB figure width did not survive SLA save/reopen")
 
@@ -219,6 +224,8 @@ with zipfile.ZipFile(epub_path) as archive:
           "Figure 1: blue & తెలుగు", "visible figure caption changed")
     check(caption_element.get("class") == "scribus-align-center",
           "caption-only alignment was not exported")
+    check(caption_element.get("style") == "font-size: 125%;",
+          "relative caption size was not exported")
 with open(epub_path, "rb") as existing_file:
     original_epub = existing_file.read()
 check(scribus.exportEpubTextAndImages(epub_path, *publication)["status"] == "output-exists",
@@ -254,12 +261,39 @@ check(scribus.epubImageFramePreflight(image)["caption"] == "",
       "clearing an optional caption failed")
 check(scribus.epubImageFramePreflight(image)["captionAlignment"] == "left",
       "clearing a caption left stale alignment metadata")
+check(scribus.epubImageFramePreflight(image)["captionSizePercent"] == 0,
+      "clearing a caption left stale size metadata")
 try:
     scribus.setEpubImageCaptionAlignment(image, "right")
     raise AssertionError("caption alignment was set without a caption")
 except ValueError:
     pass
+try:
+    scribus.setEpubImageCaptionSizePercent(image, 125)
+    raise AssertionError("caption size was set without a caption")
+except ValueError:
+    pass
 scribus.setEpubImageCaption(image, "Figure 1: blue & తెలుగు")
+for invalid_size in (1, 49, 201):
+    try:
+        scribus.setEpubImageCaptionSizePercent(image, invalid_size)
+        raise AssertionError("invalid EPUB caption size was accepted")
+    except ValueError:
+        pass
+scribus.setEpubImageCaptionSizePercent(image, 150)
+check(scribus.epubImageFramePreflight(image)["captionSizePercent"] == 150,
+      "caption size could not be changed after clearing")
+scribus.setEpubImageCaptionSizePercent(image, 0)
+bad_size_attributes = scribus.getObjectAttributes(image)
+bad_size_attributes.append({
+    "Name": "scribus:epub-image-caption-size-percent", "Type": "Integer",
+    "Value": "300", "Parameter": "", "Relationship": "",
+    "RelationshipTo": "", "AutoAddTo": "",
+})
+scribus.setObjectAttributes(bad_size_attributes, image)
+check("invalid EPUB caption size" in scribus.epubImageFramePreflight(image)["detail"],
+      "malformed saved caption size was silently accepted")
+scribus.setEpubImageCaptionSizePercent(image, 0)
 try:
     scribus.setEpubImageCaptionAlignment(image, "diagonal")
     raise AssertionError("unknown caption alignment was accepted")

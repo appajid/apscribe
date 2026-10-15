@@ -506,6 +506,7 @@ void EpubExportTests::packagesIllustrationsWithAltText()
 	book.blocks[1].imageIndex = 0;
 	book.blocks[1].caption = QStringLiteral("Figure 1 — red & blue");
 	book.blocks[1].captionAlignment = EpubExport::TextAlignment::Center;
+	book.blocks[1].captionSizePercent = 125;
 	book.blocks[2].imageIndex = 1;
 	book.blocks[4].imageIndex = 0;
 	const QString output = temp.filePath(QStringLiteral("illustrated.epub"));
@@ -527,7 +528,7 @@ void EpubExportTests::packagesIllustrationsWithAltText()
 	QVERIFY(isWellFormed(first));
 	QVERIFY(isWellFormed(second));
 	QVERIFY(first.contains("<figure><img src=\"images/image-1.png\" alt=\"Red square &amp; sample\""));
-	QVERIFY(first.contains("<figcaption class=\"scribus-align-center\">Figure 1 — red &amp; blue</figcaption>"));
+	QVERIFY(first.contains("<figcaption class=\"scribus-align-center\" style=\"font-size: 125%;\">Figure 1 — red &amp; blue</figcaption>"));
 	QVERIFY(first.contains("<figure><img src=\"images/image-2.jpg\" alt=\"Another red square\""));
 	QCOMPARE(first.count("<figcaption"), 1);
 	QVERIFY(second.contains("<figure><img src=\"images/image-1.png\" alt=\"Repeated PNG\""));
@@ -620,6 +621,17 @@ void EpubExportTests::rejectsInvalidImageAssets()
 		EpubExport::Status::InvalidInput);
 	book.blocks[0].caption = QStringLiteral("Invalid") + QChar::Null;
 	QCOMPARE(EpubExport::writeBook(book, temp.filePath(QStringLiteral("invalid-caption.epub"))).status,
+		EpubExport::Status::InvalidInput);
+	book.blocks[0].caption = QStringLiteral("A visible caption");
+	book.blocks[0].captionSizePercent = 49;
+	QCOMPARE(EpubExport::writeBook(book, temp.filePath(QStringLiteral("invalid-caption-size.epub"))).status,
+		EpubExport::Status::InvalidInput);
+	book.blocks[0].captionSizePercent = 201;
+	QCOMPARE(EpubExport::writeBook(book, temp.filePath(QStringLiteral("oversize-caption.epub"))).status,
+		EpubExport::Status::InvalidInput);
+	book.blocks[0].captionSizePercent = 125;
+	book.blocks[0].caption.clear();
+	QCOMPARE(EpubExport::writeBook(book, temp.filePath(QStringLiteral("orphan-caption-size.epub"))).status,
 		EpubExport::Status::InvalidInput);
 	book.blocks[0].caption = QStringLiteral("A visible caption");
 	book.blocks[0].captionAlignment = static_cast<EpubExport::TextAlignment>(7);
