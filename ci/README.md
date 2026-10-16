@@ -69,6 +69,13 @@ New coverage:
   targeting, image crop-offset isolation, object/position/size locks, undo/redo,
   table text retention and SLA save/reopen. Hidden Type/Paragraph page sizing is
   tested on the actual main-window inspector.
+  Six additional image/table x inline/above-line/custom cases exercise two
+  linked frames on separate pages. Inserting ten paragraphs before an anchor
+  moves it to page two and clears its page-one hit rectangle; removing that
+  prefix moves it back, and reinserting it moves it forward again. On page two,
+  real canvas events select the correct story frame and drag/resize the object,
+  including undo/redo. Save/reopen checks preserve the frame chain, story,
+  resolved geometry, resized dimensions, linked image and table cell text.
 - `script_shaping`: ten Indic scripts, Arabic and Hebrew, including conjuncts,
   reordered marks and ZWJ/ZWNJ. Fourteen samples compare real glyph IDs, advances,
   mark offsets and source-character coverage against explicit HarfBuzz shaping
@@ -122,6 +129,10 @@ on 17 October 2026 and confirmed the conjunct/vowel-mark placement looks correct
 That approval applies only to this sample and face. Other faces/scripts and
 longer-text behaviour remain pending; newly generated proof records correctly
 start with pending review status rather than inheriting a blanket approval.
+After adding the six linked-frame/page-boundary cases, the complete Mac build
+and all **64/64 CTest tests** passed again. The expanded native Cocoa workspace
+suite passed **28 cases with zero failures/skips**, including all six new cases.
+No application-code change was required by this bounded reflow check.
 An initial desktop-input service error was subsequently resolved for the
 anchored-image walkthrough: direct selection displayed handles, canvas dragging
 and handle resizing worked, and two Undo actions restored the original geometry
@@ -166,7 +177,12 @@ Arabic/Hebrew. This proves the baseline fixes, not subsequent test additions.
 The `cb2d314` follow-up [portable matrix](https://github.com/appajid/apscribe/actions/runs/38961392309)
 also passed; its [Linux](https://github.com/appajid/apscribe/actions/runs/38961392232)
 and [Windows](https://github.com/appajid/apscribe/actions/runs/38961392246)
-full runs were still in progress when recorded. Remaining acceptance includes native
+full runs were still in progress when recorded. The newer `4a4d243`
+[portable matrix](https://github.com/appajid/apscribe/actions/runs/38962837285)
+also passed; its full runs remained pending/in progress at the latest check.
+Remaining acceptance includes native
 light/dark and HiDPI walkthroughs, screen-reader/focus coverage, specialist Indic
-and RTL visual review with multiple font families, linked-story/page-boundary
-stress, grouped/shape anchors, copy/paste/unanchor, and PDF/print fidelity.
+and RTL visual review with multiple font families, large multi-frame and
+multi-occurrence story stress, grouped/shape anchors, copy/paste/unanchor, and
+PDF/print fidelity. The two-page image/table cases above are a bounded regression
+check, not certification of arbitrary long-document reflow.
