@@ -19,6 +19,7 @@ for which a new license (GPL+exception) is in place.
 #include "scribusdoc.h"
 #include "scribusview.h"
 #include "selection.h"
+#include "undomanager.h"
 #include "tabmanager.h"
 #include "hruler.h"
 
@@ -317,20 +318,30 @@ void PropertyWidget_Alignment::handleDirection(int d)
 {
 	if (!m_haveDoc || !m_haveItem || !m_ScMW || m_ScMW->scriptIsRunning())
 		return;
+	// setStyle() updates the checked button, not selectedId() (the last
+	// user click). Snapshot the displayed alignment before docChanged refreshes
+	// the inspector, and keep direction/alignment in one undoable operation.
+	const int alignment = textAlignment->getStyle();
+	UndoTransaction transaction;
+	if (UndoManager::undoEnabled())
+		transaction = UndoManager::instance()->beginTransaction(Um::Selection, Um::IGroup,
+			tr("Change Paragraph Direction"), QString(), Um::IFont);
 	Selection tempSelection(this, false);
 	tempSelection.addItem(m_item);
 	m_doc->itemSelection_SetDirection(d, &tempSelection);
 	// If current text alignment is left or right, change it to match direction
-	if (d == ParagraphStyle::RTL && textAlignment->selectedId() == ParagraphStyle::LeftAligned)
+	if (d == ParagraphStyle::RTL && alignment == ParagraphStyle::LeftAligned)
 	{
 		m_doc->itemSelection_SetAlignment(ParagraphStyle::RightAligned, &tempSelection);
-		textAlignment->setTypeStyle(ParagraphStyle::RightAligned);
+		textAlignment->setStyle(ParagraphStyle::RightAligned, d);
 	}
-	else if (d == ParagraphStyle::LTR && textAlignment->selectedId() == ParagraphStyle::RightAligned)
+	else if (d == ParagraphStyle::LTR && alignment == ParagraphStyle::RightAligned)
 	{
 		m_doc->itemSelection_SetAlignment(ParagraphStyle::LeftAligned, &tempSelection);
-		textAlignment->setTypeStyle(ParagraphStyle::LeftAligned);
+		textAlignment->setStyle(ParagraphStyle::LeftAligned, d);
 	}
+	if (transaction)
+		transaction.commit();
 	// Update the horizontal ruler to reflect the new direction
 	if (m_item->isTextFrame())
 	{
