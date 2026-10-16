@@ -168,18 +168,36 @@ full application/plugins and passed Phase 5, anchored-object and inspector
 checks. All fourteen script-shaping samples and twenty direction-inspector
 cases passed; the mixed Arabic/Latin persistence case failed because no listed
 font covered both scripts. The explicit DejaVu dependency/candidate above
-corrects the test setup; a rerun is required before claiming Linux success.
+corrects the test setup. The `cb2d314` rerun passed the full app/plugin build,
+all four Phase 5 CTest entries and all five focused verification CTest entries.
+Its retained report confirms **22 workspace cases and 37 shaping/direction
+cases**, zero failures/skips; mixed Arabic/Latin used DejaVu Sans Bold with real
+coverage rather than substitution.
 The baseline Windows run at `c264fdb` completed successfully: full application
 and plugins, package smoke checks, Phase 5 Scripter runtime, **21 workspace cases
 and 37 shaping/direction cases**, with zero failures or skips. It used the native
 Windows platform backend, Nirmala UI for all ten Indic scripts and Arial for
 Arabic/Hebrew. This proves the baseline fixes, not subsequent test additions.
 The `cb2d314` follow-up [portable matrix](https://github.com/appajid/apscribe/actions/runs/38961392309)
-also passed; its [Linux](https://github.com/appajid/apscribe/actions/runs/38961392232)
-and [Windows](https://github.com/appajid/apscribe/actions/runs/38961392246)
-full runs were still in progress when recorded. The newer `4a4d243`
+also passed, as did its full [Linux](https://github.com/appajid/apscribe/actions/runs/38961392232)
+and [Windows](https://github.com/appajid/apscribe/actions/runs/38961392246) runs.
+The Windows follow-up passed package smoke checks, Phase 5 Scripter runtime,
+**22 native workspace cases and 37 shaping/direction cases**, zero failures/skips.
+Its new actual-palette check passed on `qwindows`; Linux's fallback-palette check
+also passed. These results establish baseline evidence for the lock, inspector
+sizing and atomic direction/alignment undo fixes across the three tested targets,
+not complete GUI/accessibility or typography certification.
+
+The newer `4a4d243`
 [portable matrix](https://github.com/appajid/apscribe/actions/runs/38962837285)
-also passed; its full runs remained pending/in progress at the latest check.
+also passed. The latest `4d656c2`
+[portable matrix](https://github.com/appajid/apscribe/actions/runs/38963787180)
+passed on all three platforms. Its full
+[Linux](https://github.com/appajid/apscribe/actions/runs/38963787205) and
+[Windows](https://github.com/appajid/apscribe/actions/runs/38963787624) runs were
+still in progress at the latest check. The expanded multi-font and cross-page
+cases therefore remain unconfirmed on those two platforms; do not attribute
+the older `cb2d314` results to these later additions.
 Remaining acceptance includes native
 light/dark and HiDPI walkthroughs, screen-reader/focus coverage, specialist Indic
 and RTL visual review with multiple font families, large multi-frame and
