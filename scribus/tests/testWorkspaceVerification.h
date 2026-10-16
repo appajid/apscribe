@@ -11,6 +11,7 @@ class TestWorkspaceVerification : public QObject
 {
 	Q_OBJECT
 private slots:
+	void appearanceControlsChangePalette();
 	void inspectorHiddenPageSizing();
 	void anchoredCanvasEditing_data();
 	void anchoredCanvasEditing();

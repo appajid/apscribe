@@ -4,9 +4,11 @@ to the COPYING file provided with the program.
 */
 #include <QtTest>
 #include <QMouseEvent>
+#include <QScopeGuard>
 #include <QStackedWidget>
 #include <QTabBar>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include "testWorkspaceVerification.h"
@@ -15,12 +17,14 @@ to the COPYING file provided with the program.
 #include "commonstrings.h"
 #include "pageitem_table.h"
 #include "pageitem_textframe.h"
+#include "prefsmanager.h"
 #include "scribus.h"
 #include "scribuscore.h"
 #include "scribusdoc.h"
 #include "scribusview.h"
 #include "selection.h"
 #include "ui/contentpalette.h"
+#include "ui/factories/scribusproxystyle.h"
 #include "ui/propertiespalette_text.h"
 #include "ui/scrspinbox.h"
 #include "undomanager.h"
@@ -85,6 +89,62 @@ void TestWorkspaceVerification::cleanup()
 		window->view->requestMode(modeNormal);
 		window->doc->setModified(false);
 		window->slotFileClose();
+	}
+}
+
+void TestWorkspaceVerification::appearanceControlsChangePalette()
+{
+	QVERIFY(newDocument());
+	auto* window = ScCore->primaryMainWindow();
+	auto& prefs = PrefsManager::instance().appPrefs;
+	const QString originalAppearance = prefs.uiPrefs.stylePalette;
+	const QColor originalScratchColor = prefs.displayPrefs.scratchColor;
+	const auto restore = qScopeGuard([&]() {
+		prefs.uiPrefs.stylePalette = originalAppearance;
+		const auto theme = originalAppearance == "light" ? ScribusProxyStyle::ApplicationTheme::Light
+			: originalAppearance == "dark" ? ScribusProxyStyle::ApplicationTheme::Dark
+			: ScribusProxyStyle::ApplicationTheme::System;
+		ScribusProxyStyle::instance()->setApplicationTheme(theme);
+		QCoreApplication::processEvents();
+		prefs.displayPrefs.scratchColor = originalScratchColor;
+	});
+	QToolButton* light = nullptr;
+	QToolButton* dark = nullptr;
+	for (auto* button : window->findChildren<QToolButton*>("appearanceButton"))
+	{
+		if (button->accessibleName() == QCoreApplication::translate("EditToolBar", "Light Appearance"))
+			light = button;
+		else if (button->accessibleName() == QCoreApplication::translate("EditToolBar", "Dark Appearance"))
+			dark = button;
+	}
+	QVERIFY(light && dark);
+	// Linux supplies explicit fallback palettes. On macOS/Windows the native
+	// platform supplies them; Qt's offscreen/minimal plugins cannot do that.
+#ifdef Q_OS_LINUX
+	const bool checkPalette = true;
+#else
+	const bool checkPalette = QApplication::platformName() != "offscreen"
+		&& QApplication::platformName() != "minimal";
+#endif
+	if (!checkPalette)
+		qInfo("Headless backend: checking appearance commands only; palette evidence requires a native run");
+	for (bool useDark : {false, true, false})
+	{
+		(useDark ? dark : light)->click();
+		QCOMPARE(prefs.uiPrefs.stylePalette, useDark ? QString("dark") : QString("light"));
+		QCOMPARE(dark->isChecked(), useDark);
+		QCOMPARE(light->isChecked(), !useDark);
+		if (!checkPalette)
+			continue;
+		// Button state alone cannot prove appearance changed. Verify actual
+		// application and inspector surfaces after queued palette propagation.
+		auto matchesAppearance = [useDark](const QPalette& palette) {
+			const int surface = palette.color(QPalette::Active, QPalette::Window).lightness();
+			const int text = palette.color(QPalette::Active, QPalette::WindowText).lightness();
+			return useDark ? surface < text : surface > text;
+		};
+		QTRY_VERIFY2(matchesAppearance(QApplication::palette()), "Application palette does not match the selected appearance");
+		QTRY_VERIFY2(matchesAppearance(window->contentPalette->palette()), "Inspector palette does not match the selected appearance");
 	}
 }
 
