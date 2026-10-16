@@ -40,6 +40,7 @@ for which a new license (GPL+exception) is in place.
 #include "stylecombos.h"
 #include "undomanager.h"
 #include "widgets/section_container.h"
+#include "widgets/stacked_container.h"
 
 //using namespace std;
 
@@ -154,7 +155,7 @@ PropertiesPalette_Text::PropertiesPalette_Text( QWidget* parent) : QWidget(paren
 	paragraphLayout->addWidget(scOrphans);
 	paragraphLayout->addStretch(1);
 
-	textModeStack = new QStackedWidget(this);
+	textModeStack = new StackedContainer(this);
 	textModeStack->setObjectName(QStringLiteral("textInspectorStack"));
 	textModeStack->addWidget(typePage);
 	textModeStack->addWidget(paragraphPage);

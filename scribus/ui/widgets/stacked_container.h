@@ -14,6 +14,9 @@ public:
 	QSize minimumSizeHint() const override;
 	QSize sizeHint() const override;
 
+protected:
+	bool event(QEvent* event) override;
+
 private slots:
 	void updateSize();
 
