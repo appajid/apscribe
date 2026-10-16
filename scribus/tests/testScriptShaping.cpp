@@ -5,6 +5,11 @@ to the COPYING file provided with the program.
 #include <QtTest>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QPainter>
+#include <QRegularExpression>
+#include <QSaveFile>
 #include <QTemporaryDir>
 #include <QScopeGuard>
 #include <QTabBar>
@@ -29,10 +34,13 @@ to the COPYING file provided with the program.
 
 namespace
 {
-ScFace scriptFont(const QStringList& families, const QString& text)
+QList<ScFace> scriptFaces(const QStringList& families, const QString& text)
 {
 	const auto& fonts = PrefsManager::instance().appPrefs.fontPrefs.AvailFonts;
+	QList<ScFace> result;
 	for (const QString& family : families)
+	{
+		QList<ScFace> matches;
 		for (auto it = fonts.cbegin(); it != fonts.cend(); ++it)
 		{
 			const ScFace& face = it.value();
@@ -43,9 +51,34 @@ ScFace scriptFont(const QStringList& families, const QString& text)
 				if (!ch.isSpace() && ch.category() != QChar::Other_Format && !face.canRender(ch))
 					coverage = false;
 			if (coverage)
-				return face;
+				matches.append(face);
 		}
-	return ScFace();
+		if (matches.isEmpty())
+			continue;
+		// Keep proof sheets readable, but exercise a second real face too. Do
+		// not synthesize bold or let a similarly named family satisfy coverage.
+		int regular = 0;
+		for (int i = 0; i < matches.size(); ++i)
+			if (matches[i].style().compare("Regular", Qt::CaseInsensitive) == 0)
+			{
+				regular = i;
+				break;
+			}
+		result.append(matches[regular]);
+		for (const auto& face : matches)
+			if (face.scName() != matches[regular].scName())
+			{
+				result.append(face);
+				break;
+			}
+	}
+	return result;
+}
+
+ScFace scriptFont(const QStringList& families, const QString& text)
+{
+	const auto faces = scriptFaces(families, text);
+	return faces.isEmpty() ? ScFace() : faces.constFirst();
 }
 
 bool requireFonts()
@@ -97,33 +130,51 @@ void TestScriptShaping::shaping_data()
 {
 	QTest::addColumn<QString>("text");
 	QTest::addColumn<QStringList>("families");
+	QTest::addColumn<QString>("fontName");
 	QTest::addColumn<QString>("language");
 	QTest::addColumn<QString>("script");
 	QTest::addColumn<bool>("rtl");
-	QTest::newRow("telugu-conjunct") << QString::fromUtf8("క్షి") << QStringList{"Noto Sans Telugu", "Telugu Sangam MN", "Nirmala UI"} << "te" << "Telu" << false;
-	QTest::newRow("devanagari-reordering") << QString::fromUtf8("क्षि") << QStringList{"Noto Sans Devanagari", "Devanagari Sangam MN", "Nirmala UI"} << "hi" << "Deva" << false;
-	QTest::newRow("bengali-reordering") << QString::fromUtf8("ক্ষি") << QStringList{"Noto Sans Bengali", "Bangla Sangam MN", "Nirmala UI"} << "bn" << "Beng" << false;
-	QTest::newRow("tamil") << QString::fromUtf8("ஸ்ரீ") << QStringList{"Noto Sans Tamil", "Tamil Sangam MN", "Nirmala UI"} << "ta" << "Taml" << false;
-	QTest::newRow("kannada") << QString::fromUtf8("ಕ್ಷಿ") << QStringList{"Noto Sans Kannada", "Kannada Sangam MN", "Nirmala UI"} << "kn" << "Knda" << false;
-	QTest::newRow("malayalam") << QString::fromUtf8("ക്ഷി") << QStringList{"Noto Sans Malayalam", "Malayalam Sangam MN", "Nirmala UI"} << "ml" << "Mlym" << false;
-	QTest::newRow("gujarati") << QString::fromUtf8("ક્ષિ") << QStringList{"Noto Sans Gujarati", "Gujarati Sangam MN", "Nirmala UI"} << "gu" << "Gujr" << false;
-	QTest::newRow("gurmukhi") << QString::fromUtf8("ਕ੍ਰਿ") << QStringList{"Noto Sans Gurmukhi", "Gurmukhi Sangam MN", "Nirmala UI"} << "pa" << "Guru" << false;
-	QTest::newRow("odia") << QString::fromUtf8("କ୍ଷି") << QStringList{"Noto Sans Oriya", "Oriya Sangam MN", "Nirmala UI"} << "or" << "Orya" << false;
-	QTest::newRow("sinhala") << QString::fromUtf8("ශ්‍රී") << QStringList{"Noto Sans Sinhala", "Sinhala Sangam MN", "Nirmala UI"} << "si" << "Sinh" << false;
-	QTest::newRow("arabic-marks") << QString::fromUtf8("السَّلَامُ") << QStringList{"Noto Naskh Arabic", "Geeza Pro", "Arial"} << "ar" << "Arab" << true;
-	QTest::newRow("hebrew-marks") << QString::fromUtf8("שָׁלוֹם") << QStringList{"Noto Sans Hebrew", "Arial Hebrew", "Arial"} << "he" << "Hebr" << true;
-	QTest::newRow("devanagari-zwj") << QString::fromUtf8("क्\u200dषि") << QStringList{"Noto Sans Devanagari", "Devanagari Sangam MN", "Nirmala UI"} << "hi" << "Deva" << false;
-	QTest::newRow("devanagari-zwnj") << QString::fromUtf8("क्\u200cषि") << QStringList{"Noto Sans Devanagari", "Devanagari Sangam MN", "Nirmala UI"} << "hi" << "Deva" << false;
+	auto sample = [](const char* tag, const QString& text, const QStringList& families,
+	                 const QString& language, const QString& script, bool rtl) {
+		const auto faces = scriptFaces(families, text);
+		if (faces.isEmpty())
+		{
+			// Do not silently drop a script when expanding the font matrix.
+			QTest::newRow(tag) << text << families << QString() << language << script << rtl;
+			return;
+		}
+		for (const auto& face : faces)
+		{
+			const QByteArray name = QByteArray(tag) + "--" + face.scName().toUtf8();
+			QTest::newRow(name.constData()) << text << families << face.scName() << language << script << rtl;
+		}
+	};
+	sample("telugu-conjunct", QString::fromUtf8("క్షి"), {"Noto Sans Telugu", "Telugu Sangam MN", "Nirmala UI"}, "te", "Telu", false);
+	sample("devanagari-reordering", QString::fromUtf8("क्षि"), {"Noto Sans Devanagari", "Devanagari Sangam MN", "Nirmala UI"}, "hi", "Deva", false);
+	sample("bengali-reordering", QString::fromUtf8("ক্ষি"), {"Noto Sans Bengali", "Bangla Sangam MN", "Nirmala UI"}, "bn", "Beng", false);
+	sample("tamil", QString::fromUtf8("ஸ்ரீ"), {"Noto Sans Tamil", "Tamil Sangam MN", "Nirmala UI"}, "ta", "Taml", false);
+	sample("kannada", QString::fromUtf8("ಕ್ಷಿ"), {"Noto Sans Kannada", "Kannada Sangam MN", "Nirmala UI"}, "kn", "Knda", false);
+	sample("malayalam", QString::fromUtf8("ക്ഷി"), {"Noto Sans Malayalam", "Malayalam Sangam MN", "Nirmala UI"}, "ml", "Mlym", false);
+	sample("gujarati", QString::fromUtf8("ક્ષિ"), {"Noto Sans Gujarati", "Gujarati Sangam MN", "Nirmala UI"}, "gu", "Gujr", false);
+	sample("gurmukhi", QString::fromUtf8("ਕ੍ਰਿ"), {"Noto Sans Gurmukhi", "Gurmukhi Sangam MN", "Nirmala UI"}, "pa", "Guru", false);
+	sample("odia", QString::fromUtf8("କ୍ଷି"), {"Noto Sans Oriya", "Oriya Sangam MN", "Nirmala UI"}, "or", "Orya", false);
+	sample("sinhala", QString::fromUtf8("ශ්‍රී"), {"Noto Sans Sinhala", "Sinhala Sangam MN", "Nirmala UI"}, "si", "Sinh", false);
+	sample("arabic-marks", QString::fromUtf8("السَّلَامُ"), {"Noto Naskh Arabic", "Geeza Pro", "Arial", "DejaVu Sans"}, "ar", "Arab", true);
+	sample("hebrew-marks", QString::fromUtf8("שָׁלוֹם"), {"Noto Sans Hebrew", "Arial Hebrew", "Arial", "DejaVu Sans"}, "he", "Hebr", true);
+	sample("devanagari-zwj", QString::fromUtf8("क्\u200dषि"), {"Noto Sans Devanagari", "Devanagari Sangam MN", "Nirmala UI"}, "hi", "Deva", false);
+	sample("devanagari-zwnj", QString::fromUtf8("क्\u200cषि"), {"Noto Sans Devanagari", "Devanagari Sangam MN", "Nirmala UI"}, "hi", "Deva", false);
 }
 
 void TestScriptShaping::shaping()
 {
 	QFETCH(QString, text);
 	QFETCH(QStringList, families);
+	QFETCH(QString, fontName);
 	QFETCH(QString, language);
 	QFETCH(QString, script);
 	QFETCH(bool, rtl);
-	const ScFace face = scriptFont(families, text);
+	const ScFace face = fontName.isEmpty() ? ScFace()
+		: PrefsManager::instance().appPrefs.fontPrefs.AvailFonts.value(fontName);
 	if (face.isNone())
 	{
 		QVERIFY2(!requireFonts(), qPrintable("Install a script font: " + families.join(", ")));
@@ -191,7 +242,34 @@ void TestScriptShaping::shaping()
 	if (!output.isEmpty())
 	{
 		QVERIFY(QDir().mkpath(output));
-		QVERIFY(frame->DrawObj_toImage(1400).save(QDir(output).filePath(QString::fromLatin1(QTest::currentDataTag()) + ".png")));
+		const QString tag = QString::fromUtf8(QTest::currentDataTag());
+		QString filename = tag;
+		filename.replace(QRegularExpression("[^A-Za-z0-9_-]"), "_");
+		const QImage rendered = frame->DrawObj_toImage(1400);
+		QVERIFY(!rendered.isNull());
+		QImage proof(rendered.width(), rendered.height() + 64, QImage::Format_ARGB32_Premultiplied);
+		proof.fill(Qt::white);
+		{
+			QPainter painter(&proof);
+			painter.setPen(Qt::black);
+			painter.drawText(QRect(12, 4, proof.width() - 24, 52), Qt::AlignLeft | Qt::TextWordWrap,
+				tag + "\nHarfBuzz comparison passed; visual review pending");
+			painter.drawImage(0, 64, rendered);
+		}
+		QVERIFY(proof.save(QDir(output).filePath(filename + ".png")));
+		const QJsonObject metadata {
+			{"sample", tag}, {"text", text}, {"font", face.scName()},
+			{"family", face.family()}, {"style", face.style()},
+			{"script", script}, {"language", language}, {"rtl", rtl},
+			{"glyphCount", actual.size()}, {"platform", QApplication::platformName()},
+			{"oracle", "HarfBuzz"}, {"visualReview", "pending"},
+			{"image", filename + ".png"}
+		};
+		QSaveFile report(QDir(output).filePath(filename + ".json"));
+		QVERIFY(report.open(QIODevice::WriteOnly));
+		const QByteArray json = QJsonDocument(metadata).toJson();
+		QCOMPARE(report.write(json), qint64(json.size()));
+		QVERIFY(report.commit());
 	}
 }
 
