@@ -76,6 +76,16 @@ New coverage:
   are checked. Twenty frame/table-cell scenarios exercise the real direction
   inspector across both directions and all five alignments, including one-step
   undo/redo and isolation of the following paragraph.
+  The follow-up matrix expands each of the fourteen base samples across the
+  listed families actually available on the machine, selecting a real Regular
+  face where present and one alternate face per family. It does not certify
+  every installed font or synthesize a second weight. A script with no covering
+  face still fails under `APSCRIBE_REQUIRE_SCRIPT_FONTS=1`.
+  When `APSCRIBE_SCRIPT_QA_OUTPUT` is set, each successful comparison emits a
+  labelled, white-background PNG and a JSON record with the exact family/style,
+  source text, script, language, platform and glyph count. Both explicitly mark
+  specialist visual review as pending; numeric oracle success is not visual
+  approval. These files are included in the existing CI report artifacts.
 - `inspectorstacktests`: active-page resizing, explicit minimum sizes,
   expanded/collapsed size propagation and empty-stack safety; included in the
   Windows/Linux/macOS portable matrix.
@@ -101,6 +111,17 @@ failures/skips**). The complete Mac CTest suite was also repeated, **64/64
 passed**. A desktop-control click had changed the button's checked state without
 changing the preference; that observation was not reproduced by the actual
 toolbar commands, so no production theme patch was made.
+The multi-font follow-up passed **57 native Cocoa cases**, zero failures/skips:
+34 font/script comparisons across 14 installed families, mixed-direction
+persistence, 20 direction-inspector scenarios and setup/cleanup. All 34 native
+PNG/JSON pairs were checked for valid files and pending review status; Telugu
+and Arabic proof rendering was visually inspected for readable output. This
+does not close specialist language review.
+The user subsequently reviewed the **Telugu Sangam MN Regular / `క్షి`** proof
+on 17 October 2026 and confirmed the conjunct/vowel-mark placement looks correct.
+That approval applies only to this sample and face. Other faces/scripts and
+longer-text behaviour remain pending; newly generated proof records correctly
+start with pending review status rather than inheriting a blanket approval.
 An initial desktop-input service error was subsequently resolved for the
 anchored-image walkthrough: direct selection displayed handles, canvas dragging
 and handle resizing worked, and two Undo actions restored the original geometry
@@ -137,8 +158,15 @@ checks. All fourteen script-shaping samples and twenty direction-inspector
 cases passed; the mixed Arabic/Latin persistence case failed because no listed
 font covered both scripts. The explicit DejaVu dependency/candidate above
 corrects the test setup; a rerun is required before claiming Linux success.
-The Windows full build was still in progress at the latest check. Do not infer
-its success from the Mac results. Remaining acceptance includes native
+The baseline Windows run at `c264fdb` completed successfully: full application
+and plugins, package smoke checks, Phase 5 Scripter runtime, **21 workspace cases
+and 37 shaping/direction cases**, with zero failures or skips. It used the native
+Windows platform backend, Nirmala UI for all ten Indic scripts and Arial for
+Arabic/Hebrew. This proves the baseline fixes, not subsequent test additions.
+The `cb2d314` follow-up [portable matrix](https://github.com/appajid/apscribe/actions/runs/38961392309)
+also passed; its [Linux](https://github.com/appajid/apscribe/actions/runs/38961392232)
+and [Windows](https://github.com/appajid/apscribe/actions/runs/38961392246)
+full runs were still in progress when recorded. Remaining acceptance includes native
 light/dark and HiDPI walkthroughs, screen-reader/focus coverage, specialist Indic
 and RTL visual review with multiple font families, linked-story/page-boundary
 stress, grouped/shape anchors, copy/paste/unanchor, and PDF/print fidelity.
