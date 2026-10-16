@@ -79,6 +79,11 @@ New coverage:
 - `inspectorstacktests`: active-page resizing, explicit minimum sizes,
   expanded/collapsed size propagation and empty-stack safety; included in the
   Windows/Linux/macOS portable matrix.
+- `workspace_verification` also exercises Light -> Dark -> Light through the
+  toolbar commands and checks the application's and inspector's actual surface
+  and text colours on native backends (and Linux's explicit fallback palettes).
+  On macOS/Windows offscreen or minimal backends it checks commands/preferences
+  only, explicitly logging that these cannot provide native palette evidence.
 
 Mac/Qt 6.11.2: the rebuilt application and all plugins pass **64/64 CTest
 tests** with `APSCRIBE_REQUIRE_SCRIPT_FONTS=1`, and **20/20 portable tests**.
@@ -87,14 +92,33 @@ are installed-app/offscreen tests, not proof of every desktop gesture or script.
 The normal macOS app also launched and opened the synthetic anchored fixture.
 Both new native suites were subsequently repeated outside the sandbox using
 the Cocoa backend: **21 workspace cases and 37 shaping/direction cases passed,
-with no failures or skips**. The existing appearance self-test also passed
-Light -> Dark -> System switching and restored its isolated `auto` preference;
-the workspace cases remained green during that run.
-Desktop canvas input through the computer-use service returned
-`windowNotFoundAtPosition`, so a hands-on visual/gesture certification is not
-claimed on that evidence.
+with no failures or skips**. The existing appearance self-test exercised
+Light/Dark commands and restored its isolated `auto` preference; the workspace
+cases remained green during that run. The subsequent actual-palette regression
+test passed separately on native Cocoa (three QtTest cases including setup and
+cleanup), followed by the complete expanded workspace suite (**22 passed, zero
+failures/skips**). The complete Mac CTest suite was also repeated, **64/64
+passed**. A desktop-control click had changed the button's checked state without
+changing the preference; that observation was not reproduced by the actual
+toolbar commands, so no production theme patch was made.
+An initial desktop-input service error was subsequently resolved for the
+anchored-image walkthrough: direct selection displayed handles, canvas dragging
+and handle resizing worked, and two Undo actions restored the original geometry
+without saving the document. The tester reported that tables could be dragged
+and subsequently confirmed the unlocked image was working too. This is scoped
+Mac gesture evidence, not certification of every anchored-object operation.
 
-Linux CI installs `fonts-noto-core` and requires all script samples to run.
+The Scripter persistence fixture deliberately saves the image with manual
+positioning locked. It now also creates and reopens a separate
+`apscribe_anchored_manual_drag.sla` with image/table manual positioning and
+keep-within-bounds constraints disabled, checking that both settings and the
+linked image survive reopening. Use this separate file for free-drag acceptance
+testing; the original lock-persistence assertions remain intact.
+
+Linux CI installs `fonts-noto-core` and `fonts-dejavu-core` and requires all
+script samples to run. The mixed Arabic/Latin test checks full coverage in a
+single face; DejaVu Sans provides the explicit Linux candidate without relying
+on font substitution.
 Windows uses an opt-in `APSCRIBE_VERIFICATION_TESTS=true` main-project import
 (VS 2019/2022/2026) to compile the same native suites and link QtTest. Ordinary
 release builds do not enable this import. The Windows verification runner
@@ -107,8 +131,14 @@ Initial CI runs for the verification commit:
 - [Windows native verification](https://github.com/appajid/apscribe/actions/runs/38957653213)
 - [Three-platform portable checks](https://github.com/appajid/apscribe/actions/runs/38957653244)
 
-Those runs were still in progress when this section was written. Do not infer
-Windows/Linux success from the Mac results. Remaining acceptance includes native
+The three-platform portable checks passed. The initial Linux run compiled the
+full application/plugins and passed Phase 5, anchored-object and inspector
+checks. All fourteen script-shaping samples and twenty direction-inspector
+cases passed; the mixed Arabic/Latin persistence case failed because no listed
+font covered both scripts. The explicit DejaVu dependency/candidate above
+corrects the test setup; a rerun is required before claiming Linux success.
+The Windows full build was still in progress at the latest check. Do not infer
+its success from the Mac results. Remaining acceptance includes native
 light/dark and HiDPI walkthroughs, screen-reader/focus coverage, specialist Indic
 and RTL visual review with multiple font families, linked-story/page-boundary
 stress, grouped/shape anchors, copy/paste/unanchor, and PDF/print fidelity.
