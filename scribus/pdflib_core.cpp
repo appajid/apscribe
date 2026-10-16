@@ -540,6 +540,15 @@ public:
 
 	void drawObject(PageItem* embedded) override
 	{
+		QByteArray output;
+		if (!m_pdf->PDF_ProcessItem(output, embedded, m_page, m_PNr, true))
+		{
+			// Text-layout painters cannot return an error through drawObject().
+			// Propagate it to the containing item without emitting an unmatched
+			// ET/q sequence or accepting a partially written PDF as successful.
+			m_pdf->embeddedItemExportFailed = true;
+			return;
+		}
 		m_glyphBuffer += "ET\n" + m_pathBuffer;
 		m_pathBuffer.clear();
 		m_textState.reset();
@@ -548,9 +557,6 @@ public:
 		m_pathBuffer += "q\n";
 		m_pathBuffer += FToStr(scaleH()) + " 0 0 " + FToStr(scaleV()) + " " + FToStr(x()) + " " + FToStr(-y()) + " cm\n";
 
-		QByteArray output;
-		if (!m_pdf->PDF_ProcessItem(output, embedded, m_page, m_PNr, true))
-			return;
 		m_pathBuffer += output;
 		m_pathBuffer += "Q\n";
 		m_glyphBuffer += m_pathBuffer + "\n";
@@ -4323,6 +4329,8 @@ QByteArray PDFLibCore::PDF_PutSoftShadow(PageItem* ite)
  */
 bool PDFLibCore::PDF_ProcessItem(QByteArray& output, PageItem* ite, const ScPage* pag, uint PNr, bool embedded, bool pattern)
 {
+	if (embeddedItemExportFailed)
+		return false;
 	QByteArray tmp(""), tmpOut;
 	if (ite->isGroup())
 		ite->asGroupFrame()->adjustXYPosition();
@@ -5395,6 +5403,8 @@ bool PDFLibCore::PDF_ProcessItem(QByteArray& output, PageItem* ite, const ScPage
 		default:
 			break;
 	}
+	if (embeddedItemExportFailed)
+		return false;
 	tmp += "Q\n";
 	output = tmp;
 	return true;

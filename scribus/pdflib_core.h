@@ -325,6 +325,7 @@ private:
 	QMap<QString, QString> StdFonts;
 	MultiProgressDialog* progressDialog { nullptr };
 	bool abortExport { false };
+	bool embeddedItemExportFailed { false };
 	bool usingGUI;
 	double bleedDisplacementX { 0.0 };
 	double bleedDisplacementY { 0.0 };
