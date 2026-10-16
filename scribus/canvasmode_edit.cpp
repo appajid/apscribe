@@ -587,7 +587,8 @@ void CanvasMode_Edit::mouseMoveEvent(QMouseEvent *m)
 	if (m_pressedAnchoredObject)
 	{
 		PageItem* embedded = m_doc->FrameItems.value(m_pressedAnchorId, nullptr);
-		if (embedded && (m_anchorResizeHandle >= 0 || !embedded->anchorPosition().preventManualPositioning)
+		if (embedded && !embedded->locked()
+			&& (m_anchorResizeHandle >= 0 || !embedded->anchorPosition().preventManualPositioning)
 			&& (m->buttons() & Qt::LeftButton))
 		{
 			const FPoint point = m_canvas->globalToCanvas(m->globalPosition());
@@ -999,7 +1000,7 @@ void CanvasMode_Edit::mouseReleaseEvent(QMouseEvent *m)
 	{
 		PageItem* frame = nullptr;
 		PageItem* embedded = m_doc->FrameItems.value(m_pressedAnchorId, nullptr);
-		if (m->button() == Qt::LeftButton && GetItem(&frame) && frame->isTextFrame() && embedded
+		if (m->button() == Qt::LeftButton && GetItem(&frame) && frame->isTextFrame() && embedded && !embedded->locked()
 			&& !frame->locked() && !m_doc->layerLocked(frame->m_layerID)
 			&& m_anchorDragDelta.manhattanLength() * m_canvas->scale() >= QApplication::startDragDistance())
 		{
