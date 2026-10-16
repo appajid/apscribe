@@ -39,3 +39,76 @@ integration and GUI checks on that platform.
 
 The current Phase 3 results and remaining certification gates are recorded in
 [`PHASE_3_VALIDATION.md`](PHASE_3_VALIDATION.md).
+
+## Anchored objects, inspector and Indic/RTL verification (17 October 2026)
+
+This is a scoped follow-up to the older Phase 3 checklist, not a declaration
+that all typography, accessibility or anchored editing operations are certified.
+The verification branch is `codex/apscribe-workspace-verification-2026-10-17`;
+public RC2 installers have not been replaced by these test-instrumented builds.
+
+Reproduced and corrected:
+
+- Locked anchored images/tables could still be dragged. Both drag preview and
+  release now honor the object's lock, as well as the existing frame/layer locks.
+- Changing paragraph direction and its associated alignment required multiple
+  Undo actions. The inspector also used the last clicked alignment rather than
+  the currently displayed one, which could overwrite centered/justified text.
+  Direction/alignment are now one transaction, with no duplicate alignment signal.
+- Inspector stacks did not safely handle an empty stack or explicit page minima;
+  the Type/Paragraph stack included inactive pages in its size requirements.
+  Active-page hints now propagate without forcibly resizing the user's dock.
+  This addresses a concrete sizing cause related to upstream #167, not a claim
+  to have reproduced its original Ubuntu/KDE/Qt 5 environment.
+
+New coverage:
+
+- `workspace_verification`: actual canvas mouse events select, drag and resize
+  image/table anchors in inline, above-line and custom modes, in ordinary,
+  rotated and mirrored text frames (18 scenarios). Checks include inspector
+  targeting, image crop-offset isolation, object/position/size locks, undo/redo,
+  table text retention and SLA save/reopen. Hidden Type/Paragraph page sizing is
+  tested on the actual main-window inspector.
+- `script_shaping`: ten Indic scripts, Arabic and Hebrew, including conjuncts,
+  reordered marks and ZWJ/ZWNJ. Fourteen samples compare real glyph IDs, advances,
+  mark offsets and source-character coverage against explicit HarfBuzz shaping
+  with the same font. Mixed Arabic/Latin text and direction/font SLA persistence
+  are checked. Twenty frame/table-cell scenarios exercise the real direction
+  inspector across both directions and all five alignments, including one-step
+  undo/redo and isolation of the following paragraph.
+- `inspectorstacktests`: active-page resizing, explicit minimum sizes,
+  expanded/collapsed size propagation and empty-stack safety; included in the
+  Windows/Linux/macOS portable matrix.
+
+Mac/Qt 6.11.2: the rebuilt application and all plugins pass **64/64 CTest
+tests** with `APSCRIBE_REQUIRE_SCRIPT_FONTS=1`, and **20/20 portable tests**.
+All fourteen shaping samples had real font coverage; none were skipped. These
+are installed-app/offscreen tests, not proof of every desktop gesture or script.
+The normal macOS app also launched and opened the synthetic anchored fixture.
+Both new native suites were subsequently repeated outside the sandbox using
+the Cocoa backend: **21 workspace cases and 37 shaping/direction cases passed,
+with no failures or skips**. The existing appearance self-test also passed
+Light -> Dark -> System switching and restored its isolated `auto` preference;
+the workspace cases remained green during that run.
+Desktop canvas input through the computer-use service returned
+`windowNotFoundAtPosition`, so a hands-on visual/gesture certification is not
+claimed on that evidence.
+
+Linux CI installs `fonts-noto-core` and requires all script samples to run.
+Windows uses an opt-in `APSCRIBE_VERIFICATION_TESTS=true` main-project import
+(VS 2019/2022/2026) to compile the same native suites and link QtTest. Ordinary
+release builds do not enable this import. The Windows verification runner
+requires native `qwindows` startup, complete font coverage and zero skipped
+cases; its reports and rendered samples are retained as Actions artifacts.
+
+Initial CI runs for the verification commit:
+
+- [Linux native verification](https://github.com/appajid/apscribe/actions/runs/38957653312)
+- [Windows native verification](https://github.com/appajid/apscribe/actions/runs/38957653213)
+- [Three-platform portable checks](https://github.com/appajid/apscribe/actions/runs/38957653244)
+
+Those runs were still in progress when this section was written. Do not infer
+Windows/Linux success from the Mac results. Remaining acceptance includes native
+light/dark and HiDPI walkthroughs, screen-reader/focus coverage, specialist Indic
+and RTL visual review with multiple font families, linked-story/page-boundary
+stress, grouped/shape anchors, copy/paste/unanchor, and PDF/print fidelity.
