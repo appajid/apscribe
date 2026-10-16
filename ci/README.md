@@ -237,6 +237,18 @@ image-write error raises an exception and leaves no incomplete PDF. Healthy
 exports were repeated after the fix: both anchored-image occurrences matched
 canvas bounds within two pixels at 144 dpi, with a balanced PDF graphics stack;
 the Indic/RTL proof rendered legibly with embedded fonts. These are bounded
-smoke checks, not PDF/X, accessibility or physical-print certification. This new
-fix still requires Windows/Linux CI verification; the older green runs do not
-include it. Public RC2 remains unchanged.
+smoke checks, not PDF/X, accessibility or physical-print certification.
+
+At source revision `0578423`, the
+[portable matrix](https://github.com/appajid/apscribe/actions/runs/38967161321)
+passed **20/20 tests on macOS, 20/20 on Linux and 18/18 on Windows**. The Windows
+portable configuration excludes the standalone object-style target and lacks
+the optional TIFF-writer target; a successful full application build establishes
+linkage, not equivalent runtime coverage for those excluded tests. This small
+matrix does not run the PDF-failure regression. Its full
+[Linux run](https://github.com/appajid/apscribe/actions/runs/38967161365) was
+compiling and its full
+[Windows run](https://github.com/appajid/apscribe/actions/runs/38967161503) was
+pending at the latest check. The new PDF fix therefore still requires full
+Windows/Linux CI verification; the older green runs do not include it.
+Public RC2 remains unchanged.
