@@ -3,6 +3,7 @@ For general Scribus (>=1.3.2) copyright and licensing information please refer
 to the COPYING file provided with the program.
 */
 #include <QtTest>
+#include <QFile>
 #include <QFileInfo>
 #include <QMouseEvent>
 #include <QScopeGuard>
@@ -18,6 +19,8 @@ to the COPYING file provided with the program.
 #include "commonstrings.h"
 #include "pageitem_table.h"
 #include "pageitem_textframe.h"
+#include "pdflib.h"
+#include "pdfoptions.h"
 #include "prefsmanager.h"
 #include "scpage.h"
 #include "scribus.h"
@@ -497,4 +500,89 @@ void TestWorkspaceVerification::linkedFrameAnchorReflow()
 		QCOMPARE(item->asTable()->cellAt(0, 0).textFrame()->itemText.text(0, 12), QString("Cell content"));
 	else
 		QCOMPARE(QFileInfo(item->Pfile).canonicalFilePath(), QFileInfo(imagePath).canonicalFilePath());
+}
+
+void TestWorkspaceVerification::anchoredPdfImageFailure_data()
+{
+	QTest::addColumn<bool>("missingSource");
+	QTest::addColumn<bool>("tableCell");
+	QTest::addColumn<int>("mode");
+	for (bool missing : {false, true})
+		for (bool cell : {false, true})
+			for (int mode : {0, 1, 2})
+				QTest::newRow(qPrintable(QString("%1-%2-mode-%3").arg(missing ? "missing" : "valid")
+					.arg(cell ? "cell" : "frame").arg(mode))) << missing << cell << mode;
+}
+
+void TestWorkspaceVerification::anchoredPdfImageFailure()
+{
+	QFETCH(bool, missingSource);
+	QFETCH(bool, tableCell);
+	QFETCH(int, mode);
+	auto* doc = newDocument();
+	QVERIFY(doc);
+	const int ownerIndex = doc->itemAdd(tableCell ? PageItem::Table : PageItem::TextFrame,
+		PageItem::Unspecified, 80, 100, 350, 300, 0, CommonStrings::None, CommonStrings::None);
+	QVERIFY(ownerIndex >= 0);
+	auto* owner = doc->Items->at(ownerIndex);
+	auto* story = tableCell ? owner->asTable()->cellAt(0, 0).textFrame() : owner->asTextFrame();
+	QVERIFY(story);
+	story->itemText.insertChars(0, QString("Before") + SpecialChars::PARSEP + "After image.");
+	const int imageIndex = doc->itemAdd(PageItem::ImageFrame, PageItem::Unspecified,
+		80, 100, 60, 40, 0, CommonStrings::None, CommonStrings::None);
+	QVERIFY(imageIndex >= 0);
+	auto* image = doc->Items->at(imageIndex);
+	QTemporaryDir directory;
+	QVERIFY(directory.isValid());
+	const QString source = directory.filePath("source.png");
+	QImage pixels(120, 80, QImage::Format_RGB32);
+	pixels.fill(Qt::blue);
+	QVERIFY(pixels.save(source));
+	QVERIFY(doc->loadPict(source, image));
+	image->setImageXYScale(0.5, 0.5);
+	image->isEmbedded = true;
+	image->gXpos = image->gYpos = 0;
+	image->gWidth = image->width();
+	image->gHeight = image->height();
+	const int id = doc->addToInlineFrames(image);
+	doc->Items->removeAt(imageIndex);
+	AnchorPosition position;
+	position.mode = static_cast<AnchorPosition::Mode>(mode);
+	image->setAnchorPosition(position);
+	story->itemText.insertObject(7, id);
+	story->layout();
+	QVERIFY(!story->resolvedAnchoredObjectRect(id).isEmpty());
+	// Keep the on-screen cached image, but simulate a source disappearing
+	// before export reloads it. Only this test-owned temporary file is removed.
+	if (missingSource)
+		QVERIFY(QFile::remove(source));
+	PDFOptions options = doc->pdfOptions();
+	// Avoid JPEG's separate temporary-file requirement in headless CI. The
+	// failure must come from the missing source, not the test sandbox.
+	options.CompressMethod = PDFOptions::Compression_ZIP;
+	options.UseRGB = true;
+	PDFlib pdf(*doc, options);
+	const QString output = directory.filePath("anchored.pdf");
+	const bool exported = pdf.doExport(output, {1}, QMap<int, QImage>());
+	if (missingSource)
+	{
+		QVERIFY2(!exported, "An anchored image export failure was silently reported as success");
+		QVERIFY(!pdf.errorMessage().isEmpty());
+		QVERIFY(pdf.exportAborted());
+		QVERIFY2(!QFileInfo::exists(output), "An incomplete PDF remained after export failed");
+		// Correcting the source must permit a fresh export of this same story.
+		QVERIFY(pixels.save(source));
+		PDFlib retry(*doc, options);
+		QVERIFY2(retry.doExport(output, {1}, QMap<int, QImage>()), qPrintable(retry.errorMessage()));
+		QVERIFY(!retry.exportAborted());
+	}
+	else
+	{
+		QVERIFY2(exported, qPrintable(pdf.errorMessage()));
+		QVERIFY(!pdf.exportAborted());
+		QVERIFY(QFileInfo(output).size() > 1000);
+	}
+	QFile exportedFile(output);
+	QVERIFY(exportedFile.open(QIODevice::ReadOnly));
+	QVERIFY(exportedFile.readAll().contains("/Subtype /Image"));
 }

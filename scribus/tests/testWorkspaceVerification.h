@@ -17,6 +17,8 @@ private slots:
 	void anchoredCanvasEditing();
 	void linkedFrameAnchorReflow_data();
 	void linkedFrameAnchorReflow();
+	void anchoredPdfImageFailure_data();
+	void anchoredPdfImageFailure();
 	void cleanup();
 };
 
