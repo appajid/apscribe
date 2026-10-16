@@ -198,12 +198,15 @@ void TestScriptShaping::shaping()
 void TestScriptShaping::mixedDirectionAndPersistence()
 {
 	const QString arabic = QString::fromUtf8("السَّلَامُ");
-	const ScFace face = scriptFont({"Noto Naskh Arabic", "Geeza Pro", "Arial"}, arabic + "ABC 123()");
+	// The Linux Noto Arabic package need not contain Latin glyphs. Require one
+	// genuinely covering face rather than accepting fallback or skipping QA.
+	const ScFace face = scriptFont({"Noto Naskh Arabic", "Geeza Pro", "Arial", "DejaVu Sans"}, arabic + "ABC 123()");
 	if (face.isNone())
 	{
 		QVERIFY2(!requireFonts(), "Install a font covering Arabic and Latin");
 		QSKIP("No real mixed Arabic/Latin font");
 	}
+	qInfo().noquote() << "Mixed-direction QA font:" << face.scName() << face.fontFilePath();
 	auto* doc = newDocument();
 	QVERIFY(doc);
 	const QString text = arabic + " (ABC 123) " + arabic;
