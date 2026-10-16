@@ -15,6 +15,8 @@ private slots:
 	void inspectorHiddenPageSizing();
 	void anchoredCanvasEditing_data();
 	void anchoredCanvasEditing();
+	void linkedFrameAnchorReflow_data();
+	void linkedFrameAnchorReflow();
 	void cleanup();
 };
 

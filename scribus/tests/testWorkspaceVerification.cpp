@@ -3,6 +3,7 @@ For general Scribus (>=1.3.2) copyright and licensing information please refer
 to the COPYING file provided with the program.
 */
 #include <QtTest>
+#include <QFileInfo>
 #include <QMouseEvent>
 #include <QScopeGuard>
 #include <QStackedWidget>
@@ -18,6 +19,7 @@ to the COPYING file provided with the program.
 #include "pageitem_table.h"
 #include "pageitem_textframe.h"
 #include "prefsmanager.h"
+#include "scpage.h"
 #include "scribus.h"
 #include "scribuscore.h"
 #include "scribusdoc.h"
@@ -337,4 +339,162 @@ void TestWorkspaceVerification::anchoredCanvasEditing()
 	QCOMPARE(item->isTable(), table);
 	QVERIFY(QLineF(canvasRect(story, item).topLeft(), resized.topLeft()).length() < 1.5);
 	QVERIFY(qAbs(item->width() - afterSize.width()) < 0.1);
+}
+
+void TestWorkspaceVerification::linkedFrameAnchorReflow_data()
+{
+	QTest::addColumn<bool>("table");
+	QTest::addColumn<int>("mode");
+	for (bool table : {false, true})
+		for (int mode : {0, 1, 2})
+			QTest::newRow(qPrintable(QString("%1-mode-%2").arg(table ? "table" : "image").arg(mode))) << table << mode;
+}
+
+void TestWorkspaceVerification::linkedFrameAnchorReflow()
+{
+	QFETCH(bool, table);
+	QFETCH(int, mode);
+	auto* doc = newDocument();
+	QVERIFY(doc);
+	auto* window = ScCore->primaryMainWindow();
+	auto* view = doc->view();
+	QVERIFY(doc->addPage(1, doc->DocPages.at(0)->masterPageName()));
+	view->reformPages();
+	QList<PageItem_TextFrame*> frames;
+	for (int page = 0; page < 2; ++page)
+	{
+		doc->setCurrentPage(doc->DocPages.at(page));
+		const auto* sheet = doc->DocPages.at(page);
+		const int index = doc->itemAdd(PageItem::TextFrame, PageItem::Unspecified,
+			sheet->xOffset() + 60, sheet->yOffset() + 60, 360, page == 0 ? 160 : 500,
+			0, CommonStrings::None, CommonStrings::None);
+		QVERIFY(index >= 0);
+		frames.append(doc->Items->at(index)->asTextFrame());
+		QVERIFY(frames.last());
+		QCOMPARE(frames.last()->OwnPage, page);
+	}
+	auto* first = frames[0];
+	auto* second = frames[1];
+	first->link(second, false);
+	ParagraphStyle style;
+	style.setParent(CommonStrings::DefaultParagraphStyle);
+	style.setLineSpacingMode(ParagraphStyle::FixedLineSpacing);
+	style.setLineSpacing(24);
+	style.charStyle().setFontSize(120);
+	first->itemText.setDefaultStyle(style);
+	const QString body = QString("Start") + SpecialChars::PARSEP + "Anchor and following text.";
+	first->itemText.insertChars(0, body);
+	doc->setCurrentPage(doc->DocPages.at(0));
+	const int objectIndex = doc->itemAdd(table ? PageItem::Table : PageItem::ImageFrame,
+		PageItem::Unspecified, 80, 80, 80, 44, 0, CommonStrings::None, CommonStrings::None);
+	QVERIFY(objectIndex >= 0);
+	auto* item = doc->Items->at(objectIndex);
+	QTemporaryDir directory;
+	QVERIFY(directory.isValid());
+	const QString imagePath = directory.filePath("linked-anchor.png");
+	if (table)
+		item->asTable()->cellAt(0, 0).textFrame()->itemText.insertChars(0, QStringLiteral("Cell content"));
+	else
+	{
+		QImage image(80, 44, QImage::Format_RGB32);
+		image.fill(QColor(30, 90, 160));
+		QVERIFY(image.save(imagePath));
+		QVERIFY(doc->loadPict(imagePath, item));
+	}
+	item->isEmbedded = true;
+	item->gXpos = item->gYpos = 0;
+	item->gWidth = item->width();
+	item->gHeight = item->height();
+	const int id = doc->addToInlineFrames(item);
+	doc->Items->removeAt(objectIndex);
+	AnchorPosition position;
+	position.mode = static_cast<AnchorPosition::Mode>(mode);
+	if (mode == 2)
+	{
+		position.xOffset = 120;
+		position.yOffset = 40;
+		position.wrapMode = AnchorPosition::WrapMode::BoundingBox;
+		position.wrapOffsets = QMarginsF(3, 3, 3, 3);
+	}
+	item->setAnchorPosition(position);
+	const int anchor = 6;
+	first->itemText.insertObject(anchor, id);
+	auto layout = [&]() { first->layout(); second->layout(); };
+	layout();
+	QVERIFY(!first->resolvedAnchoredObjectRect(id).isEmpty());
+	QVERIFY(second->resolvedAnchoredObjectRect(id).isEmpty());
+	const QString originalStory = first->itemText.text(0, first->itemText.length());
+	const QString prefix = (QString("Inserted paragraph") + SpecialChars::PARSEP).repeated(10);
+	first->itemText.insertChars(0, prefix);
+	layout();
+	QVERIFY(first->resolvedAnchoredObjectRect(id).isEmpty());
+	QVERIFY(!second->resolvedAnchoredObjectRect(id).isEmpty());
+	QVERIFY(second->firstInFrame() <= anchor + prefix.length());
+	QVERIFY(second->lastInFrame() >= anchor + prefix.length());
+	QVERIFY(!second->frameOverflows());
+	const QRectF initial = canvasRect(second, item);
+	view->zoom(initial.center().x(), initial.center().y(), 1.0, false);
+	view->requestMode(modeNormal);
+	view->deselectItems();
+	mouse(view, QEvent::MouseButtonPress, initial.center());
+	mouse(view, QEvent::MouseButtonRelease, initial.center());
+	QCOMPARE(doc->appMode, int(modeEdit));
+	QCOMPARE(doc->m_Selection->itemAt(0), static_cast<PageItem*>(second));
+	QCOMPARE(second->selectedAnchoredObject(), item);
+	drag(view, initial.center(), initial.center() + QPointF(18, 12));
+	const QRectF moved = canvasRect(second, item);
+	QVERIFY(QLineF(moved.topLeft(), initial.topLeft() + QPointF(18, 12)).length() < 1.5);
+	UndoManager::instance()->undo(1);
+	QVERIFY(QLineF(canvasRect(second, item).topLeft(), initial.topLeft()).length() < 1.5);
+	UndoManager::instance()->redo(1);
+	QVERIFY(QLineF(canvasRect(second, item).topLeft(), moved.topLeft()).length() < 1.5);
+	const QSizeF beforeSize(item->width(), item->height());
+	drag(view, moved.bottomRight(), moved.bottomRight() + QPointF(22, 16));
+	QVERIFY(item->width() > beforeSize.width() + 15);
+	QVERIFY(item->height() > beforeSize.height() + 10);
+	const QSizeF resized(item->width(), item->height());
+	UndoManager::instance()->undo(1);
+	QVERIFY(qAbs(item->width() - beforeSize.width()) < 0.1);
+	QVERIFY(qAbs(item->height() - beforeSize.height()) < 0.1);
+	UndoManager::instance()->redo(1);
+	QVERIFY(qAbs(item->width() - resized.width()) < 0.1);
+	QVERIFY(qAbs(item->height() - resized.height()) < 0.1);
+	view->requestMode(modeNormal);
+	view->deselectItems();
+	first->itemText.removeChars(0, prefix.length());
+	layout();
+	QCOMPARE(first->itemText.text(0, first->itemText.length()), originalStory);
+	QVERIFY(!first->resolvedAnchoredObjectRect(id).isEmpty());
+	QVERIFY(second->resolvedAnchoredObjectRect(id).isEmpty());
+	first->itemText.insertChars(0, prefix);
+	layout();
+	QVERIFY(first->resolvedAnchoredObjectRect(id).isEmpty());
+	const QRectF finalRect = canvasRect(second, item);
+	QVERIFY(!finalRect.isEmpty());
+	const QString savedStory = first->itemText.text(0, first->itemText.length());
+	const QString path = directory.filePath("linked-anchors.sla");
+	QVERIFY(window->DoFileSave(path));
+	doc->setModified(false);
+	QVERIFY(window->slotFileClose());
+	QVERIFY(window->loadDoc(path));
+	doc = window->doc;
+	first = doc->Items->at(0)->asTextFrame();
+	second = doc->Items->at(1)->asTextFrame();
+	QVERIFY(first && second);
+	QCOMPARE(first->nextInChain(), static_cast<PageItem*>(second));
+	QCOMPARE(second->prevInChain(), static_cast<PageItem*>(first));
+	QCOMPARE(first->itemText.text(0, first->itemText.length()), savedStory);
+	QVERIFY(second->itemText.hasObject(anchor + prefix.length()));
+	item = doc->FrameItems.value(second->itemText.object(anchor + prefix.length()).getInlineCharID());
+	QVERIFY(item);
+	QCOMPARE(item->isTable(), table);
+	layout();
+	QVERIFY(first->resolvedAnchoredObjectRect(item->inlineCharID).isEmpty());
+	QVERIFY(QLineF(canvasRect(second, item).topLeft(), finalRect.topLeft()).length() < 1.5);
+	QVERIFY(qAbs(item->width() - resized.width()) < 0.1);
+	QVERIFY(qAbs(item->height() - resized.height()) < 0.1);
+	if (table)
+		QCOMPARE(item->asTable()->cellAt(0, 0).textFrame()->itemText.text(0, 12), QString("Cell content"));
+	else
+		QCOMPARE(QFileInfo(item->Pfile).canonicalFilePath(), QFileInfo(imagePath).canonicalFilePath());
 }
