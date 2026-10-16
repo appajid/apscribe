@@ -24,6 +24,12 @@ function(add_scribus_portable_test target)
 	add_test(NAME ${target} COMMAND ${target})
 endfunction()
 
+add_scribus_portable_test(inspectorstacktests
+	"${SCRIBUS_ROOT}/scribus/tests/inspectorstacktests.cpp"
+	"${SCRIBUS_ROOT}/scribus/ui/widgets/stacked_container.cpp")
+target_link_libraries(inspectorstacktests PRIVATE Qt6::Core Qt6::Test Qt6::Widgets)
+set_tests_properties(inspectorstacktests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 add_scribus_portable_test(actionsearchtests
 	"${SCRIBUS_ROOT}/scribus/tests/actionsearchtests.cpp"
 	"${SCRIBUS_ROOT}/scribus/actionsearch.cpp")

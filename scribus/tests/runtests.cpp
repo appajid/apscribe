@@ -10,12 +10,24 @@
 #include "testStyleSettings.h"
 #include "testTOCAlignment.h"
 #include "testSLALoadValidation.h"
+#include "testWorkspaceVerification.h"
+#include "testScriptShaping.h"
 
 int RunTests::runDocumentTests(const QStringList& arguments)
 {
 	// Leave QtTest's function/output options intact; select the initialized
 	// document suite separately from those options.
 	QStringList testArguments = arguments;
+	if (testArguments.removeAll("--suite=script-shaping") > 0)
+	{
+		TestScriptShaping tests;
+		return QTest::qExec(&tests, testArguments);
+	}
+	if (testArguments.removeAll("--suite=workspace") > 0)
+	{
+		TestWorkspaceVerification tests;
+		return QTest::qExec(&tests, testArguments);
+	}
 	if (testArguments.removeAll("--suite=zoom") > 0)
 	{
 		TestDocumentZoom tests;

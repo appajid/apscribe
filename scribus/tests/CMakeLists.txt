@@ -16,6 +16,8 @@ testStyleCleanup.cpp
 testStyleSettings.cpp
 testTOCAlignment.cpp
 testSLALoadValidation.cpp
+testWorkspaceVerification.cpp
+testScriptShaping.cpp
 )
 
 set(SCRIBUS_TESTS_LIB "scribus_tests_lib")
@@ -43,6 +45,12 @@ set_target_properties(${SCRIBUS_TESTS_LIB}
 #
 
 set(TESTS_LIBRARIES Qt6::Test Qt6::Core)
+
+add_executable(inspectorstacktests inspectorstacktests.cpp ../ui/widgets/stacked_container.cpp)
+target_link_libraries(inspectorstacktests Qt6::Test Qt6::Widgets)
+add_test(NAME inspectorstacktests COMMAND inspectorstacktests)
+set_tests_properties(inspectorstacktests PROPERTIES
+	LABELS "ui;inspector" ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # Regular-expression matching used by Find; kept independent of document UI.
 add_executable(regexsearchtests regexsearchtests.cpp ../regexsearch.cpp)
@@ -381,6 +389,27 @@ set_tests_properties(hyphenation_ignore_list PROPERTIES
 	TIMEOUT 180)
 
 set(table_paragraph_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-table_paragraph_style")
+set(workspace_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-workspace_verification")
+set(script_shaping_prefs_dir "${CMAKE_CURRENT_BINARY_DIR}/prefs-script_shaping")
+set(script_shaping_output_dir "${CMAKE_CURRENT_BINARY_DIR}/output-script_shaping")
+file(MAKE_DIRECTORY "${script_shaping_prefs_dir}" "${script_shaping_output_dir}")
+add_test(NAME script_shaping
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${script_shaping_prefs_dir}" --document-tests --suite=script-shaping)
+set_tests_properties(script_shaping PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen;APSCRIBE_SCRIPT_QA_OUTPUT=${script_shaping_output_dir}"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;typography;indic;rtl;persistence"
+	RUN_SERIAL TRUE TIMEOUT 90)
+file(MAKE_DIRECTORY "${workspace_prefs_dir}")
+add_test(NAME workspace_verification
+	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
+		--no-splash --prefs "${workspace_prefs_dir}" --document-tests --suite=workspace)
+set_tests_properties(workspace_verification PROPERTIES
+	ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+	FIXTURES_REQUIRED runningheader_test_app
+	LABELS "integration;anchored-objects;inspector;ui;undo-redo;persistence"
+	RUN_SERIAL TRUE TIMEOUT 90)
 file(MAKE_DIRECTORY "${table_paragraph_prefs_dir}")
 add_test(NAME table_paragraph_style_selection
 	COMMAND "${SCRIBUS_SCRIPT_TEST_EXECUTABLE}"
