@@ -284,4 +284,26 @@ check(len(scribus.getAnchoredObjectRects(image, story)) == 2, "both image occurr
 step("resolved image rectangle before reopen=%r after reopen=%r" % (image_rect_after, reopened_rect))
 check(abs(reopened_rect[1] - image_rect_after[1]) < 2.0, "resolved image position changed after reopen")
 
+step("creating a separate unlocked fixture for hands-on canvas testing")
+# The persistence fixture deliberately locks the image's position. Do not
+# hand that file to a tester as a free-drag example, or weaken the lock test.
+manual_output_path = os.path.join(output_dir, "apscribe_anchored_manual_drag.sla")
+for name in (image, table):
+    scribus.setAnchoredObjectOptions(name, {
+        "preventManualPositioning": False,
+        "keepWithinBounds": False,
+    })
+scribus.saveDocAs(manual_output_path)
+scribus.closeDoc()
+check(scribus.openDoc(manual_output_path), "could not reopen the manual drag fixture")
+for name in (image, table):
+    options = scribus.getAnchoredObjectOptions(name)
+    check(options["preventManualPositioning"] is False,
+          "manual drag fixture still locks %s" % name)
+    check(options["keepWithinBounds"] is False,
+          "manual drag fixture still constrains %s" % name)
+check(os.path.abspath(scribus.getImageFile(image)) == image_path,
+      "manual drag fixture lost its linked image")
+step("manual canvas fixture: " + manual_output_path)
+
 print("ANCHORED_OBJECT_QA_PASSED", flush=True)
