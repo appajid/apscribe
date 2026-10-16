@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GPL: see COPYING. Opt-in test instrumentation; never enabled in release builds. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <VerificationSourceDir>$(MSBuildThisFileDirectory)..\..\scribus\tests\</VerificationSourceDir>
+    <VerificationQtTestLib Condition="'$(Configuration)' == 'Debug'">Qt6Testd.lib</VerificationQtTestLib>
+    <VerificationQtTestLib Condition="'$(Configuration)' != 'Debug'">Qt6Test.lib</VerificationQtTestLib>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>WITH_TESTS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(VerificationSourceDir);$(QT6_DIR)\include\QtTest;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(VerificationQtTestLib);%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="$(VerificationSourceDir)runtests.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testStoryText.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testTableParagraphStyle.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testDocumentZoom.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testStyleCleanup.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testStyleSettings.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testTOCAlignment.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testSLALoadValidation.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testWorkspaceVerification.cpp" />
+    <ClCompile Include="$(VerificationSourceDir)testScriptShaping.cpp" />
+    <moc Include="$(VerificationSourceDir)testStoryText.h" />
+    <moc Include="$(VerificationSourceDir)testTableParagraphStyle.h" />
+    <moc Include="$(VerificationSourceDir)testDocumentZoom.h" />
+    <moc Include="$(VerificationSourceDir)testStyleCleanup.h" />
+    <moc Include="$(VerificationSourceDir)testStyleSettings.h" />
+    <moc Include="$(VerificationSourceDir)testTOCAlignment.h" />
+    <moc Include="$(VerificationSourceDir)testSLALoadValidation.h" />
+    <moc Include="$(VerificationSourceDir)testWorkspaceVerification.h" />
+    <moc Include="$(VerificationSourceDir)testScriptShaping.h" />
+  </ItemGroup>
+</Project>

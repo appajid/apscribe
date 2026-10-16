@@ -110,3 +110,21 @@ foreach(MSVC_VERSION IN ITEMS 2019 2022 2026)
 endforeach()
 
 message(STATUS "All fork application and Scripter files are registered in every Windows project")
+
+# The optional native QtTest instrumentation must never become a production
+# define; all maintained main projects opt in through the same guarded import.
+foreach(MSVC_VERSION IN ITEMS msvc2019 msvc2022 msvc2026)
+	file(READ "${SCRIBUS_ROOT}/win32/${MSVC_VERSION}/scribus-main/Scribus.vcxproj" PROJECT_XML)
+	string(FIND "${PROJECT_XML}" "native-verification.props\" Condition=\"'$(APSCRIBE_VERIFICATION_TESTS)' == 'true'\"" HAS_GUARDED_TESTS)
+	if(HAS_GUARDED_TESTS EQUAL -1)
+		message(FATAL_ERROR "${MSVC_VERSION} has no guarded native verification import")
+	endif()
+endforeach()
+file(READ "${SCRIBUS_ROOT}/win32/ci/native-verification.props" VERIFICATION_XML)
+foreach(TEST_SOURCE IN ITEMS runtests.cpp testWorkspaceVerification.cpp testScriptShaping.cpp
+		testWorkspaceVerification.h testScriptShaping.h)
+	string(FIND "${VERIFICATION_XML}" "$(VerificationSourceDir)${TEST_SOURCE}" HAS_TEST_SOURCE)
+	if(HAS_TEST_SOURCE EQUAL -1)
+		message(FATAL_ERROR "Native Windows verification is missing ${TEST_SOURCE}")
+	endif()
+endforeach()

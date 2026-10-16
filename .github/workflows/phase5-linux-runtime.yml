@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/phase5-validation
+      - codex/apscribe-workspace-verification-*
   workflow_dispatch:
 
 permissions:
@@ -15,6 +16,7 @@ jobs:
     timeout-minutes: 90
     env:
       QT_QPA_PLATFORM: offscreen
+      APSCRIBE_REQUIRE_SCRIPT_FONTS: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +29,7 @@ jobs:
             libharfbuzz-dev libhunspell-dev libicu-dev libjpeg-dev \
             liblcms2-dev libpagemaker-dev libpng-dev libpoppler-cpp-dev libpoppler-private-dev \
             librevenge-dev \
-            libtiff-dev libxml2-dev python3-dev zlib1g-dev poppler-utils
+            libtiff-dev libxml2-dev python3-dev zlib1g-dev poppler-utils fonts-noto-core
 
       - name: Install Qt 6.11.2
         uses: jurplel/install-qt-action@v4
@@ -53,3 +55,16 @@ jobs:
 
       - name: Run Phase 5 runtime tests
         run: ctest --test-dir build/phase5-linux -L phase-5 --output-on-failure
+
+      - name: Verify anchored editing, inspector and script shaping
+        run: ctest --test-dir build/phase5-linux -R '^(workspace_verification|script_shaping|inspectorstacktests|anchored_objects)$' --output-on-failure
+
+      - name: Preserve workspace verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-verification-Linux-${{ github.run_id }}
+          path: |
+            build/phase5-linux/Testing/Temporary/LastTest.log
+            build/phase5-linux/scribus/tests/output-script_shaping
+          if-no-files-found: warn

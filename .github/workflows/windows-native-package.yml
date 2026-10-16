@@ -5,6 +5,7 @@ on:
     branches:
       - codex/windows-test-package
       - codex/apscribe-release-*
+      - codex/apscribe-workspace-verification-*
   workflow_dispatch:
 
 permissions:
@@ -24,6 +25,7 @@ jobs:
       SCRIBUS_VERSION: 2.0.0
       RELEASE_VERSION: 2.0.0-rc2
       SCRIBUS_DEPENDENCY_ROOT: C:\scribus-deps
+      APSCRIBE_VERIFICATION_TESTS: ${{ startsWith(github.ref_name, 'codex/apscribe-workspace-verification-') && 'true' || 'false' }}
 
     steps:
       - name: Check out source
@@ -92,7 +94,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ steps.build-paths.outputs.builds-root }}\Scribus-Release-x64-v143
-          key: apscribe-app-msvc2022-release-x64-${{ hashFiles('scribus/**', 'win32/msvc2022/**') }}-v2
+          key: apscribe-app-msvc2022-release-x64-${{ hashFiles('scribus/**', 'win32/msvc2022/**', 'win32/ci/native-verification.props') }}-${{ env.APSCRIBE_VERIFICATION_TESTS }}-v3
           restore-keys: |
             apscribe-app-msvc2022-release-x64-
 
@@ -114,7 +116,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.build-paths.outputs.builds-root }}\Scribus-Release-x64-v143
-          key: apscribe-app-msvc2022-release-x64-${{ hashFiles('scribus/**', 'win32/msvc2022/**') }}-v2
+          key: apscribe-app-msvc2022-release-x64-${{ hashFiles('scribus/**', 'win32/msvc2022/**', 'win32/ci/native-verification.props') }}-${{ env.APSCRIBE_VERIFICATION_TESTS }}-v3
 
       - name: Package and test Scribus
         shell: pwsh
@@ -137,6 +139,7 @@ jobs:
             -Sources $env:GITHUB_WORKSPACE
 
       - name: Name and checksum the release candidate
+        if: env.APSCRIBE_VERIFICATION_TESTS != 'true'
         shell: pwsh
         run: |
           $packages = @{
@@ -152,6 +155,7 @@ jobs:
           }
 
       - name: Upload Windows test applications
+        if: env.APSCRIBE_VERIFICATION_TESTS != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Apscribe-${{ env.RELEASE_VERSION }}-Windows-x64
@@ -159,6 +163,22 @@ jobs:
             release-candidate/*
           if-no-files-found: error
           retention-days: 14
+
+      - name: Verify anchored editing, inspector and script shaping
+        if: env.APSCRIBE_VERIFICATION_TESTS == 'true'
+        shell: pwsh
+        run: |
+          .\win32\ci\test-workspace.ps1 `
+            -AppDir "$env:GITHUB_WORKSPACE\win32\deploy\dist\Apscribe-$env:SCRIBUS_VERSION-win64" `
+            -OutputDir "$env:RUNNER_TEMP\apscribe-workspace-tests"
+
+      - name: Preserve workspace verification reports
+        if: always() && env.APSCRIBE_VERIFICATION_TESTS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-verification-Windows-${{ github.run_id }}
+          path: ${{ runner.temp }}\apscribe-workspace-tests
+          if-no-files-found: warn
 
       - name: Upload build logs on failure
         if: failure()

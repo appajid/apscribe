@@ -2008,6 +2008,7 @@
     <lrelease Include="..\..\..\resources\translations\scribus.zh_CN.ts" />
     <lrelease Include="..\..\..\resources\translations\scribus.zh_TW.ts" />
   </ItemGroup>
+  <Import Project="..\..\ci\native-verification.props" Condition="'$(APSCRIBE_VERIFICATION_TESTS)' == 'true'" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\Scribus-build-rules.targets" />

@@ -34,7 +34,8 @@ param(
     [switch]$ApplicationBuildOnly,
     [switch]$SkipInstaller,
     [switch]$SkipSmokeTest,
-    [switch]$TestInstaller
+    [switch]$TestInstaller,
+    [switch]$VerificationTests = ($env:APSCRIBE_VERIFICATION_TESTS -eq 'true')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -201,7 +202,8 @@ if (-not $SkipApplicationBuild) {
     Write-Host '== Building Scribus (Release|x64, v143) ==' -ForegroundColor Cyan
     Invoke-MSBuild $msbuild $appSolution (Join-Path $logsRoot 'scribus-release-x64.log') @(
         "/p:SCRIBUS_LIB_ROOT=$kitRoot",
-        "/p:QT6_DIR=$QtDir"
+        "/p:QT6_DIR=$QtDir",
+        "/p:APSCRIBE_VERIFICATION_TESTS=$($VerificationTests.IsPresent.ToString().ToLowerInvariant())"
     )
 } else {
     Write-Host '  Scribus application build skipped by request.' -ForegroundColor Yellow
