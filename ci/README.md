@@ -188,19 +188,55 @@ also passed. These results establish baseline evidence for the lock, inspector
 sizing and atomic direction/alignment undo fixes across the three tested targets,
 not complete GUI/accessibility or typography certification.
 
-The newer `4a4d243`
+The newer `4a4d243` full
+[Linux run](https://github.com/appajid/apscribe/actions/runs/38962837620) passed,
+including **55 shaping/direction cases and 22 workspace cases**, zero failures
+or skips. This verifies the expanded font matrix on Linux, but not the later
+cross-page or PDF-failure additions. Its
 [portable matrix](https://github.com/appajid/apscribe/actions/runs/38962837285)
 also passed. The latest `4d656c2`
 [portable matrix](https://github.com/appajid/apscribe/actions/runs/38963787180)
 passed on all three platforms. Its full
 [Linux](https://github.com/appajid/apscribe/actions/runs/38963787205) and
 [Windows](https://github.com/appajid/apscribe/actions/runs/38963787624) runs were
-still in progress at the latest check. The expanded multi-font and cross-page
-cases therefore remain unconfirmed on those two platforms; do not attribute
-the older `cb2d314` results to these later additions.
+still in progress at the latest check. The cross-page cases remain unconfirmed
+on Windows/Linux, and the expanded font matrix remains unconfirmed on Windows;
+do not attribute the older `cb2d314` results to these later additions.
 Remaining acceptance includes native
 light/dark and HiDPI walkthroughs, screen-reader/focus coverage, specialist Indic
 and RTL visual review with multiple font families, large multi-frame and
 multi-occurrence story stress, grouped/shape anchors, copy/paste/unanchor, and
 PDF/print fidelity. The two-page image/table cases above are a bounded regression
 check, not certification of arbitrary long-document reflow.
+
+### PDF export failure handling follow-up
+
+PDF smoke checks found that a failed anchored-image export could be silently
+accepted. `PdfPainter::drawObject()` had already emitted `ET` and opened a `q`
+graphics-state scope before returning early on an embedded-item failure. The
+error never reached the page export. A sandbox-blocked JPEG temporary-file
+write reproduced missing images and displaced later table/text content in an
+apparently successful PDF. Normal export with ordinary temp-file access matched
+the canvas, so this was not a general table-positioning defect.
+
+The painter now processes the embedded item before altering its content buffer
+and propagates failure through the containing item. Export reports the original
+error and removes the incomplete PDF using the existing abort cleanup. A
+separate failure flag leaves the existing user-cancellation path unchanged.
+
+Twelve regression cases cover valid/missing image sources in regular text frames
+and table cells, each in inline, above-line and custom modes. All six missing
+source cases failed before the fix. Afterward all twelve pass: a failed export
+returns false, retains its error, removes partial output, and succeeds with a
+fresh export after restoring the source. Valid/retried PDFs contain an image
+XObject. Only synthetic test-owned source files are removed in these tests.
+
+The rebuilt Mac app passed **64/64 CTest tests** and **40 native Cocoa workspace
+cases**, zero failures/skips. A separate Python Scripter check confirmed the
+image-write error raises an exception and leaves no incomplete PDF. Healthy
+exports were repeated after the fix: both anchored-image occurrences matched
+canvas bounds within two pixels at 144 dpi, with a balanced PDF graphics stack;
+the Indic/RTL proof rendered legibly with embedded fonts. These are bounded
+smoke checks, not PDF/X, accessibility or physical-print certification. This new
+fix still requires Windows/Linux CI verification; the older green runs do not
+include it. Public RC2 remains unchanged.
